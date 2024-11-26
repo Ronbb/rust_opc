@@ -1,9 +1,11 @@
 [package]
 name = "opc_da_bindings"
+description = "OPC Data Access bindings"
 version = "0.1.0"
+license = "MIT"
 edition = "2021"
 repository = "https://github.com/Ronbb/rust_opc"
-keywords = ["opc", "da"]
+keywords = ["opc", "da", "bindings"]
 
 [dependencies]
 windows = { version = "0.58.0", features = [
