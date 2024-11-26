@@ -1,11 +1,17 @@
 [package]
 name = "opc_da_bindings"
 description = "OPC Data Access bindings"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 edition = "2021"
 repository = "https://github.com/Ronbb/rust_opc"
-keywords = ["opc", "da", "bindings"]
+keywords = ["opc", "da", "opcda", "bindings"]
+readme = "README.md"
+exclude = [".metadata/*", ".windows/*", "build.rs"]
+
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+targets = []
 
 [dependencies]
 windows = { version = "0.58.0", features = [
