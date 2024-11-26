@@ -1,4 +1,10 @@
 {
+  "cSpell.ignorePaths": [
+    ".git/**/*",
+    ".vscode",
+    "target/**/*",
+    "opc_da_bindings/src/bindings.rs"
+  ],
   "cSpell.words": [
     "bindgen",
     "BSTR",
@@ -14,6 +20,7 @@
     "INPROC",
     "IOPC",
     "midlrt",
+    "msvc",
     "nanos",
     "nomidl",
     "OPCBROWSEDIRECTION",
@@ -36,11 +43,14 @@
     "pceltfetched",
     "PCWSTR",
     "PWSTR",
+    "repr",
     "rfind",
     "Unadvise",
     "vtable",
+    "Vtbl",
     "winmd",
-    "winrt"
+    "winrt",
+    "XMLDA"
   ],
   "files.exclude": {
     "**/.git": true,
