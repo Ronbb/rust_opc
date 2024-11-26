@@ -1,0 +1,2 @@
+[workspace]
+members = ["opc_da_bindings", "opc_da"]

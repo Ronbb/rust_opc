@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.Windows.WinmdGenerator/0.61.15-preview">
+    <PropertyGroup Label="Globals">
+        <OutputWinmd>../.windows/winmd/OPCDA.winmd</OutputWinmd>
+        <WinmdVersion>0.0.0.1</WinmdVersion>
+        <AdditionalIncludes>$(CompiledHeadersDir)</AdditionalIncludes>
+    </PropertyGroup>
+    <ItemGroup>
+        <Idls Include="OPCDA_3.00.idl;OPCComn.idl" />
+        <Headers Include="$(CompiledHeadersDir)\OPCDA_3.00.h;$(CompiledHeadersDir)\OPCComn.h" />
+        <Partition Include="main.cpp">
+            <TraverseFiles>@(Headers)</TraverseFiles>
+            <Namespace>OPCDA</Namespace>
+            <ExcludeFromCrossarch>true</ExcludeFromCrossarch>
+        </Partition>
+    </ItemGroup>
+</Project>
