@@ -2,6 +2,8 @@
 name = "opc_da"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/Ronbb/rust_opc"
+keywords = ["opc", "da"]
 
 [dependencies]
 opc_da_bindings = { path = "../opc_da_bindings" }

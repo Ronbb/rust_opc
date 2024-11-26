@@ -6,7 +6,7 @@ fn main() {
         "--in",
         ".windows/winmd/OPCDA.winmd",
         "--out",
-        "src/opcda/bindings.rs",
+        "src/bindings.rs",
         "--filter",
         "OPCDA",
         "--config",

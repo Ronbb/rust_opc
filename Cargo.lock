@@ -210,8 +210,6 @@ dependencies = [
 name = "opc_da_bindings"
 version = "0.1.0"
 dependencies = [
- "globset",
- "tokio",
  "windows",
  "windows-bindgen",
  "windows-core",

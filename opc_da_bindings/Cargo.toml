@@ -2,10 +2,10 @@
 name = "opc_da_bindings"
 version = "0.1.0"
 edition = "2021"
+repository = "https://github.com/Ronbb/rust_opc"
+keywords = ["opc", "da"]
 
 [dependencies]
-globset = "0.4.15"
-tokio = { version = "1.41.1", features = ["rt-multi-thread", "full"] }
 windows = { version = "0.58.0", features = [
     "implement",
     "Win32_Foundation",
