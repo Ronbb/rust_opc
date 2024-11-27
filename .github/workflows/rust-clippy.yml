@@ -45,7 +45,7 @@ jobs:
         run:
           cargo clippy
           --all-features
-          --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sed -E 's|([A-Z]):\\|/\1/|g; s|\\|/|g' | sarif-fmt
+          --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | ForEach-Object { $_ -replace '\\', '/' -replace '([A-Z]):', '/$1' } | sarif-fmt
         continue-on-error: true
 
       - name: Upload analysis results to GitHub
