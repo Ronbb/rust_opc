@@ -3,8 +3,10 @@
     ".git/**/*",
     ".vscode",
     "target/**/*",
+    "opc_da_bindings/.metadata/**/*",
     "opc_da_bindings/src/bindings.rs"
   ],
+  "cSpell.spellCheckOnlyWorkspaceFiles": true,
   "cSpell.words": [
     "bindgen",
     "BSTR",
@@ -13,6 +15,7 @@
     "CLSID",
     "COINIT",
     "Comn",
+    "CONNECTDATA",
     "enumer",
     "globset",
     "HRESULT",
@@ -64,5 +67,6 @@
     "**/.settings": true,
     "**/.factorypath": true
   },
-  "hide-files.files": []
+  "hide-files.files": [],
+  "rust-analyzer.check.command": "clippy"
 }
