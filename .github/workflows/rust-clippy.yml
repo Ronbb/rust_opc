@@ -20,7 +20,7 @@ on:
 
 jobs:
   rust-clippy-analyze:
-    name: Run rust-clippy analyzing
+    name: analyzing
     runs-on: windows-latest
     permissions:
       contents: read
@@ -45,7 +45,7 @@ jobs:
         run:
           cargo clippy
           --all-features
-          --message-format=json | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
+          --message-format=json | ForEach-Object { $_ -replace '\\\\', '/' } | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
         continue-on-error: true
 
       - name: Upload analysis results to GitHub
