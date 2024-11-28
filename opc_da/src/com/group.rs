@@ -15,13 +15,13 @@ use windows::Win32::{
 };
 use windows_core::{implement, ComObjectInner, VARIANT};
 
-use crate::core::core::{Core, Quality};
+use super::base::{Core, Quality};
 
 use super::{
     bindings,
     enumeration::ItemAttributesEnumerator,
     item::Item,
-    utils::{com_alloc_str, com_alloc_v},
+    utils::{com_alloc_v, copy_to_com_string},
 };
 
 #[implement(
@@ -355,8 +355,8 @@ impl bindings::IOPCItemMgt_Impl for Group_Impl {
                         let access_right = node.access_right.read().await;
                         let value = node.value.read().await;
                         bindings::tagOPCITEMATTRIBUTES {
-                            szAccessPath: com_alloc_str(""),
-                            szItemID: com_alloc_str(&node.get_path().await),
+                            szAccessPath: copy_to_com_string(""),
+                            szItemID: copy_to_com_string(&node.get_path().await),
                             bActive: BOOL::from(state.is_active),
                             hClient: item.client_handle,
                             hServer: item.server_handle,
@@ -396,7 +396,7 @@ impl bindings::IOPCGroupStateMgt_Impl for Group_Impl {
         unsafe {
             *update_rate = state.update_rate;
             *active = state.active.into();
-            *name = com_alloc_str(&state.name);
+            *name = copy_to_com_string(&state.name);
             *timebias = state.time_bias.unwrap_or(0);
             *percent_deadband = state.percent_deadband.unwrap_or(0.0);
             *locale_id = state.locale_id;

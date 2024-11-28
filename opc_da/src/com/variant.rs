@@ -4,10 +4,7 @@ use windows::Win32::{
 };
 use windows_core::{BSTR, VARIANT};
 
-use crate::core::{
-    core::{AccessRight, Quality, SystemTime},
-    variant::Variant,
-};
+use super::base::{AccessRight, Quality, SystemTime, Variant};
 
 use super::bindings;
 
@@ -53,9 +50,9 @@ impl AccessRight {
     }
 }
 
-impl Into<VARIANT> for Variant {
-    fn into(self) -> VARIANT {
-        match self.clone() {
+impl From<Variant> for VARIANT {
+    fn from(val: Variant) -> Self {
+        match val.clone() {
             Variant::Empty => VARIANT::new(),
             Variant::Null => unsafe {
                 VARIANT::from_raw(windows_core::imp::VARIANT {
@@ -86,9 +83,9 @@ impl Into<VARIANT> for Variant {
     }
 }
 
-impl Into<windows_core::imp::VARIANT> for Variant {
-    fn into(self) -> windows_core::imp::VARIANT {
-        let variant: VARIANT = self.into();
+impl From<Variant> for windows_core::imp::VARIANT {
+    fn from(val: Variant) -> Self {
+        let variant: VARIANT = val.into();
         *variant.as_raw()
     }
 }
@@ -128,9 +125,9 @@ impl From<windows_core::imp::VARIANT> for Variant {
     }
 }
 
-impl Into<FILETIME> for SystemTime {
-    fn into(self) -> FILETIME {
-        let duration = self.0.duration_since(std::time::UNIX_EPOCH).unwrap();
+impl From<SystemTime> for FILETIME {
+    fn from(val: SystemTime) -> Self {
+        let duration = val.0.duration_since(std::time::UNIX_EPOCH).unwrap();
         let intervals = duration.as_secs() * 10_000_000 + duration.subsec_nanos() as u64 / 100;
         FILETIME {
             dwLowDateTime: intervals as u32,

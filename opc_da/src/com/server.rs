@@ -1,11 +1,14 @@
 use std::{
     collections::BTreeMap,
+    ops::Deref,
     sync::{Arc, Weak},
 };
 
-use crate::core::{
-    core::{Core, Quality},
-    variant::Variant,
+use crate::traits::ServerTrait;
+
+use super::{
+    base::{Core, Quality, Variant},
+    utils::copy_to_pointer,
 };
 
 use super::{
@@ -13,7 +16,7 @@ use super::{
     connection_point::ConnectionPoint,
     enumeration::{ConnectionPointsEnumerator, StringEnumerator, UnknownEnumerator},
     group::Group,
-    utils::{com_alloc_str, com_alloc_v},
+    utils::{com_alloc_v, copy_to_com_string},
 };
 use globset::Glob;
 use windows::Win32::{
@@ -23,7 +26,9 @@ use windows::Win32::{
         IEnumConnectionPoints, IEnumString, IEnumUnknown,
     },
 };
-use windows_core::{implement, ComObject, ComObjectInner, IUnknownImpl, Interface, PWSTR, VARIANT};
+use windows_core::{
+    implement, w, ComObject, ComObjectInner, IUnknownImpl, Interface, PWSTR, VARIANT,
+};
 
 #[implement(
     // implicit implement IUnknown
@@ -36,35 +41,22 @@ use windows_core::{implement, ComObject, ComObjectInner, IUnknownImpl, Interface
     bindings::IOPCBrowseServerAddressSpace,
     bindings::IOPCItemIO
 )]
-pub struct Server {
-    // core
-    core: Arc<Core>,
+pub struct Server<T>(pub T)
+where
+    T: ServerTrait + 'static;
 
-    // for IOPCServer
-    group_name_map: tokio::sync::RwLock<BTreeMap<String, ComObject<Group>>>,
-    group_server_handle_map: tokio::sync::RwLock<BTreeMap<u32, ComObject<Group>>>,
-    next_server_group_handle: std::sync::atomic::AtomicU32,
+impl<T: ServerTrait + 'static> Deref for Server<T> {
+    type Target = T;
 
-    // for IOPCBrowseServerAddressSpace
-    seperator: String,
-    browser_position: tokio::sync::RwLock<String>,
-
-    // for IOPCCommon
-    current_locale_id: tokio::sync::RwLock<u32>,
-    available_locale_ids: Vec<u32>,
-    client_name: tokio::sync::RwLock<String>,
-
-    // for IConnectionPointContainer, IOPCShutdown
-    shutdown: ComObject<ConnectionPoint>,
-
-    // for IOPCServerPublicGroups
-    public_server: Weak<Server>,
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 // 1.0 required
 // 2.0 required
 // 3.0 required
-impl bindings::IOPCServer_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
     fn AddGroup(
         &self,
         name: &windows_core::PCWSTR,
@@ -147,7 +139,7 @@ impl bindings::IOPCServer_Impl for Server_Impl {
         _locale: u32,
     ) -> windows_core::Result<windows_core::PWSTR> {
         let message = error.message();
-        Ok(com_alloc_str(&message))
+        Ok(copy_to_com_string(&message))
     }
 
     fn GetGroupByName(
@@ -221,14 +213,13 @@ impl bindings::IOPCServer_Impl for Server_Impl {
 // 1.0 N/A
 // 2.0 required
 // 3.0 required
-impl bindings::IOPCCommon_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
     fn SetLocaleID(&self, locale_id: u32) -> windows_core::Result<()> {
-        *self.current_locale_id.blocking_write() = locale_id;
-        Ok(())
+        self.set_locale_id(locale_id)
     }
 
     fn GetLocaleID(&self) -> windows_core::Result<u32> {
-        Ok(*self.current_locale_id.blocking_read())
+        self.get_locale_id()
     }
 
     fn QueryAvailableLocaleIDs(
@@ -236,13 +227,8 @@ impl bindings::IOPCCommon_Impl for Server_Impl {
         count: *mut u32,
         locale_ids: *mut *mut u32,
     ) -> windows_core::Result<()> {
-        let available_locale_ids = &self.available_locale_ids;
-
-        unsafe {
-            *count = available_locale_ids.len() as u32;
-            *locale_ids = com_alloc_v(&self.available_locale_ids);
-        }
-
+        let available_locale_ids = self.query_available_locale_ids()?;
+        copy_to_pointer(&available_locale_ids, count, locale_ids)?;
         Ok(())
     }
 
@@ -250,25 +236,19 @@ impl bindings::IOPCCommon_Impl for Server_Impl {
         &self,
         error: windows_core::HRESULT,
     ) -> windows_core::Result<windows_core::PWSTR> {
-        let message = error.message();
-        Ok(com_alloc_str(&message))
+        let s = self.get_error_string(error.0)?;
+        copy_to_com_string(&s)
     }
 
     fn SetClientName(&self, name: &windows_core::PCWSTR) -> windows_core::Result<()> {
-        if name.is_null() {
-            return Err(E_POINTER.into());
-        }
-
-        let name = unsafe { name.to_string().unwrap() };
-        *self.client_name.blocking_write() = name;
-        Ok(())
+        self.set_client_name(unsafe { name.to_string() }?)
     }
 }
 
 // 1.0 N/A
 // 2.0 required
 // 3.0 required
-impl IConnectionPointContainer_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> IConnectionPointContainer_Impl for Server_Impl<T> {
     fn EnumConnectionPoints(&self) -> windows_core::Result<IEnumConnectionPoints> {
         Ok(
             ConnectionPointsEnumerator::new(Arc::new(vec![self.shutdown.to_interface()]))
@@ -291,7 +271,7 @@ impl IConnectionPointContainer_Impl for Server_Impl {
 // 1.0 N/A
 // 2.0 required
 // 3.0 N/A
-impl bindings::IOPCItemProperties_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl<T> {
     fn QueryAvailableProperties(
         &self,
         item_id: &windows_core::PCWSTR,
@@ -314,7 +294,7 @@ impl bindings::IOPCItemProperties_Impl for Server_Impl {
 
                 for property in item_properties.iter() {
                     i.push(property.id);
-                    d.push(com_alloc_str(&property.description));
+                    d.push(copy_to_com_string(&property.description));
                     t.push(property.value.get_data_type());
                 }
 
@@ -393,7 +373,7 @@ impl bindings::IOPCItemProperties_Impl for Server_Impl {
                 for i in 0..count {
                     let property_id = unsafe { *property_ids.add(i) };
                     if let Some(property) = node.get_item_property(property_id) {
-                        n.push(com_alloc_str(&format!(
+                        n.push(copy_to_com_string(&format!(
                             "{}{}{}",
                             item_id, self.seperator, property.name
                         )));
@@ -419,7 +399,7 @@ impl bindings::IOPCItemProperties_Impl for Server_Impl {
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl bindings::IOPCBrowse_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
     fn GetProperties(
         &self,
         item_count: u32,
@@ -587,8 +567,8 @@ impl bindings::IOPCBrowse_Impl for Server_Impl {
                     }
 
                     elements.push(bindings::tagOPCBROWSEELEMENT {
-                        szName: com_alloc_str(&child.name),
-                        szItemID: com_alloc_str(
+                        szName: copy_to_com_string(&child.name),
+                        szItemID: copy_to_com_string(
                             &tokio::runtime::Handle::current().block_on(child.get_path()),
                         ),
                         dwFlagValue: 0,
@@ -617,7 +597,7 @@ impl bindings::IOPCBrowse_Impl for Server_Impl {
 // 1.0 optional
 // 2.0 optional
 // 3.0 N/A
-impl bindings::IOPCServerPublicGroups_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> bindings::IOPCServerPublicGroups_Impl for Server_Impl<T> {
     fn GetPublicGroupByName(
         &self,
         name: &windows_core::PCWSTR,
@@ -675,7 +655,7 @@ impl bindings::IOPCServerPublicGroups_Impl for Server_Impl {
 // 1.0 optional
 // 2.0 optional
 // 3.0 N/A
-impl bindings::IOPCBrowseServerAddressSpace_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for Server_Impl<T> {
     fn QueryOrganization(&self) -> windows_core::Result<bindings::tagOPCNAMESPACETYPE> {
         Ok(bindings::OPC_NS_HIERARCHIAL)
     }
@@ -831,7 +811,7 @@ impl bindings::IOPCBrowseServerAddressSpace_Impl for Server_Impl {
             match node {
                 Some(node) => {
                     let path = node.read().await.get_path().await;
-                    Ok(com_alloc_str(&path))
+                    Ok(copy_to_com_string(&path))
                 }
                 None => Err(E_INVALIDARG.into()),
             }
@@ -849,7 +829,7 @@ impl bindings::IOPCBrowseServerAddressSpace_Impl for Server_Impl {
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl bindings::IOPCItemIO_Impl for Server_Impl {
+impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
     fn Read(
         &self,
         count: u32,

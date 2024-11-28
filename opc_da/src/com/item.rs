@@ -3,9 +3,11 @@ use std::{mem::ManuallyDrop, sync::Arc};
 use tokio::sync::RwLock;
 use windows::Win32::Foundation::S_OK;
 
-use crate::core::{core::Node, variant::Variant};
-
-use super::{bindings::tagOPCITEMPROPERTY, utils::com_alloc_str};
+use super::{
+    base::{Node, Variant},
+    bindings::tagOPCITEMPROPERTY,
+    utils::copy_to_com_string,
+};
 
 pub struct Item {
     pub name: String,
@@ -40,15 +42,15 @@ impl Node {
     }
 }
 
-impl Into<tagOPCITEMPROPERTY> for ItemProperty {
-    fn into(self) -> tagOPCITEMPROPERTY {
+impl From<ItemProperty> for tagOPCITEMPROPERTY {
+    fn from(val: ItemProperty) -> Self {
         tagOPCITEMPROPERTY {
-            vtDataType: self.value.get_data_type(),
+            vtDataType: val.value.get_data_type(),
             wReserved: 0,
-            dwPropertyID: self.id,
-            szItemID: com_alloc_str(&self.name),
-            szDescription: com_alloc_str(&self.description),
-            vValue: ManuallyDrop::new(self.value.into()),
+            dwPropertyID: val.id,
+            szItemID: copy_to_com_string(&val.name),
+            szDescription: copy_to_com_string(&val.description),
+            vValue: ManuallyDrop::new(val.value.into()),
             hrErrorID: S_OK,
             dwReserved: 0,
         }

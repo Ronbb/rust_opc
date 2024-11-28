@@ -11,7 +11,7 @@ use windows::Win32::{
 };
 use windows_core::{implement, IUnknown};
 
-use super::{bindings, utils::com_alloc_str};
+use super::{bindings, utils::copy_to_com_string};
 
 #[implement(IEnumString)]
 pub struct StringEnumerator {
@@ -116,7 +116,7 @@ impl IEnumString_Impl for StringEnumerator_Impl {
         } else {
             let mut fetched = 0;
             while fetched < count && *index < self.strings.len() {
-                let buffer = com_alloc_str(&self.strings[*index]);
+                let buffer = copy_to_com_string(&self.strings[*index]);
                 if buffer.is_null() {
                     return E_OUTOFMEMORY;
                 }
