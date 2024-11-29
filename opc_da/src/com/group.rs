@@ -21,7 +21,7 @@ use super::{
     bindings,
     enumeration::ItemAttributesEnumerator,
     item::Item,
-    utils::{com_alloc_v, copy_to_com_string},
+    utils::{copy_to_com_array, copy_to_com_string},
 };
 
 #[implement(

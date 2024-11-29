@@ -1,33 +1,27 @@
-use std::{
-    collections::BTreeMap,
-    ops::Deref,
-    sync::{Arc, Weak},
-};
+use std::{mem::ManuallyDrop, ops::Deref};
 
-use crate::traits::ServerTrait;
-
-use super::{
-    base::{Core, Quality, Variant},
-    utils::copy_to_pointer,
-};
-
-use super::{
-    bindings::{self, tagOPCITEMPROPERTIES, IOPCShutdown},
-    connection_point::ConnectionPoint,
-    enumeration::{ConnectionPointsEnumerator, StringEnumerator, UnknownEnumerator},
-    group::Group,
-    utils::{com_alloc_v, copy_to_com_string},
-};
-use globset::Glob;
 use windows::Win32::{
-    Foundation::{E_INVALIDARG, E_NOTIMPL, E_POINTER, S_OK},
+    Foundation::{E_INVALIDARG, E_POINTER},
     System::Com::{
         IConnectionPoint, IConnectionPointContainer, IConnectionPointContainer_Impl,
         IEnumConnectionPoints, IEnumString, IEnumUnknown,
     },
 };
-use windows_core::{
-    implement, w, ComObject, ComObjectInner, IUnknownImpl, Interface, PWSTR, VARIANT,
+use windows_core::{implement, ComObjectInner, IUnknownImpl, Interface, PWSTR};
+
+use crate::traits::{
+    BrowseDirection, BrowseElement, BrowseFilter, BrowseType, ItemOptionalVqt, ItemProperties,
+    ItemProperty, ItemWithMaxAge, NamespaceType, OptionalVqt, ServerTrait,
+};
+
+use super::{
+    bindings::{self, tagOPCITEMPROPERTIES},
+    enumeration::{ConnectionPointsEnumerator, StringEnumerator, UnknownEnumerator},
+    group::Group,
+    utils::{
+        PointerReader, PointerWriter, ReadArray, TryReadArray, Write, WriteArray,
+        WriteArrayPointer, WriteInto, WriteTo,
+    },
 };
 
 #[implement(
@@ -136,10 +130,10 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
     fn GetErrorString(
         &self,
         error: windows_core::HRESULT,
-        _locale: u32,
+        locale: u32,
     ) -> windows_core::Result<windows_core::PWSTR> {
-        let message = error.message();
-        Ok(copy_to_com_string(&message))
+        let s = self.get_error_string_locale(error.0, locale)?;
+        PointerWriter::write_to(&s)
     }
 
     fn GetGroupByName(
@@ -228,7 +222,8 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
         locale_ids: *mut *mut u32,
     ) -> windows_core::Result<()> {
         let available_locale_ids = self.query_available_locale_ids()?;
-        copy_to_pointer(&available_locale_ids, count, locale_ids)?;
+        PointerWriter::write(available_locale_ids.len() as _, count);
+        PointerWriter::write_array_pointer(&available_locale_ids, locale_ids)?;
         Ok(())
     }
 
@@ -237,7 +232,9 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
         error: windows_core::HRESULT,
     ) -> windows_core::Result<windows_core::PWSTR> {
         let s = self.get_error_string(error.0)?;
-        copy_to_com_string(&s)
+        let mut out = PWSTR::null();
+        PointerWriter::write_into(&s, &mut out)?;
+        Ok(out)
     }
 
     fn SetClientName(&self, name: &windows_core::PCWSTR) -> windows_core::Result<()> {
@@ -250,21 +247,18 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
 // 3.0 required
 impl<T: ServerTrait + 'static> IConnectionPointContainer_Impl for Server_Impl<T> {
     fn EnumConnectionPoints(&self) -> windows_core::Result<IEnumConnectionPoints> {
-        Ok(
-            ConnectionPointsEnumerator::new(Arc::new(vec![self.shutdown.to_interface()]))
-                .into_object()
-                .into_interface(),
-        )
+        let connection_points = self.enum_connection_points()?;
+
+        Ok(ConnectionPointsEnumerator::new(connection_points)
+            .into_object()
+            .into_interface())
     }
 
     fn FindConnectionPoint(
         &self,
         reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<IConnectionPoint> {
-        match unsafe { reference_interface_id.as_ref() } {
-            Some(&IOPCShutdown::IID) => Ok(self.shutdown.to_interface()),
-            _ => Err(E_INVALIDARG.into()),
-        }
+        self.find_connection_point(reference_interface_id)
     }
 }
 
@@ -280,35 +274,28 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
         descriptions: *mut *mut windows_core::PWSTR,
         data_types: *mut *mut u16,
     ) -> windows_core::Result<()> {
-        let node = tokio::runtime::Handle::current().block_on(
-            self.core
-                .get_node_from_path(&unsafe { item_id.to_string() }?),
-        );
-        match node {
-            Some(node) => {
-                let node = node.blocking_read();
-                let item_properties = node.get_item_properties_without_value();
-                let mut i = Vec::with_capacity(item_properties.len());
-                let mut d = Vec::with_capacity(item_properties.len());
-                let mut t = Vec::with_capacity(item_properties.len());
+        let vec = self.query_available_properties(unsafe { item_id.to_string() }?)?;
 
-                for property in item_properties.iter() {
-                    i.push(property.id);
-                    d.push(copy_to_com_string(&property.description));
-                    t.push(property.value.get_data_type());
-                }
+        PointerWriter::write(vec.len() as _, count);
 
-                unsafe {
-                    *count = i.len() as u32;
-                    *property_ids = com_alloc_v(&i);
-                    *descriptions = com_alloc_v(&d);
-                    *data_types = com_alloc_v(&t);
-                }
+        PointerWriter::write_array_pointer(
+            &vec.iter().map(|p| p.property_id).collect::<Vec<_>>(),
+            property_ids,
+        )?;
 
-                Ok(())
-            }
-            None => Err(E_INVALIDARG.into()),
-        }
+        PointerWriter::write_into(
+            &vec.iter()
+                .map(|p| p.description.as_str())
+                .collect::<Vec<_>>(),
+            descriptions,
+        )?;
+
+        PointerWriter::write_array_pointer(
+            &vec.iter().map(|p| p.data_type).collect::<Vec<_>>(),
+            data_types,
+        )?;
+
+        Ok(())
     }
 
     fn GetItemProperties(
@@ -319,37 +306,21 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
         data: *mut *mut windows_core::VARIANT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let node = tokio::runtime::Handle::current().block_on(
-            self.core
-                .get_node_from_path(&unsafe { item_id.to_string() }?),
-        );
-        match node {
-            Some(node) => {
-                let node = node.blocking_read();
-                let count = count as usize;
-                let mut v = Vec::with_capacity(count);
-                let mut e = Vec::with_capacity(count);
+        let property_ids = PointerReader::read_array(count, property_ids);
 
-                for i in 0..count {
-                    let property_id = unsafe { *property_ids.add(i) };
-                    if let Some(property) = node.get_item_property(property_id) {
-                        v.push(property.value.clone().into());
-                        e.push(S_OK);
-                    } else {
-                        v.push(VARIANT::default());
-                        e.push(E_INVALIDARG);
-                    }
-                }
+        let vec = self.get_item_properties(unsafe { item_id.to_string() }?, property_ids)?;
 
-                unsafe {
-                    *data = com_alloc_v(&v);
-                    *errors = com_alloc_v(&e);
-                }
+        PointerWriter::write_array_pointer(
+            &vec.iter().map(|p| p.error).collect::<Vec<_>>(),
+            errors,
+        )?;
 
-                Ok(())
-            }
-            None => Err(E_INVALIDARG.into()),
-        }
+        PointerWriter::write_array_pointer(
+            &vec.into_iter().map(|p| p.data.into()).collect::<Vec<_>>(),
+            data,
+        )?;
+
+        Ok(())
     }
 
     fn LookupItemIDs(
@@ -360,39 +331,23 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
         new_item_ids: *mut *mut windows_core::PWSTR,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let item_id = unsafe { item_id.to_string() }?;
-        let node =
-            tokio::runtime::Handle::current().block_on(self.core.get_node_from_path(&item_id));
-        match node {
-            Some(node) => {
-                let node = node.blocking_read();
-                let count = count as usize;
-                let mut n = Vec::with_capacity(count);
-                let mut e = Vec::with_capacity(count);
+        let property_ids = PointerReader::read_array(count, property_ids);
 
-                for i in 0..count {
-                    let property_id = unsafe { *property_ids.add(i) };
-                    if let Some(property) = node.get_item_property(property_id) {
-                        n.push(copy_to_com_string(&format!(
-                            "{}{}{}",
-                            item_id, self.seperator, property.name
-                        )));
-                        e.push(S_OK);
-                    } else {
-                        n.push(PWSTR::null());
-                        e.push(E_INVALIDARG);
-                    }
-                }
+        let vec = self.lookup_item_ids(unsafe { item_id.to_string() }?, property_ids)?;
 
-                unsafe {
-                    *new_item_ids = com_alloc_v(&n);
-                    *errors = com_alloc_v(&e);
-                }
+        PointerWriter::write_into(
+            &vec.iter()
+                .map(|p| p.new_item_id.as_str())
+                .collect::<Vec<_>>(),
+            new_item_ids,
+        )?;
 
-                Ok(())
-            }
-            None => Err(E_INVALIDARG.into()),
-        }
+        PointerWriter::write_array_pointer(
+            &vec.iter().map(|p| p.error).collect::<Vec<_>>(),
+            errors,
+        )?;
+
+        Ok(())
     }
 }
 
@@ -409,46 +364,26 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
         property_ids: *const u32,
         item_properties: *mut *mut bindings::tagOPCITEMPROPERTIES,
     ) -> windows_core::Result<()> {
-        let item_count = item_count as usize;
-        let property_count = property_count as usize;
-        let mut properties = Vec::with_capacity(item_count);
-        for i in 0..item_count {
-            let item_id = unsafe { (*item_ids.add(i)).to_string()? };
-            let node =
-                tokio::runtime::Handle::current().block_on(self.core.get_node_from_path(&item_id));
-            match node {
-                Some(node) => {
-                    let node = node.blocking_read();
-                    let mut ps = Vec::with_capacity(property_count);
-                    for j in 0..property_count {
-                        let property_id = unsafe { *property_ids.add(j) };
-                        let property = match return_property_values {
-                            windows::Win32::Foundation::FALSE => {
-                                node.get_item_property_without_value(property_id)
-                            }
-                            windows::Win32::Foundation::TRUE => node.get_item_property(property_id),
-                            _ => return Err(E_INVALIDARG.into()),
-                        };
+        let item_ids = PointerReader::try_read_array(item_count, item_ids)?;
+        let property_ids = PointerReader::read_array(property_count, property_ids);
 
-                        if let Some(property) = property {
-                            ps.push(property.into());
-                        }
+        let properties =
+            self.get_properties(item_ids, return_property_values.as_bool(), property_ids)?;
+
+        PointerWriter::write_array_pointer(
+            &properties
+                .into_iter()
+                .map(|item| match item.try_into() {
+                    Ok(item) => item,
+                    Err(error) => {
+                        let mut item = tagOPCITEMPROPERTIES::default();
+                        item.hrErrorID = (error as windows_core::Error).code();
+                        item
                     }
-
-                    properties.push(tagOPCITEMPROPERTIES {
-                        hrErrorID: S_OK,
-                        dwNumProperties: property_count as u32,
-                        pItemProperties: com_alloc_v(&ps),
-                        dwReserved: 0,
-                    });
-                }
-                None => {
-                    properties.push(tagOPCITEMPROPERTIES::default());
-                }
-            }
-        }
-
-        unsafe { *item_properties = com_alloc_v(&properties) };
+                })
+                .collect::<Vec<_>>(),
+            item_properties,
+        )?;
 
         Ok(())
     }
@@ -469,128 +404,58 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
         count: *mut u32,
         browse_elements: *mut *mut bindings::tagOPCBROWSEELEMENT,
     ) -> windows_core::Result<()> {
-        let item_id = if item_id.is_null() {
-            "".to_string()
-        } else {
-            unsafe { item_id.to_string()? }
-        };
+        let item_id = unsafe { item_id.to_string()? };
+        let element_name_filter = unsafe { element_name_filter.to_string()? };
+        let vendor_filter = unsafe { vendor_filter.to_string()? };
+        let property_ids = PointerReader::read_array(property_count, property_ids);
 
-        let continuation_point = if continuation_point.is_null() {
-            "".to_string()
-        } else {
-            unsafe { continuation_point.read().to_string()? }
-        };
+        let result = self.browse(
+            item_id,
+            unsafe {
+                continuation_point
+                    .as_ref()
+                    .map(|s| s.to_string())
+                    .transpose()?
+            },
+            max_elements_returned,
+            browse_filter.try_into()?,
+            element_name_filter,
+            vendor_filter,
+            return_all_properties.as_bool(),
+            return_property_values.as_bool(),
+            property_ids,
+        )?;
 
-        if browse_filter.0 < bindings::OPC_BROWSE_FILTER_ALL.0
-            || browse_filter.0 > bindings::OPC_BROWSE_FILTER_ITEMS.0
-        {
-            return Err(E_INVALIDARG.into());
-        }
+        PointerWriter::write(result.elements.len() as _, count);
 
-        unsafe { more_elements.write(windows::Win32::Foundation::FALSE) };
-
-        let browse_root =
-            tokio::runtime::Handle::current().block_on(self.core.get_node_from_path(&item_id));
-        match browse_root {
-            Some(browse_root) => {
-                let browse_root = browse_root.blocking_read();
-                let mut elements = Vec::new();
-
-                let children = browse_root.children.blocking_read();
-                for (name, child) in children.range(continuation_point..) {
-                    if !element_name_filter.is_null() {
-                        if !Glob::new(unsafe { &element_name_filter.to_string()? })
-                            .map_err(|_| E_INVALIDARG)?
-                            .compile_matcher()
-                            .is_match(&name)
-                        {
-                            continue;
-                        }
+        PointerWriter::write_array_pointer(
+            &result
+                .elements
+                .into_iter()
+                .map(|element| match element.try_into() {
+                    Ok(element) => element,
+                    Err(error) => {
+                        let mut element = bindings::tagOPCBROWSEELEMENT::default();
+                        element.ItemProperties.hrErrorID = (error as windows_core::Error).code();
+                        element
                     }
+                })
+                .collect::<Vec<_>>(),
+            browse_elements,
+        )?;
 
-                    if !vendor_filter.is_null() {
-                        if !Glob::new(unsafe { &vendor_filter.to_string()? })
-                            .map_err(|_| E_INVALIDARG)?
-                            .compile_matcher()
-                            .is_match(&name)
-                        {
-                            continue;
-                        }
-                    }
+        PointerWriter::write(result.more_elements.into(), more_elements)?;
 
-                    if max_elements_returned > 0 && elements.len() >= max_elements_returned as usize
-                    {
-                        unsafe { more_elements.write(windows::Win32::Foundation::TRUE) };
-                        break;
-                    }
-
-                    let child = child.blocking_read();
-
-                    match browse_filter {
-                        bindings::OPC_BROWSE_FILTER_ALL => {}
-                        bindings::OPC_BROWSE_FILTER_BRANCHES => {
-                            if !child.children.blocking_read().is_empty() {
-                                continue;
-                            }
-                        }
-                        bindings::OPC_BROWSE_FILTER_ITEMS => {
-                            if child.children.blocking_read().is_empty() {
-                                continue;
-                            }
-                        }
-                        _ => {}
-                    }
-
-                    let mut properties = Vec::new();
-                    if return_all_properties.as_bool() {
-                        let item_properties = child.get_item_properties_without_value();
-                        for property in item_properties.iter() {
-                            properties.push(property.clone().into());
-                        }
-                    } else {
-                        for i in 0..property_count {
-                            let property_id = unsafe { *property_ids.add(i as usize) };
-                            let property = match return_property_values {
-                                windows::Win32::Foundation::FALSE => {
-                                    child.get_item_property_without_value(property_id)
-                                }
-                                windows::Win32::Foundation::TRUE => {
-                                    child.get_item_property(property_id)
-                                }
-                                _ => return Err(E_INVALIDARG.into()),
-                            };
-
-                            if let Some(property) = property {
-                                properties.push(property.into());
-                            }
-                        }
-                    }
-
-                    elements.push(bindings::tagOPCBROWSEELEMENT {
-                        szName: copy_to_com_string(&child.name),
-                        szItemID: copy_to_com_string(
-                            &tokio::runtime::Handle::current().block_on(child.get_path()),
-                        ),
-                        dwFlagValue: 0,
-                        dwReserved: 0,
-                        ItemProperties: tagOPCITEMPROPERTIES {
-                            hrErrorID: S_OK,
-                            dwNumProperties: properties.len() as u32,
-                            pItemProperties: com_alloc_v(&properties),
-                            dwReserved: 0,
-                        },
-                    });
-                }
-
-                unsafe {
-                    *count = elements.len() as u32;
-                    *browse_elements = com_alloc_v(&elements);
-                }
-
-                Ok(())
+        match result.continuation_point {
+            Some(new_continuation_point) => {
+                PointerWriter::write_into(&new_continuation_point, continuation_point)?
             }
-            None => Err(E_INVALIDARG.into()),
+            None => unsafe {
+                *continuation_point = PWSTR::null();
+            },
         }
+
+        Ok(())
     }
 }
 
@@ -603,52 +468,18 @@ impl<T: ServerTrait + 'static> bindings::IOPCServerPublicGroups_Impl for Server_
         name: &windows_core::PCWSTR,
         reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
-        match self.public_server.upgrade() {
-            Some(server) => {
-                let groups = server.group_name_map.blocking_read();
-                if let Some(group) = groups.get(&unsafe { name.to_string()? }) {
-                    let mut unknown = None;
-                    let result = unsafe {
-                        group.QueryInterface(
-                            reference_interface_id,
-                            &mut unknown as *mut _ as *mut *mut ::core::ffi::c_void,
-                        )
-                    };
-
-                    if result.is_err() {
-                        return Err(result.into());
-                    }
-
-                    Ok(unknown.unwrap())
-                } else {
-                    Err(E_INVALIDARG.into())
-                }
-            }
-            None => Err(E_INVALIDARG.into()),
-        }
+        self.get_public_group_by_name(
+            unsafe { name.to_string() }?,
+            unsafe { *reference_interface_id }.to_u128(),
+        )
     }
 
     fn RemovePublicGroup(
         &self,
         server_group: u32,
-        _force: windows::Win32::Foundation::BOOL,
+        force: windows::Win32::Foundation::BOOL,
     ) -> windows_core::Result<()> {
-        match self.public_server.upgrade() {
-            Some(server) => {
-                let group = server
-                    .group_server_handle_map
-                    .blocking_write()
-                    .remove(&server_group);
-                if let Some(group) = group {
-                    let mut groups = server.group_name_map.blocking_write();
-                    groups.remove(&group.state.blocking_read().name);
-                    Ok(())
-                } else {
-                    Err(E_INVALIDARG.into())
-                }
-            }
-            None => Err(E_INVALIDARG.into()),
-        }
+        self.remove_public_group(server_group, force.as_bool())
     }
 }
 
@@ -657,7 +488,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCServerPublicGroups_Impl for Server_
 // 3.0 N/A
 impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for Server_Impl<T> {
     fn QueryOrganization(&self) -> windows_core::Result<bindings::tagOPCNAMESPACETYPE> {
-        Ok(bindings::OPC_NS_HIERARCHIAL)
+        self.query_organization().map(Into::into)
     }
 
     fn ChangeBrowsePosition(
@@ -665,28 +496,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for S
         browse_direction: bindings::tagOPCBROWSEDIRECTION,
         string: &windows_core::PCWSTR,
     ) -> windows_core::Result<()> {
-        let mut position = self.browser_position.blocking_write();
-
-        match browse_direction {
-            bindings::OPC_BROWSE_DOWN => {
-                *position = format!("{}{}{}", position, self.seperator, unsafe {
-                    string.to_string().unwrap()
-                });
-            }
-            bindings::OPC_BROWSE_TO => {
-                *position = unsafe { string.to_string().unwrap() };
-            }
-            bindings::OPC_BROWSE_UP => {
-                if let Some(index) = position.rfind(&self.seperator) {
-                    position.truncate(index);
-                } else {
-                    position.clear();
-                }
-            }
-            _ => return Err(E_INVALIDARG.into()),
-        };
-
-        Ok(())
+        self.change_browse_position((browse_direction, unsafe { string.to_string() }?).try_into()?)
     }
 
     fn BrowseOPCItemIDs(
@@ -696,133 +506,31 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for S
         variant_data_type_filter: u16,
         access_rights_filter: u32,
     ) -> windows_core::Result<windows::Win32::System::Com::IEnumString> {
-        let filter_criteria = unsafe { filter_criteria.to_string()? };
-        let filter_criteria = if filter_criteria.is_empty() {
-            None
-        } else {
-            Some(Glob::new(&filter_criteria).map_err(|_| E_INVALIDARG)?)
-        };
-
-        let variant_data_type_filter = if variant_data_type_filter == 0 {
-            None
-        } else {
-            Some(variant_data_type_filter)
-        };
-
-        let access_rights_filter = if access_rights_filter == 0 {
-            None
-        } else {
-            Some(access_rights_filter)
-        };
-
-        tokio::runtime::Handle::current().block_on(async {
-            let node = self
-                .core
-                .get_node_from_path(&self.browser_position.read().await.clone())
-                .await;
-
-            match node {
-                Some(node) => {
-                    let node = node.read().await;
-                    let mut items = vec![];
-                    let children = node.children.read().await;
-                    for (name, child) in children.iter() {
-                        if let Some(filter_criteria) = &filter_criteria {
-                            if !filter_criteria.compile_matcher().is_match(name) {
-                                continue;
-                            }
-                        }
-
-                        let child = child.read().await;
-
-                        match browse_filter_type {
-                            bindings::OPC_BRANCH => {
-                                if child.children.read().await.is_empty() {
-                                    continue;
-                                }
-                            }
-                            bindings::OPC_LEAF => {
-                                if !child.children.read().await.is_empty() {
-                                    continue;
-                                }
-                            }
-                            bindings::OPC_FLAT => {}
-                            _ => {
-                                return Err(E_INVALIDARG.into());
-                            }
-                        }
-
-                        if let Some(variant_data_type_filter) = variant_data_type_filter {
-                            if variant_data_type_filter != Variant::Empty.get_data_type() {
-                                let data_type = child.value.read().await.variant.get_data_type();
-                                if data_type != variant_data_type_filter {
-                                    continue;
-                                }
-                            }
-                        }
-
-                        if let Some(access_rights_filter) = access_rights_filter {
-                            if access_rights_filter != 0 {
-                                let access_right = child.access_right.read().await;
-                                if (access_rights_filter & bindings::OPC_READABLE) != 0
-                                    && !access_right.readable
-                                {
-                                    continue;
-                                }
-                                if (access_rights_filter & bindings::OPC_WRITEABLE) != 0
-                                    && !access_right.writable
-                                {
-                                    continue;
-                                }
-                            }
-                        }
-
-                        items.push(name.clone());
-                    }
-
-                    Ok(StringEnumerator::new(items).into_object().into_interface())
-                }
-                None => Err(E_INVALIDARG.into()),
-            }
-        })
+        self.browse_opc_item_ids(
+            browse_filter_type.try_into()?,
+            unsafe { filter_criteria.to_string() }?,
+            variant_data_type_filter,
+            access_rights_filter,
+        )
     }
 
     fn GetItemID(
         &self,
         item_data_id: &windows_core::PCWSTR,
     ) -> windows_core::Result<windows_core::PWSTR> {
-        if item_data_id.is_null() {
-            return Err(E_POINTER.into());
-        }
-
-        let item_data_id = unsafe { item_data_id.to_string()? };
-
-        tokio::runtime::Handle::current().block_on(async {
-            let node = self
-                .core
-                .get_node_from_path(&format!(
-                    "{}{}{}",
-                    self.browser_position.read().await,
-                    self.seperator,
-                    item_data_id
-                ))
-                .await;
-
-            match node {
-                Some(node) => {
-                    let path = node.read().await.get_path().await;
-                    Ok(copy_to_com_string(&path))
-                }
-                None => Err(E_INVALIDARG.into()),
-            }
-        })
+        let item_id = self.get_item_id(unsafe { item_data_id.to_string() }?)?;
+        PointerWriter::write_to(&item_id)
     }
 
     fn BrowseAccessPaths(
         &self,
-        _item_id: &windows_core::PCWSTR,
+        item_id: &windows_core::PCWSTR,
     ) -> windows_core::Result<windows::Win32::System::Com::IEnumString> {
-        Err(E_NOTIMPL.into())
+        let access_paths = self.browse_access_paths(unsafe { item_id.to_string() }?)?;
+
+        Ok(StringEnumerator::new(access_paths)
+            .into_object()
+            .into_interface())
     }
 }
 
@@ -834,50 +542,48 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
         &self,
         count: u32,
         item_ids: *const windows_core::PCWSTR,
-        _max_age: *const u32,
+        max_ages: *const u32,
         values: *mut *mut windows_core::VARIANT,
         qualities: *mut *mut u16,
         timestamps: *mut *mut windows::Win32::Foundation::FILETIME,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let count = count as usize;
-        let mut v = Vec::with_capacity(count);
-        let mut q = Vec::with_capacity(count);
-        let mut t = Vec::with_capacity(count);
-        let mut e = Vec::with_capacity(count);
+        let item_ids = PointerReader::try_read_array(count, item_ids)?;
+        let max_ages = PointerReader::read_array(count, max_ages);
 
-        for i in 0..count {
-            let item_id = unsafe { (*item_ids.add(i)).to_string()? };
-            let node =
-                tokio::runtime::Handle::current().block_on(self.core.get_node_from_path(&item_id));
-            match node {
-                Some(node) => {
-                    let node = node.blocking_read();
-                    let value = node.value.blocking_read();
+        let result = self.read(
+            item_ids
+                .into_iter()
+                .zip(max_ages)
+                .map(|(item_id, max_age)| ItemWithMaxAge { item_id, max_age })
+                .collect(),
+        )?;
 
-                    v.push(value.variant.clone().into());
-                    q.push(value.quality.to_u16());
-                    t.push(match &value.timestamp {
-                        Some(timestamp) => timestamp.clone().into(),
-                        None => windows::Win32::Foundation::FILETIME::default(),
-                    });
-                    e.push(S_OK);
-                }
-                None => {
-                    v.push(VARIANT::default());
-                    q.push(0);
-                    t.push(windows::Win32::Foundation::FILETIME::default());
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
+        PointerWriter::write_array_pointer(
+            &result
+                .iter()
+                .map(|vqt| vqt.value.clone().into())
+                .collect::<Vec<_>>(),
+            values,
+        )?;
 
-        unsafe {
-            *values = com_alloc_v(&v);
-            *qualities = com_alloc_v(&q);
-            *timestamps = com_alloc_v(&t);
-            *errors = com_alloc_v(&e);
-        }
+        PointerWriter::write_array_pointer(
+            &result.iter().map(|vqt| vqt.quality).collect::<Vec<_>>(),
+            qualities,
+        )?;
+
+        PointerWriter::write_array_pointer(
+            &result
+                .iter()
+                .map(|vqt| vqt.timestamp.clone().into())
+                .collect::<Vec<_>>(),
+            timestamps,
+        )?;
+
+        PointerWriter::write_array_pointer(
+            &result.iter().map(|vqt| vqt.error).collect::<Vec<_>>(),
+            errors,
+        )?;
 
         Ok(())
     }
@@ -889,48 +595,213 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
         item_vqt: *const bindings::tagOPCITEMVQT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let count = count as usize;
-        let mut e = Vec::with_capacity(count);
+        let item_ids = PointerReader::try_read_array(count, item_ids)?;
+        let item_vqt = PointerReader::read_array(count, item_vqt)
+            .into_iter()
+            .try_fold(vec![], |mut acc, item| {
+                acc.push(item.try_into()?);
+                windows_core::Result::Ok(acc)
+            })?;
 
-        for i in 0..count {
-            let item_id = unsafe { (*item_ids.add(i)).to_string()? };
-            let node =
-                tokio::runtime::Handle::current().block_on(self.core.get_node_from_path(&item_id));
-            match node {
-                Some(node) => {
-                    let node = node.blocking_read();
-                    let mut value = node.value.blocking_write();
-                    let item_vqt = unsafe { item_vqt.add(i) };
-                    value.variant = unsafe { item_vqt.read() }
-                        .vDataValue
-                        .as_raw()
-                        .clone()
-                        .into();
-                    value.quality = Quality(unsafe { item_vqt.read().wQuality });
-                    value.timestamp = match unsafe { item_vqt.read().ftTimeStamp } {
-                        windows::Win32::Foundation::FILETIME {
-                            dwLowDateTime,
-                            dwHighDateTime,
-                        } => {
-                            if dwLowDateTime == 0 && dwHighDateTime == 0 {
-                                None
-                            } else {
-                                Some(unsafe { (*item_vqt).ftTimeStamp }.into())
-                            }
-                        }
-                    };
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
+        let result = self.write_vqt(
+            item_ids
+                .into_iter()
+                .zip(item_vqt)
+                .map(|(item_id, optional_vqt)| ItemOptionalVqt {
+                    item_id,
+                    optional_vqt,
+                })
+                .collect(),
+        )?;
 
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
+        PointerWriter::write_array_pointer(&result, errors)?;
 
         Ok(())
+    }
+}
+
+impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
+    type Error = windows_core::Error;
+
+    fn try_from(value: ItemProperties) -> Result<Self, Self::Error> {
+        let result = opc_da_bindings::tagOPCITEMPROPERTIES {
+            hrErrorID: value.error_id,
+            dwNumProperties: value.item_properties.len() as u32,
+            pItemProperties: std::ptr::null_mut(),
+            dwReserved: 0,
+        };
+
+        PointerWriter::write_array(
+            &value
+                .item_properties
+                .into_iter()
+                .map(|item_property| match item_property.try_into() {
+                    Ok(item_property) => item_property,
+                    Err(error) => {
+                        let mut result = opc_da_bindings::tagOPCITEMPROPERTY::default();
+                        result.hrErrorID = (error as windows_core::Error).code();
+                        result
+                    }
+                })
+                .collect::<Vec<_>>(),
+            result.pItemProperties,
+        )?;
+
+        Ok(result)
+    }
+}
+
+impl TryFrom<ItemProperty> for opc_da_bindings::tagOPCITEMPROPERTY {
+    type Error = windows_core::Error;
+
+    fn try_from(value: ItemProperty) -> Result<Self, Self::Error> {
+        Ok(opc_da_bindings::tagOPCITEMPROPERTY {
+            vtDataType: value.data_type,
+            wReserved: 0,
+            dwPropertyID: value.property_id,
+            szItemID: PointerWriter::write_to(&value.item_id)?,
+            szDescription: PointerWriter::write_to(&value.description)?,
+            vValue: ManuallyDrop::new(value.value.into()),
+            hrErrorID: value.error_id,
+            dwReserved: 0,
+        })
+    }
+}
+
+impl From<BrowseFilter> for opc_da_bindings::tagOPCBROWSEFILTER {
+    fn from(value: BrowseFilter) -> Self {
+        match value {
+            BrowseFilter::All => opc_da_bindings::OPC_BROWSE_FILTER_ALL,
+            BrowseFilter::Branches => opc_da_bindings::OPC_BROWSE_FILTER_BRANCHES,
+            BrowseFilter::Items => opc_da_bindings::OPC_BROWSE_FILTER_ITEMS,
+        }
+    }
+}
+
+impl TryFrom<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
+    type Error = windows_core::Error;
+
+    fn try_from(value: opc_da_bindings::tagOPCBROWSEFILTER) -> Result<Self, Self::Error> {
+        match value {
+            opc_da_bindings::OPC_BROWSE_FILTER_ALL => Ok(BrowseFilter::All),
+            opc_da_bindings::OPC_BROWSE_FILTER_BRANCHES => Ok(BrowseFilter::Branches),
+            opc_da_bindings::OPC_BROWSE_FILTER_ITEMS => Ok(BrowseFilter::Items),
+            _ => Err(windows_core::Error::new(
+                E_INVALIDARG,
+                "Invalid BrowseFilter",
+            )),
+        }
+    }
+}
+
+impl TryFrom<BrowseElement> for opc_da_bindings::tagOPCBROWSEELEMENT {
+    type Error = windows_core::Error;
+
+    fn try_from(value: BrowseElement) -> Result<Self, Self::Error> {
+        Ok(opc_da_bindings::tagOPCBROWSEELEMENT {
+            szName: PointerWriter::write_to(&value.name)?,
+            szItemID: PointerWriter::write_to(&value.item_id)?,
+            dwFlagValue: value.flag_value,
+            dwReserved: 0,
+            ItemProperties: value.item_properties.try_into()?,
+        })
+    }
+}
+
+impl From<NamespaceType> for opc_da_bindings::tagOPCNAMESPACETYPE {
+    fn from(value: NamespaceType) -> Self {
+        match value {
+            NamespaceType::Flat => opc_da_bindings::OPC_NS_FLAT,
+            NamespaceType::Hierarchical => opc_da_bindings::OPC_NS_HIERARCHIAL,
+        }
+    }
+}
+
+impl TryFrom<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
+    type Error = windows_core::Error;
+
+    fn try_from(value: opc_da_bindings::tagOPCNAMESPACETYPE) -> Result<Self, Self::Error> {
+        match value {
+            opc_da_bindings::OPC_NS_FLAT => Ok(NamespaceType::Flat),
+            opc_da_bindings::OPC_NS_HIERARCHIAL => Ok(NamespaceType::Hierarchical),
+            _ => Err(windows_core::Error::new(
+                E_INVALIDARG,
+                "Invalid NamespaceType",
+            )),
+        }
+    }
+}
+
+impl TryFrom<(opc_da_bindings::tagOPCBROWSEDIRECTION, String)> for BrowseDirection {
+    type Error = windows_core::Error;
+
+    fn try_from(
+        value: (opc_da_bindings::tagOPCBROWSEDIRECTION, String),
+    ) -> Result<Self, Self::Error> {
+        match value {
+            (opc_da_bindings::OPC_BROWSE_UP, _) => Ok(BrowseDirection::Up),
+            (opc_da_bindings::OPC_BROWSE_DOWN, _) => Ok(BrowseDirection::Down),
+            (opc_da_bindings::OPC_BROWSE_TO, name) => Ok(BrowseDirection::To(name)),
+            _ => Err(windows_core::Error::new(
+                E_INVALIDARG,
+                "Invalid BrowseDirection",
+            )),
+        }
+    }
+}
+
+impl From<BrowseDirection> for (opc_da_bindings::tagOPCBROWSEDIRECTION, String) {
+    fn from(value: BrowseDirection) -> Self {
+        match value {
+            BrowseDirection::Up => (opc_da_bindings::OPC_BROWSE_UP, String::new()),
+            BrowseDirection::Down => (opc_da_bindings::OPC_BROWSE_DOWN, String::new()),
+            BrowseDirection::To(name) => (opc_da_bindings::OPC_BROWSE_TO, name),
+        }
+    }
+}
+
+impl TryFrom<opc_da_bindings::tagOPCBROWSETYPE> for BrowseType {
+    type Error = windows_core::Error;
+
+    fn try_from(value: opc_da_bindings::tagOPCBROWSETYPE) -> Result<Self, Self::Error> {
+        match value {
+            opc_da_bindings::OPC_BRANCH => Ok(BrowseType::Branch),
+            opc_da_bindings::OPC_LEAF => Ok(BrowseType::Leaf),
+            opc_da_bindings::OPC_FLAT => Ok(BrowseType::Flat),
+            _ => Err(windows_core::Error::new(
+                E_INVALIDARG,
+                "Invalid BrowseFilter",
+            )),
+        }
+    }
+}
+
+impl From<BrowseType> for opc_da_bindings::tagOPCBROWSETYPE {
+    fn from(value: BrowseType) -> Self {
+        match value {
+            BrowseType::Branch => opc_da_bindings::OPC_BRANCH,
+            BrowseType::Leaf => opc_da_bindings::OPC_LEAF,
+            BrowseType::Flat => opc_da_bindings::OPC_FLAT,
+        }
+    }
+}
+
+impl TryFrom<bindings::tagOPCITEMVQT> for OptionalVqt {
+    type Error = windows_core::Error;
+
+    fn try_from(value: bindings::tagOPCITEMVQT) -> Result<Self, Self::Error> {
+        Ok(OptionalVqt {
+            value: (*value.vDataValue).clone().into(),
+            quality: if value.bQualitySpecified.as_bool() {
+                Some(value.wQuality)
+            } else {
+                None
+            },
+            timestamp: if value.bTimeStampSpecified.as_bool() {
+                Some(value.ftTimeStamp.into())
+            } else {
+                None
+            },
+        })
     }
 }

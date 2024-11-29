@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, mem::ManuallyDrop, sync::Arc};
 
 use tokio::sync::Mutex;
 use windows::Win32::{
-    Foundation::{E_OUTOFMEMORY, S_FALSE, S_OK},
+    Foundation::{S_FALSE, S_OK},
     System::Com::{
         IConnectionPoint, IEnumConnectionPoints, IEnumConnectionPoints_Impl, IEnumConnections,
         IEnumConnections_Impl, IEnumString, IEnumString_Impl, IEnumUnknown, IEnumUnknown_Impl,
@@ -27,7 +27,7 @@ pub struct UnknownEnumerator {
 
 #[implement(IEnumConnectionPoints)]
 pub struct ConnectionPointsEnumerator {
-    pub connection_points: Arc<Vec<IConnectionPoint>>,
+    pub connection_points: Vec<IConnectionPoint>,
     index: Mutex<usize>,
 }
 
@@ -62,7 +62,7 @@ impl UnknownEnumerator {
 }
 
 impl ConnectionPointsEnumerator {
-    pub fn new(connection_points: Arc<Vec<IConnectionPoint>>) -> Self {
+    pub fn new(connection_points: Vec<IConnectionPoint>) -> Self {
         Self {
             connection_points,
             index: Mutex::new(0),
@@ -117,9 +117,10 @@ impl IEnumString_Impl for StringEnumerator_Impl {
             let mut fetched = 0;
             while fetched < count && *index < self.strings.len() {
                 let buffer = copy_to_com_string(&self.strings[*index]);
-                if buffer.is_null() {
-                    return E_OUTOFMEMORY;
-                }
+                let buffer = match buffer {
+                    Ok(buffer) => buffer,
+                    Err(e) => return e.code(),
+                };
 
                 unsafe { range_elements.add(fetched as usize).write(buffer) };
                 fetched += 1;
