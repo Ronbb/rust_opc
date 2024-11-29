@@ -11,7 +11,10 @@ use windows::Win32::{
 };
 use windows_core::{implement, IUnknown};
 
-use super::{bindings, utils::copy_to_com_string};
+use super::{
+    bindings,
+    utils::{PointerWriter, TryWriteTo},
+};
 
 #[implement(IEnumString)]
 pub struct StringEnumerator {
@@ -116,7 +119,8 @@ impl IEnumString_Impl for StringEnumerator_Impl {
         } else {
             let mut fetched = 0;
             while fetched < count && *index < self.strings.len() {
-                let buffer = copy_to_com_string(&self.strings[*index]);
+                let buffer: windows_core::Result<_> =
+                    PointerWriter::try_write_to(&self.strings[*index]);
                 let buffer = match buffer {
                     Ok(buffer) => buffer,
                     Err(e) => return e.code(),

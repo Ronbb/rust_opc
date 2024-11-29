@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeMap,
     mem::ManuallyDrop,
+    ops::Deref,
     sync::{atomic::AtomicU32, Arc},
 };
 
@@ -15,14 +16,11 @@ use windows::Win32::{
 };
 use windows_core::{implement, ComObjectInner, VARIANT};
 
+use crate::traits::GroupTrait;
+
 use super::base::{Core, Quality};
 
-use super::{
-    bindings,
-    enumeration::ItemAttributesEnumerator,
-    item::Item,
-    utils::{copy_to_com_array, copy_to_com_string},
-};
+use super::{bindings, enumeration::ItemAttributesEnumerator, item::Item};
 
 #[implement(
     // implicit implement IUnknown
@@ -40,65 +38,22 @@ use super::{
     bindings::IOPCAsyncIO,
     IDataObject
 )]
-pub struct Group {
-    core: Arc<Core>,
+pub struct Group<T>(pub T)
+where
+    T: GroupTrait + 'static;
 
-    pub state: RwLock<GroupState>,
+impl<T: GroupTrait + 'static> Deref for Group<T> {
+    type Target = T;
 
-    // for IOPCItemMgt
-    items_name_map: RwLock<BTreeMap<String, Arc<RwLock<Item>>>>,
-    items_server_handle_map: RwLock<BTreeMap<u32, Arc<RwLock<Item>>>>,
-    next_item_server_handle: AtomicU32,
-}
-
-pub struct GroupState {
-    pub name: String,
-    pub active: bool,
-    pub update_rate: u32,
-    pub client_group_handle: u32,
-    pub time_bias: Option<i32>,
-    pub percent_deadband: Option<f32>,
-    pub locale_id: u32,
-    pub server_group_handle: u32,
-    pub keep_alive_time: u32,
-}
-
-impl Group {
-    pub fn new(
-        core: Arc<Core>,
-        name: String,
-        active: bool,
-        update_rate: u32,
-        client_group_handle: u32,
-        time_bias: Option<i32>,
-        percent_deadband: Option<f32>,
-        locale_id: u32,
-        server_group_handle: u32,
-    ) -> Self {
-        Self {
-            core,
-            state: RwLock::new(GroupState {
-                name,
-                active,
-                update_rate,
-                client_group_handle,
-                time_bias,
-                percent_deadband,
-                locale_id,
-                server_group_handle,
-                keep_alive_time: 0,
-            }),
-            items_server_handle_map: RwLock::new(BTreeMap::new()),
-            items_name_map: RwLock::new(BTreeMap::new()),
-            next_item_server_handle: AtomicU32::new(1),
-        }
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
 // 1.0 required
 // 2.0 required
 // 3.0 required
-impl bindings::IOPCItemMgt_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCItemMgt_Impl for Group_Impl<T> {
     fn AddItems(
         &self,
         count: u32,
@@ -106,82 +61,6 @@ impl bindings::IOPCItemMgt_Impl for Group_Impl {
         results: *mut *mut bindings::tagOPCITEMRESULT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut r = Vec::new();
-        let mut e = Vec::new();
-        let item_name_map = self.items_name_map.blocking_write();
-        for i in 0..count as usize {
-            let item = unsafe { *item_array.add(i) };
-            let name = unsafe { item.szItemID.to_string() }?;
-
-            let item = match item_name_map.get(&name) {
-                Some(item) => Some(item.clone()),
-                None => {
-                    let node = tokio::runtime::Handle::current()
-                        .block_on(self.core.get_node_from_path(&name));
-
-                    match node {
-                        Some(node) => {
-                            let server_handle = self
-                                .next_item_server_handle
-                                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                            let item = Item {
-                                name: name.clone(),
-                                server_handle,
-                                client_handle: item.hClient,
-                                node: node.clone(),
-                            };
-
-                            let item = Arc::new(RwLock::new(item));
-                            self.items_name_map
-                                .blocking_write()
-                                .insert(name, item.clone());
-                            self.items_server_handle_map
-                                .blocking_write()
-                                .insert(server_handle, item.clone());
-
-                            Some(item)
-                        }
-                        None => {
-                            let result = bindings::tagOPCITEMRESULT {
-                                hServer: 0,
-                                vtCanonicalDataType: 0,
-                                dwAccessRights: 0,
-                                dwBlobSize: 0,
-                                pBlob: std::ptr::null_mut(),
-                                wReserved: 0,
-                            };
-                            r.push(result);
-                            e.push(windows::Win32::Foundation::E_INVALIDARG);
-
-                            None
-                        }
-                    }
-                }
-            };
-
-            match item {
-                Some(item) => {
-                    let item = item.blocking_read();
-                    let node = item.node.blocking_read();
-                    let result = bindings::tagOPCITEMRESULT {
-                        hServer: item.server_handle,
-                        vtCanonicalDataType: node.value.blocking_read().variant.get_data_type(),
-                        dwAccessRights: 0,
-                        dwBlobSize: 0,
-                        pBlob: std::ptr::null_mut(),
-                        wReserved: 0,
-                    };
-                    r.push(result);
-                    e.push(windows::Win32::Foundation::S_OK);
-                }
-                None => {}
-            }
-        }
-        unsafe {
-            *results = com_alloc_v(&r);
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn ValidateItems(
@@ -192,52 +71,6 @@ impl bindings::IOPCItemMgt_Impl for Group_Impl {
         validation_results: *mut *mut bindings::tagOPCITEMRESULT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut r = Vec::new();
-        let mut e = Vec::new();
-        let item_name_map = self.items_name_map.blocking_write();
-        for i in 0..count as usize {
-            let item = unsafe { *item_array.add(i) };
-            let name = unsafe { item.szItemID.to_string() }?;
-
-            let item = match item_name_map.get(&name) {
-                Some(item) => Some(item.clone()),
-                None => None,
-            };
-
-            match item {
-                Some(item) => {
-                    let item = item.blocking_read();
-                    let node = item.node.blocking_read();
-                    let result = bindings::tagOPCITEMRESULT {
-                        hServer: item.server_handle,
-                        vtCanonicalDataType: node.value.blocking_read().variant.get_data_type(),
-                        dwAccessRights: 0,
-                        dwBlobSize: 0,
-                        pBlob: std::ptr::null_mut(),
-                        wReserved: 0,
-                    };
-                    r.push(result);
-                    e.push(windows::Win32::Foundation::S_OK);
-                }
-                None => {
-                    let result = bindings::tagOPCITEMRESULT {
-                        hServer: 0,
-                        vtCanonicalDataType: 0,
-                        dwAccessRights: 0,
-                        dwBlobSize: 0,
-                        pBlob: std::ptr::null_mut(),
-                        wReserved: 0,
-                    };
-                    r.push(result);
-                    e.push(windows::Win32::Foundation::E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *validation_results = com_alloc_v(&r);
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn RemoveItems(
@@ -246,25 +79,6 @@ impl bindings::IOPCItemMgt_Impl for Group_Impl {
         handle_server: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let mut item_server_handle_map = self.items_server_handle_map.blocking_write();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            match item_server_handle_map.remove(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_read();
-                    self.items_name_map.blocking_write().remove(&item.name);
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            };
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn SetActiveState(
@@ -274,25 +88,6 @@ impl bindings::IOPCItemMgt_Impl for Group_Impl {
         active: windows::Win32::Foundation::BOOL,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_write();
-                    item.node.blocking_write().state.blocking_write().is_active = active.as_bool();
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            };
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn SetClientHandles(
@@ -302,26 +97,6 @@ impl bindings::IOPCItemMgt_Impl for Group_Impl {
         handle_client: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            let client_handle = unsafe { *handle_client.add(i) };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let mut item = item.blocking_write();
-                    item.client_handle = client_handle;
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            };
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn SetDatatypes(
@@ -331,56 +106,19 @@ impl bindings::IOPCItemMgt_Impl for Group_Impl {
         _requested_data_types: *const u16,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        // not surported
-        let e = vec![E_INVALIDARG; count as usize];
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn CreateEnumerator(
         &self,
         _reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
-        Ok(ItemAttributesEnumerator::new(
-            self.items_name_map
-                .blocking_read()
-                .iter()
-                .map(|(_, item)| {
-                    tokio::runtime::Handle::current().block_on(async move {
-                        let item = item.read().await;
-                        let node = item.node.read().await;
-                        let state = node.state.read().await;
-                        let access_right = node.access_right.read().await;
-                        let value = node.value.read().await;
-                        bindings::tagOPCITEMATTRIBUTES {
-                            szAccessPath: copy_to_com_string(""),
-                            szItemID: copy_to_com_string(&node.get_path().await),
-                            bActive: BOOL::from(state.is_active),
-                            hClient: item.client_handle,
-                            hServer: item.server_handle,
-                            dwAccessRights: access_right.to_u32(),
-                            dwBlobSize: 0,
-                            pBlob: std::ptr::null_mut(),
-                            vtRequestedDataType: value.variant.get_data_type(),
-                            vtCanonicalDataType: value.variant.get_data_type(),
-                            dwEUType: bindings::OPC_NOENUM,
-                            vEUInfo: ManuallyDrop::new(VARIANT::new()),
-                        }
-                    })
-                })
-                .collect(),
-        )
-        .into_object()
-        .into_interface())
     }
 }
 
 // 1.0 required
 // 2.0 required
 // 3.0 required
-impl bindings::IOPCGroupStateMgt_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCGroupStateMgt_Impl for Group_Impl<T> {
     fn GetState(
         &self,
         update_rate: *mut u32,
@@ -392,18 +130,6 @@ impl bindings::IOPCGroupStateMgt_Impl for Group_Impl {
         handle_client_group: *mut u32,
         handle_server_group: *mut u32,
     ) -> windows_core::Result<()> {
-        let state = self.state.blocking_read();
-        unsafe {
-            *update_rate = state.update_rate;
-            *active = state.active.into();
-            *name = copy_to_com_string(&state.name);
-            *timebias = state.time_bias.unwrap_or(0);
-            *percent_deadband = state.percent_deadband.unwrap_or(0.0);
-            *locale_id = state.locale_id;
-            *handle_client_group = state.client_group_handle;
-            *handle_server_group = state.server_group_handle;
-        }
-        Ok(())
     }
 
     fn SetState(
@@ -416,61 +142,40 @@ impl bindings::IOPCGroupStateMgt_Impl for Group_Impl {
         _locale_id: *const u32,
         _handle_client_group: *const u32,
     ) -> windows_core::Result<()> {
-        let state = self.state.blocking_read();
-        // TODO: ignore others now
-        unsafe {
-            *revised_update_rate = state.update_rate;
-        }
-        Ok(())
     }
 
-    fn SetName(&self, _name: &windows_core::PCWSTR) -> windows_core::Result<()> {
-        // TODO: ignore now
-        Ok(())
-    }
+    fn SetName(&self, _name: &windows_core::PCWSTR) -> windows_core::Result<()> {}
 
     fn CloneGroup(
         &self,
         _name: &windows_core::PCWSTR,
         _reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
-        Err(E_INVALIDARG.into())
     }
 }
 
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl bindings::IOPCGroupStateMgt2_Impl for Group_Impl {
-    fn SetKeepAlive(&self, keep_alive_time: u32) -> windows_core::Result<u32> {
-        let mut state = self.state.blocking_write();
-        state.keep_alive_time = keep_alive_time;
-        Ok(keep_alive_time)
-    }
+impl<T: GroupTrait + 'static> bindings::IOPCGroupStateMgt2_Impl for Group_Impl<T> {
+    fn SetKeepAlive(&self, keep_alive_time: u32) -> windows_core::Result<u32> {}
 
-    fn GetKeepAlive(&self) -> windows_core::Result<u32> {
-        let state = self.state.blocking_read();
-        Ok(state.keep_alive_time)
-    }
+    fn GetKeepAlive(&self) -> windows_core::Result<u32> {}
 }
 
 // 1.0 optional
 // 2.0 optional
 // 3.0 N/A
-impl bindings::IOPCPublicGroupStateMgt_Impl for Group_Impl {
-    fn GetState(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL> {
-        Err(E_NOTIMPL.into())
-    }
+impl<T: GroupTrait + 'static> bindings::IOPCPublicGroupStateMgt_Impl for Group_Impl<T> {
+    fn GetState(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL> {}
 
-    fn MoveToPublic(&self) -> windows_core::Result<()> {
-        Err(E_NOTIMPL.into())
-    }
+    fn MoveToPublic(&self) -> windows_core::Result<()> {}
 }
 
 // 1.0 required
 // 2.0 required
 // 3.0 required
-impl bindings::IOPCSyncIO_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCSyncIO_Impl for Group_Impl<T> {
     fn Read(
         &self,
         _source: bindings::tagOPCDATASOURCE,
@@ -479,47 +184,6 @@ impl bindings::IOPCSyncIO_Impl for Group_Impl {
         item_values: *mut *mut bindings::tagOPCITEMSTATE,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut v = Vec::new();
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_read();
-                    let node = item.node.blocking_read();
-                    let value = node.value.blocking_read();
-                    let state = bindings::tagOPCITEMSTATE {
-                        hClient: item.client_handle,
-                        ftTimeStamp: value
-                            .timestamp
-                            .clone()
-                            .map_or_else(FILETIME::default, |t| t.into()),
-                        wQuality: 0,
-                        vDataValue: ManuallyDrop::new(value.variant.clone().into()),
-                        wReserved: 0,
-                    };
-                    v.push(state);
-                    e.push(S_OK);
-                }
-                None => {
-                    let state = bindings::tagOPCITEMSTATE {
-                        hClient: 0,
-                        ftTimeStamp: FILETIME::default(),
-                        wQuality: 0,
-                        vDataValue: ManuallyDrop::new(VARIANT::new()),
-                        wReserved: 0,
-                    };
-                    v.push(state);
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *item_values = com_alloc_v(&v);
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn Write(
@@ -529,34 +193,13 @@ impl bindings::IOPCSyncIO_Impl for Group_Impl {
         item_values: *const windows_core::VARIANT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            let value = unsafe { (*item_values.add(i)).clone() };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_write();
-                    let node = item.node.blocking_write();
-                    node.value.blocking_write().variant = value.into();
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 }
 
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl bindings::IOPCSyncIO2_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCSyncIO2_Impl for Group_Impl<T> {
     fn ReadMaxAge(
         &self,
         count: u32,
@@ -567,43 +210,6 @@ impl bindings::IOPCSyncIO2_Impl for Group_Impl {
         timestamps: *mut *mut windows::Win32::Foundation::FILETIME,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut v = Vec::new();
-        let mut q = Vec::new();
-        let mut t = Vec::new();
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_read();
-                    let node = item.node.blocking_read();
-                    let value = node.value.blocking_read();
-                    v.push(value.variant.clone().into());
-                    q.push(value.quality.to_u16());
-                    t.push(
-                        value
-                            .timestamp
-                            .clone()
-                            .map_or_else(FILETIME::default, |t| t.into()),
-                    );
-                    e.push(S_OK);
-                }
-                None => {
-                    v.push(VARIANT::new());
-                    q.push(0);
-                    t.push(FILETIME::default());
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *values = com_alloc_v(&v);
-            *qualities = com_alloc_v(&q);
-            *timestamps = com_alloc_v(&t);
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn WriteVQT(
@@ -613,37 +219,13 @@ impl bindings::IOPCSyncIO2_Impl for Group_Impl {
         item_vqt: *const bindings::tagOPCITEMVQT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            let vqt = unsafe { &*item_vqt.add(i) };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_write();
-                    let node = item.node.blocking_write();
-                    let mut value = node.value.blocking_write();
-                    value.variant = vqt.vDataValue.as_raw().clone().into();
-                    value.quality = Quality(vqt.wQuality);
-                    value.timestamp = Some(vqt.ftTimeStamp.clone().into());
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 }
 
 // 1.0 N/A
 // 2.0 required
 // 3.0 required
-impl bindings::IOPCAsyncIO2_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO2_Impl for Group_Impl<T> {
     fn Read(
         &self,
         count: u32,
@@ -652,36 +234,6 @@ impl bindings::IOPCAsyncIO2_Impl for Group_Impl {
         _cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_read();
-                    let node = item.node.blocking_read();
-                    let value = node.value.blocking_read();
-                    let state = bindings::tagOPCITEMSTATE {
-                        hClient: item.client_handle,
-                        ftTimeStamp: value
-                            .timestamp
-                            .clone()
-                            .map_or_else(FILETIME::default, |t| t.into()),
-                        wQuality: 0,
-                        vDataValue: ManuallyDrop::new(value.variant.clone().into()),
-                        wReserved: 0,
-                    };
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn Write(
@@ -693,27 +245,6 @@ impl bindings::IOPCAsyncIO2_Impl for Group_Impl {
         _cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            let value = unsafe { (*item_values.add(i)).clone() };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_write();
-                    let node = item.node.blocking_write();
-                    node.value.blocking_write().variant = value.into();
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn Refresh2(
@@ -721,29 +252,19 @@ impl bindings::IOPCAsyncIO2_Impl for Group_Impl {
         _source: bindings::tagOPCDATASOURCE,
         _transaction_id: u32,
     ) -> windows_core::Result<u32> {
-        Ok(S_OK.0 as u32)
     }
 
-    fn Cancel2(&self, _cancel_id: u32) -> windows_core::Result<()> {
-        Ok(())
-    }
+    fn Cancel2(&self, _cancel_id: u32) -> windows_core::Result<()> {}
 
-    fn SetEnable(&self, enable: windows::Win32::Foundation::BOOL) -> windows_core::Result<()> {
-        let mut state = self.state.blocking_write();
-        state.active = enable.as_bool();
-        Ok(())
-    }
+    fn SetEnable(&self, enable: windows::Win32::Foundation::BOOL) -> windows_core::Result<()> {}
 
-    fn GetEnable(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL> {
-        let state = self.state.blocking_read();
-        Ok(state.active.into())
-    }
+    fn GetEnable(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL> {}
 }
 
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl bindings::IOPCAsyncIO3_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO3_Impl for Group_Impl<T> {
     fn ReadMaxAge(
         &self,
         count: u32,
@@ -753,36 +274,6 @@ impl bindings::IOPCAsyncIO3_Impl for Group_Impl {
         _cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let mut e = Vec::new();
-        let item_server_handle_map = self.items_server_handle_map.blocking_read();
-        for i in 0..count as usize {
-            let server_handle = unsafe { *handle_server.add(i) };
-            match item_server_handle_map.get(&server_handle) {
-                Some(item) => {
-                    let item = item.blocking_read();
-                    let node = item.node.blocking_read();
-                    let value = node.value.blocking_read();
-                    let state = bindings::tagOPCITEMSTATE {
-                        hClient: item.client_handle,
-                        ftTimeStamp: value
-                            .timestamp
-                            .clone()
-                            .map_or_else(FILETIME::default, |t| t.into()),
-                        wQuality: 0,
-                        vDataValue: ManuallyDrop::new(value.variant.clone().into()),
-                        wReserved: 0,
-                    };
-                    e.push(S_OK);
-                }
-                None => {
-                    e.push(E_INVALIDARG);
-                }
-            }
-        }
-        unsafe {
-            *errors = com_alloc_v(&e);
-        }
-        Ok(())
     }
 
     fn WriteVQT(
@@ -794,18 +285,15 @@ impl bindings::IOPCAsyncIO3_Impl for Group_Impl {
         cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
-    fn RefreshMaxAge(&self, max_age: u32, transaction_id: u32) -> windows_core::Result<u32> {
-        todo!()
-    }
+    fn RefreshMaxAge(&self, max_age: u32, transaction_id: u32) -> windows_core::Result<u32> {}
 }
 
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl bindings::IOPCItemDeadbandMgt_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCItemDeadbandMgt_Impl for Group_Impl<T> {
     fn SetItemDeadband(
         &self,
         count: u32,
@@ -813,7 +301,6 @@ impl bindings::IOPCItemDeadbandMgt_Impl for Group_Impl {
         percent_deadband: *const f32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn GetItemDeadband(
@@ -823,7 +310,6 @@ impl bindings::IOPCItemDeadbandMgt_Impl for Group_Impl {
         percent_deadband: *mut *mut f32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn ClearItemDeadband(
@@ -832,14 +318,13 @@ impl bindings::IOPCItemDeadbandMgt_Impl for Group_Impl {
         handle_server: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 }
 
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 optional
-impl bindings::IOPCItemSamplingMgt_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCItemSamplingMgt_Impl for Group_Impl<T> {
     fn SetItemSamplingRate(
         &self,
         count: u32,
@@ -848,7 +333,6 @@ impl bindings::IOPCItemSamplingMgt_Impl for Group_Impl {
         revised_sampling_rate: *mut *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn GetItemSamplingRate(
@@ -858,7 +342,6 @@ impl bindings::IOPCItemSamplingMgt_Impl for Group_Impl {
         sampling_rate: *mut *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn ClearItemSamplingRate(
@@ -867,7 +350,6 @@ impl bindings::IOPCItemSamplingMgt_Impl for Group_Impl {
         handle_server: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn SetItemBufferEnable(
@@ -877,7 +359,6 @@ impl bindings::IOPCItemSamplingMgt_Impl for Group_Impl {
         penable: *const windows::Win32::Foundation::BOOL,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn GetItemBufferEnable(
@@ -887,30 +368,26 @@ impl bindings::IOPCItemSamplingMgt_Impl for Group_Impl {
         enable: *mut *mut windows::Win32::Foundation::BOOL,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 }
 
 // 1.0 N/A
 // 2.0 required
 // 3.0 required
-impl IConnectionPointContainer_Impl for Group_Impl {
-    fn EnumConnectionPoints(&self) -> windows_core::Result<IEnumConnectionPoints> {
-        todo!()
-    }
+impl<T: GroupTrait + 'static> IConnectionPointContainer_Impl for Group_Impl<T> {
+    fn EnumConnectionPoints(&self) -> windows_core::Result<IEnumConnectionPoints> {}
 
     fn FindConnectionPoint(
         &self,
         reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<IConnectionPoint> {
-        todo!()
     }
 }
 
 // 1.0 required
 // 2.0 optional
 // 3.0 N/A
-impl bindings::IOPCAsyncIO_Impl for Group_Impl {
+impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO_Impl for Group_Impl<T> {
     fn Read(
         &self,
         connection: u32,
@@ -920,7 +397,6 @@ impl bindings::IOPCAsyncIO_Impl for Group_Impl {
         transaction_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn Write(
@@ -932,7 +408,6 @@ impl bindings::IOPCAsyncIO_Impl for Group_Impl {
         transaction_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
     fn Refresh(
@@ -940,40 +415,31 @@ impl bindings::IOPCAsyncIO_Impl for Group_Impl {
         connection: u32,
         source: bindings::tagOPCDATASOURCE,
     ) -> windows_core::Result<u32> {
-        todo!()
     }
 
-    fn Cancel(&self, transaction_id: u32) -> windows_core::Result<()> {
-        todo!()
-    }
+    fn Cancel(&self, transaction_id: u32) -> windows_core::Result<()> {}
 }
 
 // 1.0 required
 // 2.0 optional
 // 3.0 N/A
-impl IDataObject_Impl for Group_Impl {
-    fn GetData(&self, format_etc_in: *const FORMATETC) -> windows_core::Result<STGMEDIUM> {
-        todo!()
-    }
+impl<T: GroupTrait + 'static> IDataObject_Impl for Group_Impl<T> {
+    fn GetData(&self, format_etc_in: *const FORMATETC) -> windows_core::Result<STGMEDIUM> {}
 
     fn GetDataHere(
         &self,
         format_etc_in: *const FORMATETC,
         medium: *mut STGMEDIUM,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
-    fn QueryGetData(&self, format_etc_in: *const FORMATETC) -> windows_core::HRESULT {
-        todo!()
-    }
+    fn QueryGetData(&self, format_etc_in: *const FORMATETC) -> windows_core::HRESULT {}
 
     fn GetCanonicalFormatEtc(
         &self,
         format_etc_in: *const FORMATETC,
         format_etc_inout: *mut FORMATETC,
     ) -> windows_core::HRESULT {
-        todo!()
     }
 
     fn SetData(
@@ -982,12 +448,9 @@ impl IDataObject_Impl for Group_Impl {
         medium: *const STGMEDIUM,
         release: windows::Win32::Foundation::BOOL,
     ) -> windows_core::Result<()> {
-        todo!()
     }
 
-    fn EnumFormatEtc(&self, direction: u32) -> windows_core::Result<IEnumFORMATETC> {
-        todo!()
-    }
+    fn EnumFormatEtc(&self, direction: u32) -> windows_core::Result<IEnumFORMATETC> {}
 
     fn DAdvise(
         &self,
@@ -995,14 +458,9 @@ impl IDataObject_Impl for Group_Impl {
         adv: u32,
         sink: Option<&IAdviseSink>,
     ) -> windows_core::Result<u32> {
-        todo!()
     }
 
-    fn DUnadvise(&self, connection: u32) -> windows_core::Result<()> {
-        todo!()
-    }
+    fn DUnadvise(&self, connection: u32) -> windows_core::Result<()> {}
 
-    fn EnumDAdvise(&self) -> windows_core::Result<IEnumSTATDATA> {
-        todo!()
-    }
+    fn EnumDAdvise(&self) -> windows_core::Result<IEnumSTATDATA> {}
 }
