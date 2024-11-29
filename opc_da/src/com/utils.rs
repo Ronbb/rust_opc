@@ -2,38 +2,22 @@ pub struct PointerReader;
 
 pub struct PointerWriter;
 
-pub trait Read<T, R = T> {
-    fn read(pointer: *const T) -> R;
-}
-
-pub trait Write<T> {
-    fn write(value: T, pointer: *mut T) -> windows_core::Result<()>;
-}
-
-pub trait WriteInto<T, R> {
-    fn write_into(value: T, pointer: *mut R) -> windows_core::Result<()>;
-}
-
-pub trait WriteTo<T, R> {
-    fn write_to(value: T) -> windows_core::Result<R>;
-}
-
-pub trait ReadArray<T, R = T> {
-    fn read_array(count: u32, pointer: *const T) -> Vec<R>;
-}
-
-pub trait WriteArray<T, R = T> {
-    fn write_array(values: &[T], pointer: *mut R) -> windows_core::Result<()>;
-}
-
-pub trait WriteArrayPointer<T, R = T> {
-    fn write_array_pointer(values: &[T], pointer: *mut *mut R) -> windows_core::Result<()>;
-}
-
-pub trait TryReadArray<T, R = T> {
+pub trait TryWrite<T> {
     type Error;
 
-    fn try_read_array(count: u32, pointer: *const T) -> Result<Vec<R>, Self::Error>;
+    fn try_write(value: T, pointer: *mut T) -> Result<(), Self::Error>;
+}
+
+pub trait TryWriteInto<T, R> {
+    type Error;
+
+    fn try_write_into(value: T, pointer: *mut R) -> Result<(), Self::Error>;
+}
+
+pub trait TryWriteTo<T, R> {
+    type Error;
+
+    fn try_write_to(value: T) -> Result<R, Self::Error>;
 }
 
 pub trait TryWriteArray<T, R = T> {
@@ -42,14 +26,43 @@ pub trait TryWriteArray<T, R = T> {
     fn try_write_array(values: &[T], pointer: *mut R) -> Result<(), Self::Error>;
 }
 
-impl<T: Sized> Read<T> for PointerReader {
-    fn read(pointer: *const T) -> T {
-        unsafe { pointer.read() }
+pub trait TryWriteArrayPointer<T, R = T> {
+    type Error;
+
+    fn try_write_array_pointer(values: &[T], pointer: *mut *mut R) -> Result<(), Self::Error>;
+}
+
+pub trait TryRead<T, R = T> {
+    type Error;
+
+    fn try_read(pointer: *const T) -> Result<R, Self::Error>;
+}
+
+pub trait TryReadArray<T, R = T> {
+    type Error;
+
+    fn try_read_array(count: u32, pointer: *const T) -> Result<Vec<R>, Self::Error>;
+}
+
+impl<T: Sized> TryRead<T> for PointerReader {
+    type Error = windows_core::Error;
+
+    fn try_read(pointer: *const T) -> Result<T, Self::Error> {
+        if pointer.is_null() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_POINTER,
+                "Null pointer passed for 'pointer'",
+            ));
+        }
+
+        Ok(unsafe { pointer.read() })
     }
 }
 
-impl<T: Sized> Write<T> for PointerWriter {
-    fn write(value: T, pointer: *mut T) -> windows_core::Result<()> {
+impl<T: Sized> TryWrite<T> for PointerWriter {
+    type Error = windows_core::Error;
+
+    fn try_write(value: T, pointer: *mut T) -> Result<(), Self::Error> {
         if pointer.is_null() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_POINTER,
@@ -65,8 +78,33 @@ impl<T: Sized> Write<T> for PointerWriter {
     }
 }
 
-impl<T: AsRef<str>> WriteInto<T, windows_core::PWSTR> for PointerWriter {
-    fn write_into(value: T, pointer: *mut windows_core::PWSTR) -> windows_core::Result<()> {
+impl<T: Sized> TryWriteInto<T, Option<T>> for PointerWriter {
+    type Error = windows_core::Error;
+
+    fn try_write_into(value: T, pointer: *mut Option<T>) -> Result<(), Self::Error> {
+        if pointer.is_null() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_POINTER,
+                "Null pointer passed for 'pointer'",
+            ));
+        }
+
+        unsafe {
+            pointer.write(Some(value));
+        }
+
+        Ok(())
+    }
+}
+
+/// Allocates memory for a string and writes it to the provided pointer.  
+///
+/// # Safety  
+/// The caller is responsible for freeing the allocated memory using `CoTaskMemFree`.  
+impl<T: AsRef<str>> TryWriteInto<T, windows_core::PWSTR> for PointerWriter {
+    type Error = windows_core::Error;
+
+    fn try_write_into(value: T, pointer: *mut windows_core::PWSTR) -> Result<(), Self::Error> {
         let p = value
             .as_ref()
             .encode_utf16()
@@ -93,8 +131,10 @@ impl<T: AsRef<str>> WriteInto<T, windows_core::PWSTR> for PointerWriter {
     }
 }
 
-impl<'a, T: AsRef<[&'a str]>> WriteInto<T, *mut windows_core::PWSTR> for PointerWriter {
-    fn write_into(value: T, pointer: *mut *mut windows_core::PWSTR) -> windows_core::Result<()> {
+impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows_core::PWSTR> for PointerWriter {
+    type Error = windows_core::Error;
+
+    fn try_write_into(value: T, pointer: *mut *mut windows_core::PWSTR) -> Result<(), Self::Error> {
         let mut strings = Vec::with_capacity(value.as_ref().len());
         for s in value.as_ref() {
             let p = s
@@ -119,7 +159,9 @@ impl<'a, T: AsRef<[&'a str]>> WriteInto<T, *mut windows_core::PWSTR> for Pointer
         }
 
         let ptr = unsafe {
-            windows::Win32::System::Com::CoTaskMemAlloc(strings.len() * std::mem::size_of::<u16>())
+            windows::Win32::System::Com::CoTaskMemAlloc(
+                strings.len() * std::mem::size_of::<windows_core::PWSTR>(),
+            )
         };
 
         if ptr.is_null() {
@@ -142,36 +184,51 @@ impl<'a, T: AsRef<[&'a str]>> WriteInto<T, *mut windows_core::PWSTR> for Pointer
     }
 }
 
-impl<T, R, W: WriteInto<T, R>> WriteTo<T, *mut R> for W {
-    fn write_to(value: T) -> windows_core::Result<*mut R> {
-        let ptr: *mut R = std::ptr::null_mut();
-        Self::write_into(value, ptr)?;
+impl<T, W: TryWrite<T, Error = windows_core::Error>> TryWriteTo<T, *mut T> for W {
+    type Error = windows_core::Error;
+
+    fn try_write_to(value: T) -> windows_core::Result<*mut T> {
+        let ptr: *mut T = std::ptr::null_mut();
+        Self::try_write(value, ptr)?;
         Ok(ptr)
     }
 }
 
-impl<T: AsRef<str>> WriteTo<T, windows_core::PWSTR> for PointerWriter {
-    fn write_to(value: T) -> windows_core::Result<windows_core::PWSTR> {
+impl<T: AsRef<str>> TryWriteTo<T, windows_core::PWSTR> for PointerWriter {
+    type Error = windows_core::Error;
+
+    fn try_write_to(value: T) -> windows_core::Result<windows_core::PWSTR> {
         let ptr: *mut windows_core::PWSTR = std::ptr::null_mut();
-        Self::write_into(value, ptr)?;
+        Self::try_write_into(value, ptr)?;
         Ok(unsafe { *ptr })
     }
 }
 
-impl<T> ReadArray<T> for PointerReader {
-    fn read_array(count: u32, pointer: *const T) -> Vec<T> {
+impl<T> TryReadArray<T> for PointerReader {
+    type Error = windows_core::Error;
+
+    fn try_read_array(count: u32, pointer: *const T) -> Result<Vec<T>, Self::Error> {
+        if pointer.is_null() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_POINTER,
+                "Null pointer passed for 'pointer'",
+            ));
+        }
+
         let mut result = Vec::with_capacity(count as usize);
         unsafe {
             for i in 0..count {
                 result.push(pointer.add(i as usize).read());
             }
         }
-        result
+        Ok(result)
     }
 }
 
-impl<T> WriteArray<T> for PointerWriter {
-    fn write_array(values: &[T], pointer: *mut T) -> windows_core::Result<()> {
+impl<T> TryWriteArray<T> for PointerWriter {
+    type Error = windows_core::Error;
+
+    fn try_write_array(values: &[T], pointer: *mut T) -> Result<(), Self::Error> {
         if pointer.is_null() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_POINTER,
@@ -187,8 +244,10 @@ impl<T> WriteArray<T> for PointerWriter {
     }
 }
 
-impl<T> WriteArrayPointer<T> for PointerWriter {
-    fn write_array_pointer(values: &[T], pointer: *mut *mut T) -> windows_core::Result<()> {
+impl<T> TryWriteArrayPointer<T> for PointerWriter {
+    type Error = windows_core::Error;
+
+    fn try_write_array_pointer(values: &[T], pointer: *mut *mut T) -> Result<(), Self::Error> {
         if pointer.is_null() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_POINTER,
@@ -225,7 +284,14 @@ impl TryReadArray<windows_core::PWSTR, String> for PointerReader {
         let mut result = Vec::with_capacity(count as usize);
         unsafe {
             for i in 0..count {
-                result.push(pointer.add(i as usize).read().to_string()?);
+                let pwstr = pointer.add(i as usize).read();
+                if pwstr.is_null() {
+                    return Err(windows_core::Error::new(
+                        windows::Win32::Foundation::E_POINTER,
+                        "Null pointer encountered while reading string",
+                    ));
+                }
+                result.push(pwstr.to_string()?);
             }
         }
 
@@ -243,7 +309,14 @@ impl TryReadArray<windows_core::PCWSTR, String> for PointerReader {
         let mut result = Vec::with_capacity(count as usize);
         unsafe {
             for i in 0..count {
-                result.push(pointer.add(i as usize).read().to_string()?);
+                let pwstr = pointer.add(i as usize).read();
+                if pwstr.is_null() {
+                    return Err(windows_core::Error::new(
+                        windows::Win32::Foundation::E_POINTER,
+                        "Null pointer encountered while reading string",
+                    ));
+                }
+                result.push(pwstr.to_string()?);
             }
         }
 

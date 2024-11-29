@@ -214,7 +214,35 @@ pub trait ServerTrait {
         items: Vec<ItemOptionalVqt>,
     ) -> windows_core::Result<Vec<windows_core::HRESULT>>;
 
+    fn add_group(
+        &self,
+        name: String,
+        active: bool,
+        requested_update_rate: u32,
+        client_group: u32,
+        time_bias: Option<i32>,
+        percent_deadband: Option<f32>,
+        locale_id: u32,
+        reference_interface_id: Option<u128>,
+    ) -> windows_core::Result<GroupInfo>;
+
     fn get_error_string_locale(&self, error: i32, locale: u32) -> windows_core::Result<String>;
+
+    fn get_group_by_name(
+        &self,
+        name: String,
+        reference_interface_id: Option<u128>,
+    ) -> windows_core::Result<windows_core::IUnknown>;
+
+    fn get_status(&self) -> windows_core::Result<ServerStatus>;
+
+    fn remove_group(&self, server_group: u32, force: bool) -> windows_core::Result<()>;
+
+    fn create_group_enumerator(
+        &self,
+        scope: EnumScope,
+        reference_interface_id: Option<u128>,
+    ) -> windows_core::Result<windows_core::IUnknown>;
 }
 
 pub struct AvailableProperty {
@@ -311,4 +339,41 @@ pub struct VqtWithError {
 pub struct ItemOptionalVqt {
     pub item_id: String,
     pub optional_vqt: OptionalVqt,
+}
+
+pub struct GroupInfo {
+    pub server_group: u32,
+    pub revised_update_rate: u32,
+    pub unknown: windows_core::IUnknown,
+}
+
+pub struct ServerStatus {
+    pub start_time: SystemTime,
+    pub current_time: SystemTime,
+    pub last_update_time: SystemTime,
+    pub server_state: ServerState,
+    pub group_count: u32,
+    pub band_width: u32,
+    pub major_version: u16,
+    pub minor_version: u16,
+    pub build_number: u16,
+    pub vendor_info: String,
+}
+
+pub enum ServerState {
+    Running,
+    Failed,
+    NoConfig,
+    Suspended,
+    Test,
+    CommunicationFault,
+}
+
+pub enum EnumScope {
+    PrivateConnections,
+    PublicConnections,
+    AllConnections,
+    Public,
+    Private,
+    All,
 }

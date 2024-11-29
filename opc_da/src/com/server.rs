@@ -1,26 +1,26 @@
 use std::{mem::ManuallyDrop, ops::Deref};
 
 use windows::Win32::{
-    Foundation::{E_INVALIDARG, E_POINTER},
+    Foundation::E_INVALIDARG,
     System::Com::{
         IConnectionPoint, IConnectionPointContainer, IConnectionPointContainer_Impl,
-        IEnumConnectionPoints, IEnumString, IEnumUnknown,
+        IEnumConnectionPoints,
     },
 };
-use windows_core::{implement, ComObjectInner, IUnknownImpl, Interface, PWSTR};
+use windows_core::{implement, ComObjectInner, PWSTR};
 
 use crate::traits::{
-    BrowseDirection, BrowseElement, BrowseFilter, BrowseType, ItemOptionalVqt, ItemProperties,
-    ItemProperty, ItemWithMaxAge, NamespaceType, OptionalVqt, ServerTrait,
+    BrowseDirection, BrowseElement, BrowseFilter, BrowseType, EnumScope, ItemOptionalVqt,
+    ItemProperties, ItemProperty, ItemWithMaxAge, NamespaceType, OptionalVqt, ServerState,
+    ServerStatus, ServerTrait,
 };
 
 use super::{
-    bindings::{self, tagOPCITEMPROPERTIES},
-    enumeration::{ConnectionPointsEnumerator, StringEnumerator, UnknownEnumerator},
-    group::Group,
+    bindings,
+    enumeration::{ConnectionPointsEnumerator, StringEnumerator},
     utils::{
-        PointerReader, PointerWriter, ReadArray, TryReadArray, Write, WriteArray,
-        WriteArrayPointer, WriteInto, WriteTo,
+        PointerReader, PointerWriter, TryReadArray, TryWrite, TryWriteArray, TryWriteArrayPointer,
+        TryWriteInto, TryWriteTo,
     },
 };
 
@@ -65,64 +65,20 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
         reference_interface_id: *const windows_core::GUID,
         unknown: *mut Option<windows_core::IUnknown>,
     ) -> windows_core::Result<()> {
-        if server_group.is_null() || revised_update_rate.is_null() || unknown.is_null() {
-            return Err(E_POINTER.into());
-        }
+        let info = self.add_group(
+            unsafe { name.to_string() }?,
+            active.as_bool(),
+            requested_update_rate,
+            client_group,
+            unsafe { time_bias.as_ref() }.copied(),
+            unsafe { percent_deadband.as_ref() }.copied(),
+            locale_id,
+            unsafe { reference_interface_id.as_ref() }.map(|id| id.to_u128()),
+        )?;
 
-        unsafe {
-            if let Some(percent_deadband) = percent_deadband.as_ref() {
-                if *percent_deadband < 0.0 || *percent_deadband > 100.0 {
-                    return Err(E_INVALIDARG.into());
-                }
-            }
-        }
-
-        let mut groups = self.group_name_map.blocking_write();
-        let group;
-        let server_group_handle = self
-            .next_server_group_handle
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let update_rate = requested_update_rate;
-        let group_name = unsafe { name.to_string() }?;
-        unsafe {
-            group = Group::new(
-                self.core.clone(),
-                group_name.clone(),
-                active.as_bool(),
-                requested_update_rate,
-                client_group,
-                time_bias.as_ref().cloned(),
-                percent_deadband.as_ref().cloned(),
-                locale_id,
-                server_group_handle,
-            );
-
-            *server_group = server_group_handle;
-            *revised_update_rate = update_rate;
-        }
-
-        if groups.contains_key(&group_name) {
-            return Err(E_INVALIDARG.into());
-        }
-
-        let group = group.into_object();
-
-        let result = unsafe {
-            group.QueryInterface(
-                reference_interface_id,
-                unknown as *mut *mut ::core::ffi::c_void,
-            )
-        };
-
-        if result.is_err() {
-            return Err(result.into());
-        }
-
-        groups.insert(group_name, group.clone());
-
-        self.group_server_handle_map
-            .blocking_write()
-            .insert(server_group_handle, group);
+        PointerWriter::try_write(info.server_group, server_group)?;
+        PointerWriter::try_write(info.revised_update_rate, revised_update_rate)?;
+        PointerWriter::try_write_into(info.unknown, unknown)?;
 
         Ok(())
     }
@@ -133,7 +89,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
         locale: u32,
     ) -> windows_core::Result<windows_core::PWSTR> {
         let s = self.get_error_string_locale(error.0, locale)?;
-        PointerWriter::write_to(&s)
+        PointerWriter::try_write_to(&s)
     }
 
     fn GetGroupByName(
@@ -141,66 +97,34 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
         name: &windows_core::PCWSTR,
         reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
-        let name = unsafe { name.to_string().unwrap() };
-        if let Some(group) = self.group_name_map.blocking_read().get(&name) {
-            let mut unknown = None;
-            let result = unsafe {
-                group.QueryInterface(
-                    reference_interface_id,
-                    &mut unknown as *mut _ as *mut *mut ::core::ffi::c_void,
-                )
-            };
-
-            if result.is_err() {
-                return Err(result.into());
-            }
-
-            return Ok(unknown.unwrap());
-        }
-
-        Err(E_INVALIDARG.into())
+        self.get_group_by_name(
+            unsafe { name.to_string() }?,
+            unsafe { reference_interface_id.as_ref() }.map(|id| id.to_u128()),
+        )
     }
 
     fn GetStatus(&self) -> windows_core::Result<*mut bindings::tagOPCSERVERSTATUS> {
-        Ok(&mut bindings::tagOPCSERVERSTATUS::default())
+        let status: bindings::tagOPCSERVERSTATUS = self.get_status()?.try_into()?;
+        PointerWriter::try_write_to(status)
     }
 
     fn RemoveGroup(
         &self,
         server_group: u32,
-        _force: windows::Win32::Foundation::BOOL,
+        force: windows::Win32::Foundation::BOOL,
     ) -> windows_core::Result<()> {
-        let group = self
-            .group_server_handle_map
-            .blocking_write()
-            .remove(&server_group);
-        if let Some(group) = group {
-            let mut groups = self.group_name_map.blocking_write();
-            groups.remove(&group.state.blocking_read().name);
-            Ok(())
-        } else {
-            Err(E_INVALIDARG.into())
-        }
+        self.remove_group(server_group, force.as_bool())
     }
 
     fn CreateGroupEnumerator(
         &self,
-        _scope: bindings::tagOPCENUMSCOPE,
+        scope: bindings::tagOPCENUMSCOPE,
         reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
-        match unsafe { reference_interface_id.as_ref() } {
-            Some(&IEnumString::IID) => {
-                let groups = self.group_name_map.blocking_read();
-                let strings = groups.keys().cloned().collect();
-                Ok(StringEnumerator::new(strings).into_object().cast().unwrap())
-            }
-            Some(&IEnumUnknown::IID) => {
-                let groups = self.group_name_map.blocking_read();
-                let items = groups.values().map(|group| group.to_interface()).collect();
-                Ok(UnknownEnumerator::new(items).into_object().cast().unwrap())
-            }
-            _ => Err(E_INVALIDARG.into()),
-        }
+        self.create_group_enumerator(
+            scope.try_into()?,
+            unsafe { reference_interface_id.as_ref() }.map(|id| id.to_u128()),
+        )
     }
 }
 
@@ -222,8 +146,8 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
         locale_ids: *mut *mut u32,
     ) -> windows_core::Result<()> {
         let available_locale_ids = self.query_available_locale_ids()?;
-        PointerWriter::write(available_locale_ids.len() as _, count);
-        PointerWriter::write_array_pointer(&available_locale_ids, locale_ids)?;
+        PointerWriter::try_write(available_locale_ids.len() as _, count);
+        PointerWriter::try_write_array_pointer(&available_locale_ids, locale_ids)?;
         Ok(())
     }
 
@@ -233,7 +157,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
     ) -> windows_core::Result<windows_core::PWSTR> {
         let s = self.get_error_string(error.0)?;
         let mut out = PWSTR::null();
-        PointerWriter::write_into(&s, &mut out)?;
+        PointerWriter::try_write_into(&s, &mut out)?;
         Ok(out)
     }
 
@@ -276,21 +200,21 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
     ) -> windows_core::Result<()> {
         let vec = self.query_available_properties(unsafe { item_id.to_string() }?)?;
 
-        PointerWriter::write(vec.len() as _, count);
+        PointerWriter::try_write(vec.len() as _, count);
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &vec.iter().map(|p| p.property_id).collect::<Vec<_>>(),
             property_ids,
         )?;
 
-        PointerWriter::write_into(
+        PointerWriter::try_write_into(
             &vec.iter()
                 .map(|p| p.description.as_str())
                 .collect::<Vec<_>>(),
             descriptions,
         )?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &vec.iter().map(|p| p.data_type).collect::<Vec<_>>(),
             data_types,
         )?;
@@ -306,16 +230,16 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
         data: *mut *mut windows_core::VARIANT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let property_ids = PointerReader::read_array(count, property_ids);
+        let property_ids = PointerReader::try_read_array(count, property_ids)?;
 
         let vec = self.get_item_properties(unsafe { item_id.to_string() }?, property_ids)?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &vec.iter().map(|p| p.error).collect::<Vec<_>>(),
             errors,
         )?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &vec.into_iter().map(|p| p.data.into()).collect::<Vec<_>>(),
             data,
         )?;
@@ -331,18 +255,18 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
         new_item_ids: *mut *mut windows_core::PWSTR,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let property_ids = PointerReader::read_array(count, property_ids);
+        let property_ids = PointerReader::try_read_array(count, property_ids)?;
 
         let vec = self.lookup_item_ids(unsafe { item_id.to_string() }?, property_ids)?;
 
-        PointerWriter::write_into(
+        PointerWriter::try_write_into(
             &vec.iter()
                 .map(|p| p.new_item_id.as_str())
                 .collect::<Vec<_>>(),
             new_item_ids,
         )?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &vec.iter().map(|p| p.error).collect::<Vec<_>>(),
             errors,
         )?;
@@ -365,18 +289,18 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
         item_properties: *mut *mut bindings::tagOPCITEMPROPERTIES,
     ) -> windows_core::Result<()> {
         let item_ids = PointerReader::try_read_array(item_count, item_ids)?;
-        let property_ids = PointerReader::read_array(property_count, property_ids);
+        let property_ids = PointerReader::try_read_array(property_count, property_ids)?;
 
         let properties =
             self.get_properties(item_ids, return_property_values.as_bool(), property_ids)?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &properties
                 .into_iter()
                 .map(|item| match item.try_into() {
                     Ok(item) => item,
                     Err(error) => {
-                        let mut item = tagOPCITEMPROPERTIES::default();
+                        let mut item = bindings::tagOPCITEMPROPERTIES::default();
                         item.hrErrorID = (error as windows_core::Error).code();
                         item
                     }
@@ -407,7 +331,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
         let item_id = unsafe { item_id.to_string()? };
         let element_name_filter = unsafe { element_name_filter.to_string()? };
         let vendor_filter = unsafe { vendor_filter.to_string()? };
-        let property_ids = PointerReader::read_array(property_count, property_ids);
+        let property_ids = PointerReader::try_read_array(property_count, property_ids)?;
 
         let result = self.browse(
             item_id,
@@ -426,9 +350,9 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
             property_ids,
         )?;
 
-        PointerWriter::write(result.elements.len() as _, count);
+        PointerWriter::try_write(result.elements.len() as _, count);
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &result
                 .elements
                 .into_iter()
@@ -444,11 +368,11 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
             browse_elements,
         )?;
 
-        PointerWriter::write(result.more_elements.into(), more_elements)?;
+        PointerWriter::try_write(result.more_elements.into(), more_elements)?;
 
         match result.continuation_point {
             Some(new_continuation_point) => {
-                PointerWriter::write_into(&new_continuation_point, continuation_point)?
+                PointerWriter::try_write_into(&new_continuation_point, continuation_point)?
             }
             None => unsafe {
                 *continuation_point = PWSTR::null();
@@ -519,7 +443,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for S
         item_data_id: &windows_core::PCWSTR,
     ) -> windows_core::Result<windows_core::PWSTR> {
         let item_id = self.get_item_id(unsafe { item_data_id.to_string() }?)?;
-        PointerWriter::write_to(&item_id)
+        PointerWriter::try_write_to(&item_id)
     }
 
     fn BrowseAccessPaths(
@@ -549,7 +473,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
         let item_ids = PointerReader::try_read_array(count, item_ids)?;
-        let max_ages = PointerReader::read_array(count, max_ages);
+        let max_ages = PointerReader::try_read_array(count, max_ages)?;
 
         let result = self.read(
             item_ids
@@ -559,7 +483,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
                 .collect(),
         )?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &result
                 .iter()
                 .map(|vqt| vqt.value.clone().into())
@@ -567,12 +491,12 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
             values,
         )?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &result.iter().map(|vqt| vqt.quality).collect::<Vec<_>>(),
             qualities,
         )?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &result
                 .iter()
                 .map(|vqt| vqt.timestamp.clone().into())
@@ -580,7 +504,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
             timestamps,
         )?;
 
-        PointerWriter::write_array_pointer(
+        PointerWriter::try_write_array_pointer(
             &result.iter().map(|vqt| vqt.error).collect::<Vec<_>>(),
             errors,
         )?;
@@ -596,7 +520,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
         let item_ids = PointerReader::try_read_array(count, item_ids)?;
-        let item_vqt = PointerReader::read_array(count, item_vqt)
+        let item_vqt = PointerReader::try_read_array(count, item_vqt)?
             .into_iter()
             .try_fold(vec![], |mut acc, item| {
                 acc.push(item.try_into()?);
@@ -614,7 +538,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
                 .collect(),
         )?;
 
-        PointerWriter::write_array_pointer(&result, errors)?;
+        PointerWriter::try_write_array_pointer(&result, errors)?;
 
         Ok(())
     }
@@ -631,7 +555,7 @@ impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
             dwReserved: 0,
         };
 
-        PointerWriter::write_array(
+        PointerWriter::try_write_array(
             &value
                 .item_properties
                 .into_iter()
@@ -659,8 +583,8 @@ impl TryFrom<ItemProperty> for opc_da_bindings::tagOPCITEMPROPERTY {
             vtDataType: value.data_type,
             wReserved: 0,
             dwPropertyID: value.property_id,
-            szItemID: PointerWriter::write_to(&value.item_id)?,
-            szDescription: PointerWriter::write_to(&value.description)?,
+            szItemID: PointerWriter::try_write_to(&value.item_id)?,
+            szDescription: PointerWriter::try_write_to(&value.description)?,
             vValue: ManuallyDrop::new(value.value.into()),
             hrErrorID: value.error_id,
             dwReserved: 0,
@@ -699,8 +623,8 @@ impl TryFrom<BrowseElement> for opc_da_bindings::tagOPCBROWSEELEMENT {
 
     fn try_from(value: BrowseElement) -> Result<Self, Self::Error> {
         Ok(opc_da_bindings::tagOPCBROWSEELEMENT {
-            szName: PointerWriter::write_to(&value.name)?,
-            szItemID: PointerWriter::write_to(&value.item_id)?,
+            szName: PointerWriter::try_write_to(&value.name)?,
+            szItemID: PointerWriter::try_write_to(&value.item_id)?,
             dwFlagValue: value.flag_value,
             dwReserved: 0,
             ItemProperties: value.item_properties.try_into()?,
@@ -803,5 +727,54 @@ impl TryFrom<bindings::tagOPCITEMVQT> for OptionalVqt {
                 None
             },
         })
+    }
+}
+
+impl TryFrom<ServerStatus> for bindings::tagOPCSERVERSTATUS {
+    type Error = windows_core::Error;
+
+    fn try_from(value: ServerStatus) -> Result<Self, Self::Error> {
+        Ok(Self {
+            ftStartTime: value.start_time.into(),
+            ftCurrentTime: value.current_time.into(),
+            ftLastUpdateTime: value.last_update_time.into(),
+            dwServerState: value.server_state.into(),
+            dwGroupCount: value.group_count,
+            dwBandWidth: value.band_width,
+            wMajorVersion: value.major_version,
+            wMinorVersion: value.minor_version,
+            wBuildNumber: value.build_number,
+            szVendorInfo: PointerWriter::try_write_to(&value.vendor_info)?,
+            wReserved: 0,
+        })
+    }
+}
+
+impl From<ServerState> for bindings::tagOPCSERVERSTATE {
+    fn from(value: ServerState) -> Self {
+        match value {
+            ServerState::Running => bindings::OPC_STATUS_RUNNING,
+            ServerState::Failed => bindings::OPC_STATUS_FAILED,
+            ServerState::NoConfig => bindings::OPC_STATUS_NOCONFIG,
+            ServerState::Suspended => bindings::OPC_STATUS_SUSPENDED,
+            ServerState::Test => bindings::OPC_STATUS_TEST,
+            ServerState::CommunicationFault => bindings::OPC_STATUS_COMM_FAULT,
+        }
+    }
+}
+
+impl TryFrom<bindings::tagOPCENUMSCOPE> for EnumScope {
+    type Error = windows_core::Error;
+
+    fn try_from(value: bindings::tagOPCENUMSCOPE) -> Result<Self, Self::Error> {
+        match value {
+            bindings::OPC_ENUM_PRIVATE_CONNECTIONS => Ok(EnumScope::PrivateConnections),
+            bindings::OPC_ENUM_PUBLIC_CONNECTIONS => Ok(EnumScope::PublicConnections),
+            bindings::OPC_ENUM_ALL_CONNECTIONS => Ok(EnumScope::AllConnections),
+            bindings::OPC_ENUM_PUBLIC => Ok(EnumScope::Public),
+            bindings::OPC_ENUM_PRIVATE => Ok(EnumScope::Private),
+            bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
+            _ => Err(windows_core::Error::new(E_INVALIDARG, "Invalid EnumScope")),
+        }
     }
 }
