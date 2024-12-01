@@ -31,23 +31,17 @@ pub trait GroupTrait {
 
     fn set_client_handles(
         &self,
-        count: u32,
-        item_server_handles: *const u32,
-        handle_client: *const u32,
-        errors: *mut *mut windows_core::HRESULT,
+        items: Vec<(&u32, &u32, &mut windows_core::HRESULT)>,
     ) -> windows_core::Result<()>;
 
-    fn set_datatypes(
+    fn set_data_types(
         &self,
-        count: u32,
-        item_server_handles: *const u32,
-        requested_data_types: Option<u16>,
-        errors: *mut *mut windows_core::HRESULT,
+        items: Vec<(&u32, &u16, &mut windows_core::HRESULT)>,
     ) -> windows_core::Result<()>;
 
     fn create_enumerator(
         &self,
-        reference_interface_id: *const windows_core::GUID,
+        reference_interface_id: &u128,
     ) -> windows_core::Result<windows_core::IUnknown>;
 
     fn get_state(
