@@ -1,18 +1,9 @@
-use std::{
-    collections::BTreeMap,
-    mem::ManuallyDrop,
-    ops::Deref,
-    sync::{atomic::AtomicU32, Arc},
-};
+use std::ops::Deref;
 
-use tokio::sync::RwLock;
-use windows::Win32::{
-    Foundation::{BOOL, E_INVALIDARG, E_NOTIMPL, FILETIME, S_OK},
-    System::Com::{
-        IAdviseSink, IConnectionPoint, IConnectionPointContainer, IConnectionPointContainer_Impl,
-        IDataObject, IDataObject_Impl, IEnumConnectionPoints, IEnumFORMATETC, IEnumSTATDATA,
-        FORMATETC, STGMEDIUM,
-    },
+use windows::Win32::System::Com::{
+    IAdviseSink, IConnectionPoint, IConnectionPointContainer, IConnectionPointContainer_Impl,
+    IDataObject, IDataObject_Impl, IEnumConnectionPoints, IEnumFORMATETC, IEnumSTATDATA, FORMATETC,
+    STGMEDIUM,
 };
 use windows_core::implement;
 
@@ -74,7 +65,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemMgt_Impl for Group_Impl<T> {
     fn RemoveItems(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
     }
@@ -82,7 +73,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemMgt_Impl for Group_Impl<T> {
     fn SetActiveState(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         active: windows::Win32::Foundation::BOOL,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -91,7 +82,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemMgt_Impl for Group_Impl<T> {
     fn SetClientHandles(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         handle_client: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -100,7 +91,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemMgt_Impl for Group_Impl<T> {
     fn SetDatatypes(
         &self,
         count: u32,
-        _handle_server: *const u32,
+        _item_server_handle: *const u32,
         _requested_data_types: *const u16,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -125,8 +116,8 @@ impl<T: GroupTrait + 'static> bindings::IOPCGroupStateMgt_Impl for Group_Impl<T>
         timebias: *mut i32,
         percent_deadband: *mut f32,
         locale_id: *mut u32,
-        handle_client_group: *mut u32,
-        handle_server_group: *mut u32,
+        group_client_handle: *mut u32,
+        item_server_handle_group: *mut u32,
     ) -> windows_core::Result<()> {
     }
 
@@ -138,7 +129,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCGroupStateMgt_Impl for Group_Impl<T>
         _timebias: *const i32,
         _percent_deadband: *const f32,
         _locale_id: *const u32,
-        _handle_client_group: *const u32,
+        _group_client_handle: *const u32,
     ) -> windows_core::Result<()> {
     }
 
@@ -178,7 +169,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCSyncIO_Impl for Group_Impl<T> {
         &self,
         _source: bindings::tagOPCDATASOURCE,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         item_values: *mut *mut bindings::tagOPCITEMSTATE,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -187,7 +178,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCSyncIO_Impl for Group_Impl<T> {
     fn Write(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         item_values: *const windows_core::VARIANT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -201,7 +192,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCSyncIO2_Impl for Group_Impl<T> {
     fn ReadMaxAge(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         _max_age: *const u32,
         values: *mut *mut windows_core::VARIANT,
         qualities: *mut *mut u16,
@@ -213,7 +204,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCSyncIO2_Impl for Group_Impl<T> {
     fn WriteVQT(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         item_vqt: *const bindings::tagOPCITEMVQT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -227,7 +218,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO2_Impl for Group_Impl<T> {
     fn Read(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         _transaction_id: u32,
         _cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
@@ -237,7 +228,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO2_Impl for Group_Impl<T> {
     fn Write(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         item_values: *const windows_core::VARIANT,
         _transaction_id: u32,
         _cancel_id: *mut u32,
@@ -266,7 +257,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO3_Impl for Group_Impl<T> {
     fn ReadMaxAge(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         _max_age: *const u32,
         _transaction_id: u32,
         _cancel_id: *mut u32,
@@ -277,7 +268,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO3_Impl for Group_Impl<T> {
     fn WriteVQT(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         item_vqt: *const bindings::tagOPCITEMVQT,
         transaction_id: u32,
         cancel_id: *mut u32,
@@ -295,7 +286,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemDeadbandMgt_Impl for Group_Impl<
     fn SetItemDeadband(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         percent_deadband: *const f32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -304,7 +295,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemDeadbandMgt_Impl for Group_Impl<
     fn GetItemDeadband(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         percent_deadband: *mut *mut f32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -313,7 +304,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemDeadbandMgt_Impl for Group_Impl<
     fn ClearItemDeadband(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
     }
@@ -326,7 +317,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemSamplingMgt_Impl for Group_Impl<
     fn SetItemSamplingRate(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         requested_sampling_rate: *const u32,
         revised_sampling_rate: *mut *mut u32,
         errors: *mut *mut windows_core::HRESULT,
@@ -336,7 +327,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemSamplingMgt_Impl for Group_Impl<
     fn GetItemSamplingRate(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         sampling_rate: *mut *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -345,7 +336,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemSamplingMgt_Impl for Group_Impl<
     fn ClearItemSamplingRate(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
     }
@@ -353,7 +344,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemSamplingMgt_Impl for Group_Impl<
     fn SetItemBufferEnable(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         penable: *const windows::Win32::Foundation::BOOL,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -362,7 +353,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCItemSamplingMgt_Impl for Group_Impl<
     fn GetItemBufferEnable(
         &self,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         enable: *mut *mut windows::Win32::Foundation::BOOL,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -391,7 +382,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO_Impl for Group_Impl<T> {
         connection: u32,
         source: bindings::tagOPCDATASOURCE,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         transaction_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
@@ -401,7 +392,7 @@ impl<T: GroupTrait + 'static> bindings::IOPCAsyncIO_Impl for Group_Impl<T> {
         &self,
         connection: u32,
         count: u32,
-        handle_server: *const u32,
+        item_server_handle: *const u32,
         item_values: *const windows_core::VARIANT,
         transaction_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,

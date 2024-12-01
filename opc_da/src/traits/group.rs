@@ -2,52 +2,45 @@ use windows::Win32::System::Com::{
     IAdviseSink, IConnectionPoint, IEnumConnectionPoints, IEnumFORMATETC, IEnumSTATDATA,
 };
 
+use crate::com::base::Variant;
+
 use super::def::*;
 
 pub trait GroupTrait {
     fn add_items(
         &self,
-        count: u32,
-        item_array: *const bindings::tagOPCITEMDEF,
-        results: *mut *mut bindings::tagOPCITEMRESULT,
-        errors: *mut *mut windows_core::HRESULT,
+        items: Vec<(&ItemDef, &mut ItemResult, &mut windows_core::HRESULT)>,
     ) -> windows_core::Result<()>;
 
     fn validate_items(
         &self,
-        count: u32,
-        item_array: *const bindings::tagOPCITEMDEF,
+        items: Vec<(&ItemDef, &mut ItemResult, &mut windows_core::HRESULT)>,
         blob_update: bool,
-        validation_results: *mut *mut bindings::tagOPCITEMRESULT,
-        errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn remove_items(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
-    ) -> windows_core::Result<Vec<windows_core::HRESULT>>;
+        items: Vec<(&u32, &mut windows_core::HRESULT)>,
+    ) -> windows_core::Result<()>;
 
     fn set_active_state(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        items: Vec<(&u32, &mut windows_core::HRESULT)>,
         active: bool,
-        errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn set_client_handles(
         &self,
         count: u32,
-        handle_server: Option<u32>,
-        handle_client: Option<u32>,
+        item_server_handles: *const u32,
+        handle_client: *const u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn set_datatypes(
         &self,
         count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: *const u32,
         requested_data_types: Option<u16>,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
@@ -65,8 +58,8 @@ pub trait GroupTrait {
         timebias: *mut i32,
         percent_deadband: *mut f32,
         locale_id: *mut u32,
-        handle_client_group: *mut u32,
-        handle_server_group: *mut u32,
+        group_client_handle: *mut u32,
+        item_server_handles_group: *mut u32,
     ) -> windows_core::Result<()>;
 
     fn set_state(
@@ -74,10 +67,10 @@ pub trait GroupTrait {
         requested_update_rate: Option<u32>,
         revised_update_rate: *mut u32,
         active: Option<bool>,
-        timebias: *const i32,
-        percent_deadband: *const f32,
+        timebias: Option<i32>,
+        percent_deadband: Option<f32>,
         locale_id: Option<u32>,
-        handle_client_group: Option<u32>,
+        group_client_handle: Option<u32>,
     ) -> windows_core::Result<()>;
 
     fn set_name(&self, name: String) -> windows_core::Result<()>;
@@ -85,7 +78,7 @@ pub trait GroupTrait {
     fn clone_group(
         &self,
         name: String,
-        reference_interface_id: *const windows_core::GUID,
+        reference_interface_id: Option<u128>,
     ) -> windows_core::Result<windows_core::IUnknown>;
 
     fn set_keep_alive(&self, keep_alive_time: u32) -> windows_core::Result<u32>;
@@ -98,26 +91,23 @@ pub trait GroupTrait {
 
     fn read(
         &self,
-        source: bindings::tagOPCDATASOURCE,
-        count: u32,
-        handle_server: Option<u32>,
-        item_values: *mut *mut bindings::tagOPCITEMSTATE,
+        source: DataSource,
+        item_server_handles: Vec<u32>,
+        item_values: *mut *mut ItemState,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn write(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
-        item_values: *const windows_core::VARIANT,
+        item_server_handles: Vec<u32>,
+        item_values: Vec<Variant>,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn read_max_age(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
-        max_age: Option<u32>,
+        item_server_handles: Vec<u32>,
+        max_age: Vec<u32>,
         values: *mut *mut windows_core::VARIANT,
         qualities: *mut *mut u16,
         timestamps: *mut *mut windows::Win32::Foundation::FILETIME,
@@ -127,15 +117,14 @@ pub trait GroupTrait {
     fn write_vqt(
         &self,
         count: u32,
-        handle_server: Option<u32>,
-        item_vqt: *const bindings::tagOPCITEMVQT,
+        item_server_handles: Option<u32>,
+        item_vqt: Option<ItemVqt>,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn read2(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         transaction_id: u32,
         cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
@@ -144,18 +133,14 @@ pub trait GroupTrait {
     fn write2(
         &self,
         count: u32,
-        handle_server: Option<u32>,
-        item_values: *const windows_core::VARIANT,
+        item_server_handles: Vec<u32>,
+        item_values: Vec<Variant>,
         transaction_id: u32,
         cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
-    fn refresh2(
-        &self,
-        source: bindings::tagOPCDATASOURCE,
-        transaction_id: u32,
-    ) -> windows_core::Result<u32>;
+    fn refresh2(&self, source: DataSource, transaction_id: u32) -> windows_core::Result<u32>;
 
     fn cancel2(&self, cancel_id: u32) -> windows_core::Result<()>;
 
@@ -165,9 +150,8 @@ pub trait GroupTrait {
 
     fn read_max_age2(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
-        max_age: Option<u32>,
+        item_server_handles: Vec<u32>,
+        max_age: Vec<u32>,
         transaction_id: u32,
         cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
@@ -175,9 +159,8 @@ pub trait GroupTrait {
 
     fn write_vqt2(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
-        item_vqt: *const bindings::tagOPCITEMVQT,
+        item_server_handles: Vec<u32>,
+        item_vqt: Vec<ItemVqt>,
         transaction_id: u32,
         cancel_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
@@ -187,31 +170,28 @@ pub trait GroupTrait {
 
     fn set_item_deadband(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
-        percent_deadband: *const f32,
+        item_server_handles: Vec<u32>,
+        percent_deadband: Vec<f32>,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn get_item_deadband(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         percent_deadband: *mut *mut f32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn clear_item_deadband(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn set_item_sampling_rate(
         &self,
         count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         requested_sampling_rate: Option<u32>,
         revised_sampling_rate: *mut *mut u32,
         errors: *mut *mut windows_core::HRESULT,
@@ -219,31 +199,27 @@ pub trait GroupTrait {
 
     fn get_item_sampling_rate(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         sampling_rate: *mut *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn clear_item_sampling_rate(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn set_item_buffer_enable(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         penable: Option<bool>,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
 
     fn get_item_buffer_enable(
         &self,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         enable: *mut *mut bool,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
@@ -252,15 +228,14 @@ pub trait GroupTrait {
 
     fn find_connection_point(
         &self,
-        reference_interface_id: *const windows_core::GUID,
+        reference_interface_id: Option<u128>,
     ) -> windows_core::Result<IConnectionPoint>;
 
     fn read3(
         &self,
         connection: u32,
         source: DataSource,
-        count: u32,
-        handle_server: Option<u32>,
+        item_server_handles: Vec<u32>,
         transaction_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;
@@ -268,9 +243,8 @@ pub trait GroupTrait {
     fn write3(
         &self,
         connection: u32,
-        count: u32,
-        handle_server: *const u32,
-        item_values: *const windows_core::VARIANT,
+        item_server_handles: Vec<u32>,
+        item_values: Vec<Variant>,
         transaction_id: *mut u32,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()>;

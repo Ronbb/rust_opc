@@ -86,7 +86,7 @@ pub struct Vqt {
     pub timestamp: SystemTime,
 }
 
-pub struct OptionalVqt {
+pub struct ItemVqt {
     pub value: Variant,
     pub quality: Option<u16>,
     pub timestamp: Option<SystemTime>,
@@ -101,7 +101,7 @@ pub struct VqtWithError {
 
 pub struct ItemOptionalVqt {
     pub item_id: String,
-    pub optional_vqt: OptionalVqt,
+    pub optional_vqt: ItemVqt,
 }
 
 pub struct GroupInfo {
@@ -145,7 +145,16 @@ pub struct FormatEtc {}
 
 pub struct StorageMedium {}
 
-pub struct DataSource {}
+pub enum DataSource {
+    Cache,
+    Device,
+}
+
+pub struct ItemDef {}
+
+pub struct ItemResult {}
+
+pub struct ItemState {}
 
 impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
     type Error = windows_core::Error;
@@ -313,11 +322,11 @@ impl From<BrowseType> for opc_da_bindings::tagOPCBROWSETYPE {
     }
 }
 
-impl TryFrom<bindings::tagOPCITEMVQT> for OptionalVqt {
+impl TryFrom<bindings::tagOPCITEMVQT> for ItemVqt {
     type Error = windows_core::Error;
 
     fn try_from(value: bindings::tagOPCITEMVQT) -> Result<Self, Self::Error> {
-        Ok(OptionalVqt {
+        Ok(ItemVqt {
             value: value.vDataValue.as_raw().clone().into(),
             quality: if value.bQualitySpecified.as_bool() {
                 Some(value.wQuality)
