@@ -1,8 +1,11 @@
 use std::ops::Deref;
 
-use windows::Win32::System::Com::{
-    IConnectionPoint, IConnectionPointContainer, IConnectionPointContainer_Impl,
-    IEnumConnectionPoints,
+use windows::Win32::{
+    Foundation::E_INVALIDARG,
+    System::Com::{
+        IConnectionPoint, IConnectionPointContainer, IConnectionPointContainer_Impl,
+        IEnumConnectionPoints,
+    },
 };
 use windows_core::{implement, ComObjectInner, PWSTR};
 
@@ -92,7 +95,11 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
     ) -> windows_core::Result<windows_core::IUnknown> {
         self.get_group_by_name(
             unsafe { name.to_string() }?,
-            unsafe { reference_interface_id.as_ref() }.map(|id| id.to_u128()),
+            if reference_interface_id.is_null() {
+                None
+            } else {
+                Some(unsafe { *reference_interface_id }.to_u128())
+            },
         )
     }
 
@@ -385,6 +392,13 @@ impl<T: ServerTrait + 'static> bindings::IOPCServerPublicGroups_Impl for Server_
         name: &windows_core::PCWSTR,
         reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
+        if reference_interface_id.is_null() {
+            return Err(windows_core::Error::new(
+                E_INVALIDARG,
+                "Null reference_interface_id",
+            ));
+        }
+
         self.get_public_group_by_name(
             unsafe { name.to_string() }?,
             unsafe { *reference_interface_id }.to_u128(),

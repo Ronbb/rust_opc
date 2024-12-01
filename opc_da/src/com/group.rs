@@ -14,13 +14,11 @@ use windows::Win32::{
         FORMATETC, STGMEDIUM,
     },
 };
-use windows_core::{implement, ComObjectInner, VARIANT};
+use windows_core::implement;
 
 use crate::traits::GroupTrait;
 
-use super::base::{Core, Quality};
-
-use super::{bindings, enumeration::ItemAttributesEnumerator, item::Item};
+use super::bindings;
 
 #[implement(
     // implicit implement IUnknown

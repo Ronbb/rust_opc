@@ -47,10 +47,10 @@ pub trait ServerTrait {
     /// Implements the `IOPCCommon::SetClientName` method.  
     ///  
     /// # Arguments  
-    /// * `name` - The client application name (must not be empty and should be reasonable length)  
+    /// * `name` - The client application name
     ///  
     /// # Returns  
-    /// An error if the name is empty or exceeds maximum length  
+    /// An error if the operation fails
     fn set_client_name(&self, name: String) -> windows_core::Result<()>;
 
     /// Returns the name of the client application.
