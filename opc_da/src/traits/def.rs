@@ -1,7 +1,3 @@
-use core::mem::ManuallyDrop;
-
-use windows::Win32::Foundation::E_INVALIDARG;
-
 use crate::com::{
     base::{SystemTime, Variant},
     utils::{PointerWriter, TryWriteArray, TryWriteTo},
@@ -195,7 +191,7 @@ impl TryFrom<ItemProperty> for opc_da_bindings::tagOPCITEMPROPERTY {
             dwPropertyID: value.property_id,
             szItemID: PointerWriter::try_write_to(&value.item_id)?,
             szDescription: PointerWriter::try_write_to(&value.description)?,
-            vValue: ManuallyDrop::new(value.value.into()),
+            vValue: core::mem::ManuallyDrop::new(value.value.into()),
             hrErrorID: value.error_id,
             dwReserved: 0,
         })
@@ -221,7 +217,7 @@ impl TryFrom<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
             opc_da_bindings::OPC_BROWSE_FILTER_BRANCHES => Ok(BrowseFilter::Branches),
             opc_da_bindings::OPC_BROWSE_FILTER_ITEMS => Ok(BrowseFilter::Items),
             _ => Err(windows_core::Error::new(
-                E_INVALIDARG,
+                windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid BrowseFilter",
             )),
         }
@@ -259,7 +255,7 @@ impl TryFrom<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
             opc_da_bindings::OPC_NS_FLAT => Ok(NamespaceType::Flat),
             opc_da_bindings::OPC_NS_HIERARCHIAL => Ok(NamespaceType::Hierarchical),
             _ => Err(windows_core::Error::new(
-                E_INVALIDARG,
+                windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid NamespaceType",
             )),
         }
@@ -277,7 +273,7 @@ impl TryFrom<(opc_da_bindings::tagOPCBROWSEDIRECTION, String)> for BrowseDirecti
             (opc_da_bindings::OPC_BROWSE_DOWN, _) => Ok(BrowseDirection::Down),
             (opc_da_bindings::OPC_BROWSE_TO, name) => Ok(BrowseDirection::To(name)),
             _ => Err(windows_core::Error::new(
-                E_INVALIDARG,
+                windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid BrowseDirection",
             )),
         }
@@ -303,7 +299,7 @@ impl TryFrom<opc_da_bindings::tagOPCBROWSETYPE> for BrowseType {
             opc_da_bindings::OPC_LEAF => Ok(BrowseType::Leaf),
             opc_da_bindings::OPC_FLAT => Ok(BrowseType::Flat),
             _ => Err(windows_core::Error::new(
-                E_INVALIDARG,
+                windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid BrowseFilter",
             )),
         }
@@ -384,7 +380,10 @@ impl TryFrom<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
             opc_da_bindings::OPC_ENUM_PUBLIC => Ok(EnumScope::Public),
             opc_da_bindings::OPC_ENUM_PRIVATE => Ok(EnumScope::Private),
             opc_da_bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
-            _ => Err(windows_core::Error::new(E_INVALIDARG, "Invalid EnumScope")),
+            _ => Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "Invalid EnumScope",
+            )),
         }
     }
 }

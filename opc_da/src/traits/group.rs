@@ -295,6 +295,15 @@ pub trait GroupTrait {
         direction: u32,
     ) -> windows_core::Result<windows::Win32::System::Com::IEnumFORMATETC>;
 
+    /// Establishes an advisory connection.  
+    ///  
+    /// # Arguments  
+    /// * `sink` - The sink interface. If None, any existing connection will be removed.  
+    ///  
+    /// # Returns  
+    /// * The connection token if sink is Some and connection is established  
+    /// * Ok(0) if sink is None (indicating no connection)  
+    /// * An error if the operation fails  
     fn data_advise(
         &self,
         format_etc_in: &windows::Win32::System::Com::FORMATETC,

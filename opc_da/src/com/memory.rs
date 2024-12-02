@@ -66,7 +66,11 @@ impl<P> FreeRaw for *mut *mut P {
     #[inline(always)]
     fn free_raw(self) {
         unsafe {
-            CoTaskMemAlloc(self as usize);
+            windows::Win32::System::Com::CoTaskMemFree(if self.is_null() {
+                None
+            } else {
+                Some(*self as _)
+            });
         }
     }
 }

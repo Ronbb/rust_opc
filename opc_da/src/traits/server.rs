@@ -59,7 +59,7 @@ pub trait ServerTrait {
     ///
     /// # Returns
     ///
-    /// A list of connection points
+    /// A result containing a vector of connection points
     fn enum_connection_points(
         &self,
     ) -> windows_core::Result<Vec<windows::Win32::System::Com::IConnectionPoint>>;

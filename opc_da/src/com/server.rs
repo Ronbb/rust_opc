@@ -143,9 +143,15 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCCommon_Impl for Server_Impl<
         &self,
         error: windows_core::HRESULT,
     ) -> windows_core::Result<windows_core::PWSTR> {
-        let s = self.get_error_string(error.0)?;
+        let s = self.get_error_string(error.0).map_err(|e| {
+            // Map internal errors to appropriate COM errors
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, e.to_string())
+        })?;
         let mut out = windows_core::PWSTR::null();
-        PointerWriter::try_write_into(&s, &mut out)?;
+        PointerWriter::try_write_into(&s, &mut out).map_err(|e| {
+            // Handle allocation failures
+            windows_core::Error::new(windows::Win32::Foundation::E_OUTOFMEMORY, e.to_string())
+        })?;
         Ok(out)
     }
 
