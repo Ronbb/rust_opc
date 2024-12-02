@@ -1,4 +1,4 @@
-use super::bindings::{
+use opc_da_bindings::{
     CATID_OPCDAServer10, CATID_OPCDAServer20, CATID_OPCDAServer30, IOPCServerList,
 };
 use windows::Win32::System::Com::{

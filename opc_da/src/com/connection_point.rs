@@ -1,17 +1,16 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, mem::ManuallyDrop};
 
 use windows::Win32::System::Com::{
     IConnectionPoint, IConnectionPointContainer, IConnectionPoint_Impl, IEnumConnections,
 };
-use windows_core::{implement, ComObjectInner};
 
 use super::enumeration::ConnectionsEnumerator;
 
-#[implement(IConnectionPoint)]
+#[windows_core::implement(IConnectionPoint)]
 pub struct ConnectionPoint {
     container: IConnectionPointContainer,
     interface_id: windows_core::GUID,
-    next_cookie: std::sync::atomic::AtomicU32,
+    next_cookie: core::sync::atomic::AtomicU32,
     connections: tokio::sync::RwLock<BTreeMap<u32, windows_core::IUnknown>>,
 }
 
@@ -23,7 +22,7 @@ impl ConnectionPoint {
         ConnectionPoint {
             container,
             interface_id,
-            next_cookie: std::sync::atomic::AtomicU32::new(0),
+            next_cookie: core::sync::atomic::AtomicU32::new(0),
             connections: tokio::sync::RwLock::new(BTreeMap::new()),
         }
     }
@@ -41,7 +40,7 @@ impl IConnectionPoint_Impl for ConnectionPoint_Impl {
     fn Advise(&self, sink: Option<&windows_core::IUnknown>) -> windows_core::Result<u32> {
         let cookie = self
             .next_cookie
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            .fetch_add(1, core::sync::atomic::Ordering::SeqCst);
         self.connections
             .blocking_write()
             .insert(cookie, sink.unwrap().clone());
@@ -55,9 +54,17 @@ impl IConnectionPoint_Impl for ConnectionPoint_Impl {
 
     fn EnumConnections(&self) -> windows_core::Result<IEnumConnections> {
         Ok(
-            ConnectionsEnumerator::from_map(self.connections.blocking_read().clone())
-                .into_object()
-                .into_interface(),
+            windows_core::ComObjectInner::into_object(ConnectionsEnumerator::new(
+                self.connections
+                    .blocking_read()
+                    .iter()
+                    .map(|(k, v)| windows::Win32::System::Com::CONNECTDATA {
+                        pUnk: ManuallyDrop::new(Some(v.clone())),
+                        dwCookie: *k,
+                    })
+                    .collect(),
+            ))
+            .into_interface(),
         )
     }
 }
