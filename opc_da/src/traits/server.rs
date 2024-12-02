@@ -159,6 +159,7 @@ pub trait ServerTrait {
     ///
     /// # Returns
     /// The browse result
+    #[allow(clippy::too_many_arguments)]
     fn browse(
         &self,
         item_id: String,
@@ -214,6 +215,7 @@ pub trait ServerTrait {
         items: Vec<ItemOptionalVqt>,
     ) -> windows_core::Result<Vec<windows_core::HRESULT>>;
 
+    #[allow(clippy::too_many_arguments)]
     fn add_group(
         &self,
         name: String,

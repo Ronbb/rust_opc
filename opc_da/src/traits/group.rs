@@ -1,283 +1,308 @@
-use windows::Win32::System::Com::{
-    IAdviseSink, IConnectionPoint, IEnumConnectionPoints, IEnumFORMATETC, IEnumSTATDATA,
-};
-
-use crate::com::base::Variant;
-
-use super::def::*;
-
 pub trait GroupTrait {
     fn add_items(
         &self,
-        items: Vec<(&ItemDef, &mut ItemResult, &mut windows_core::HRESULT)>,
+        items: &[opc_da_bindings::tagOPCITEMDEF],
+        results: &mut [opc_da_bindings::tagOPCITEMRESULT],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn validate_items(
         &self,
-        items: Vec<(&ItemDef, &mut ItemResult, &mut windows_core::HRESULT)>,
-        blob_update: bool,
+        items: &[opc_da_bindings::tagOPCITEMDEF],
+        blob_update: windows::Win32::Foundation::BOOL,
+        validation_results: &mut [opc_da_bindings::tagOPCITEMRESULT],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn remove_items(
         &self,
-        items: Vec<(&u32, &mut windows_core::HRESULT)>,
+        item_server_handles: &[u32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn set_active_state(
         &self,
-        items: Vec<(&u32, &mut windows_core::HRESULT)>,
-        active: bool,
+        item_server_handles: &[u32],
+        active: windows::Win32::Foundation::BOOL,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn set_client_handles(
         &self,
-        items: Vec<(&u32, &u32, &mut windows_core::HRESULT)>,
+        item_server_handles: &[u32],
+        handle_client: &[u32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn set_data_types(
         &self,
-        items: Vec<(&u32, &u16, &mut windows_core::HRESULT)>,
+        item_server_handles: &[u32],
+        requested_data_types: &[u16],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn create_enumerator(
         &self,
-        reference_interface_id: &u128,
+        reference_interface_id: &windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown>;
 
+    #[allow(clippy::too_many_arguments)]
     fn get_state(
         &self,
-        update_rate: *mut u32,
-        active: *mut bool,
-        name: *mut windows_core::PWSTR,
-        timebias: *mut i32,
-        percent_deadband: *mut f32,
-        locale_id: *mut u32,
-        group_client_handle: *mut u32,
-        item_server_handles_group: *mut u32,
+        update_rate: &mut u32,
+        active: &mut windows::Win32::Foundation::BOOL,
+        name: &mut windows_core::PWSTR,
+        time_bias: &mut i32,
+        percent_deadband: &mut f32,
+        locale_id: &mut u32,
+        group_client_handle: &mut u32,
+        item_server_handles_group: &mut u32,
     ) -> windows_core::Result<()>;
 
+    #[allow(clippy::too_many_arguments)]
     fn set_state(
         &self,
-        requested_update_rate: Option<u32>,
-        revised_update_rate: *mut u32,
-        active: Option<bool>,
-        timebias: Option<i32>,
-        percent_deadband: Option<f32>,
-        locale_id: Option<u32>,
-        group_client_handle: Option<u32>,
+        requested_update_rate: &u32,
+        revised_update_rate: &mut u32,
+        active: &windows::Win32::Foundation::BOOL,
+        time_bias: &i32,
+        percent_deadband: &f32,
+        locale_id: &u32,
+        group_client_handle: &u32,
     ) -> windows_core::Result<()>;
 
-    fn set_name(&self, name: String) -> windows_core::Result<()>;
+    fn set_name(&self, name: &windows_core::PCWSTR) -> windows_core::Result<()>;
 
     fn clone_group(
         &self,
-        name: String,
-        reference_interface_id: Option<u128>,
+        name: &windows_core::PCWSTR,
+        reference_interface_id: &windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown>;
 
     fn set_keep_alive(&self, keep_alive_time: u32) -> windows_core::Result<u32>;
 
     fn get_keep_alive(&self) -> windows_core::Result<u32>;
 
-    fn get_state2(&self) -> windows_core::Result<bool>;
+    fn get_public_group_state(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL>;
 
     fn move_to_public(&self) -> windows_core::Result<()>;
 
     fn read(
         &self,
-        source: DataSource,
-        item_server_handles: Vec<u32>,
-        item_values: *mut *mut ItemState,
-        errors: *mut *mut windows_core::HRESULT,
+        source: opc_da_bindings::tagOPCDATASOURCE,
+        item_server_handles: &[u32],
+        item_values: &mut [opc_da_bindings::tagOPCITEMSTATE],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn write(
         &self,
-        item_server_handles: Vec<u32>,
-        item_values: Vec<Variant>,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        item_values: &[windows_core::VARIANT],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn read_max_age(
         &self,
-        item_server_handles: Vec<u32>,
-        max_age: Vec<u32>,
-        values: *mut *mut windows_core::VARIANT,
-        qualities: *mut *mut u16,
-        timestamps: *mut *mut windows::Win32::Foundation::FILETIME,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        max_age: &[u32],
+        values: &mut [windows_core::VARIANT],
+        qualities: &mut [u16],
+        timestamps: &mut [windows::Win32::Foundation::FILETIME],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn write_vqt(
         &self,
         count: u32,
-        item_server_handles: Option<u32>,
-        item_vqt: Option<ItemVqt>,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        item_vqt: &[opc_da_bindings::tagOPCITEMVQT],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn read2(
         &self,
-        item_server_handles: Vec<u32>,
+        item_server_handles: &[u32],
         transaction_id: u32,
-        cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        cancel_id: &mut u32,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn write2(
         &self,
         count: u32,
-        item_server_handles: Vec<u32>,
-        item_values: Vec<Variant>,
+        item_server_handles: &[u32],
+        item_values: &[windows_core::VARIANT],
         transaction_id: u32,
-        cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        cancel_id: &mut u32,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
-    fn refresh2(&self, source: DataSource, transaction_id: u32) -> windows_core::Result<u32>;
+    fn refresh2(
+        &self,
+        source: opc_da_bindings::tagOPCDATASOURCE,
+        transaction_id: u32,
+    ) -> windows_core::Result<u32>;
 
     fn cancel2(&self, cancel_id: u32) -> windows_core::Result<()>;
 
-    fn set_enable(&self, enable: bool) -> windows_core::Result<()>;
+    fn set_enable(&self, enable: windows::Win32::Foundation::BOOL) -> windows_core::Result<()>;
 
-    fn get_enable(&self) -> windows_core::Result<bool>;
+    fn get_enable(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL>;
 
     fn read_max_age2(
         &self,
-        item_server_handles: Vec<u32>,
-        max_age: Vec<u32>,
+        item_server_handles: &[u32],
+        max_age: &[u32],
         transaction_id: u32,
-        cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        cancel_id: &mut u32,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn write_vqt2(
         &self,
-        item_server_handles: Vec<u32>,
-        item_vqt: Vec<ItemVqt>,
+        item_server_handles: &[u32],
+        item_vqt: &[opc_da_bindings::tagOPCITEMVQT],
         transaction_id: u32,
-        cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        cancel_id: &mut u32,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn refresh_max_age(&self, max_age: u32, transaction_id: u32) -> windows_core::Result<u32>;
 
     fn set_item_deadband(
         &self,
-        item_server_handles: Vec<u32>,
-        percent_deadband: Vec<f32>,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        percent_deadband: &[f32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn get_item_deadband(
         &self,
-        item_server_handles: Vec<u32>,
-        percent_deadband: *mut *mut f32,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        percent_deadband: &mut [f32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn clear_item_deadband(
         &self,
-        item_server_handles: Vec<u32>,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn set_item_sampling_rate(
         &self,
         count: u32,
-        item_server_handles: Vec<u32>,
-        requested_sampling_rate: Option<u32>,
-        revised_sampling_rate: *mut *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        requested_sampling_rate: &[u32],
+        revised_sampling_rate: &mut [u32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn get_item_sampling_rate(
         &self,
-        item_server_handles: Vec<u32>,
-        sampling_rate: *mut *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        sampling_rate: &mut [u32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn clear_item_sampling_rate(
         &self,
-        item_server_handles: Vec<u32>,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn set_item_buffer_enable(
         &self,
-        item_server_handles: Vec<u32>,
-        penable: Option<bool>,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        penable: &windows::Win32::Foundation::BOOL,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn get_item_buffer_enable(
         &self,
-        item_server_handles: Vec<u32>,
-        enable: *mut *mut bool,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        enable: &mut [windows::Win32::Foundation::BOOL],
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
-    fn enum_connection_points(&self) -> windows_core::Result<IEnumConnectionPoints>;
+    fn enum_connection_points(
+        &self,
+    ) -> windows_core::Result<windows::Win32::System::Com::IEnumConnectionPoints>;
 
     fn find_connection_point(
         &self,
-        reference_interface_id: Option<u128>,
-    ) -> windows_core::Result<IConnectionPoint>;
+        reference_interface_id: &windows_core::GUID,
+    ) -> windows_core::Result<windows::Win32::System::Com::IConnectionPoint>;
 
     fn read3(
         &self,
         connection: u32,
-        source: DataSource,
-        item_server_handles: Vec<u32>,
-        transaction_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        source: opc_da_bindings::tagOPCDATASOURCE,
+        item_server_handles: &[u32],
+        transaction_id: &mut u32,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
     fn write3(
         &self,
         connection: u32,
-        item_server_handles: Vec<u32>,
-        item_values: Vec<Variant>,
-        transaction_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
+        item_server_handles: &[u32],
+        item_values: &[windows_core::VARIANT],
+        transaction_id: &mut u32,
+        errors: &mut [windows_core::HRESULT],
     ) -> windows_core::Result<()>;
 
-    fn refresh(&self, connection: u32, source: DataSource) -> windows_core::Result<u32>;
+    fn refresh(
+        &self,
+        connection: u32,
+        source: opc_da_bindings::tagOPCDATASOURCE,
+    ) -> windows_core::Result<u32>;
 
     fn cancel(&self, transaction_id: u32) -> windows_core::Result<()>;
 
-    fn get_data(&self, format_etc_in: Option<FormatEtc>) -> windows_core::Result<StorageMedium>;
+    fn get_data(
+        &self,
+        format_etc_in: &windows::Win32::System::Com::FORMATETC,
+    ) -> windows_core::Result<windows::Win32::System::Com::STGMEDIUM>;
 
     fn get_data_here(
         &self,
-        format_etc_in: Option<FormatEtc>,
-    ) -> windows_core::Result<StorageMedium>;
+        format_etc_in: &windows::Win32::System::Com::FORMATETC,
+        storage_medium: &mut windows::Win32::System::Com::STGMEDIUM,
+    ) -> windows_core::Result<()>;
 
-    fn query_get_data(&self, format_etc_in: Option<FormatEtc>) -> windows_core::HRESULT;
+    fn query_get_data(
+        &self,
+        format_etc_in: &windows::Win32::System::Com::FORMATETC,
+    ) -> windows_core::HRESULT;
 
     fn get_canonical_format_etc(
         &self,
-        format_etc_in: Option<FormatEtc>,
-    ) -> windows_core::Result<FormatEtc>;
+        format_etc_in: &windows::Win32::System::Com::FORMATETC,
+        format_etc_out: &mut windows::Win32::System::Com::FORMATETC,
+    ) -> windows_core::HRESULT;
 
     fn set_data(
         &self,
-        format_etc_in: Option<FormatEtc>,
-        medium: Option<StorageMedium>,
-        release: bool,
+        format_etc_in: &windows::Win32::System::Com::FORMATETC,
+        medium: &windows::Win32::System::Com::STGMEDIUM,
+        release: windows::Win32::Foundation::BOOL,
     ) -> windows_core::Result<()>;
 
-    fn enum_format_etc(&self, direction: u32) -> windows_core::Result<IEnumFORMATETC>;
+    fn enum_format_etc(
+        &self,
+        direction: u32,
+    ) -> windows_core::Result<windows::Win32::System::Com::IEnumFORMATETC>;
 
     fn data_advise(
         &self,
-        format_etc_in: Option<FormatEtc>,
+        format_etc_in: &windows::Win32::System::Com::FORMATETC,
         adv: u32,
-        sink: Option<&IAdviseSink>,
+        sink: Option<&windows::Win32::System::Com::IAdviseSink>,
     ) -> windows_core::Result<u32>;
 
     fn data_unadvise(&self, connection: u32) -> windows_core::Result<()>;
 
-    fn enum_data_advise(&self) -> windows_core::Result<IEnumSTATDATA>;
+    fn enum_data_advise(&self) -> windows_core::Result<windows::Win32::System::Com::IEnumSTATDATA>;
 }

@@ -6,7 +6,7 @@ use windows_core::{BSTR, VARIANT};
 
 use super::base::{AccessRight, Quality, SystemTime, Variant};
 
-use super::bindings;
+use opc_da_bindings;
 
 impl Variant {
     // get type id
@@ -41,10 +41,10 @@ impl AccessRight {
     pub fn to_u32(&self) -> u32 {
         let mut value = 0;
         if self.readable {
-            value |= bindings::OPC_READABLE;
+            value |= opc_da_bindings::OPC_READABLE;
         }
         if self.writable {
-            value |= bindings::OPC_WRITEABLE;
+            value |= opc_da_bindings::OPC_WRITEABLE;
         }
         value
     }
@@ -139,7 +139,7 @@ impl From<SystemTime> for FILETIME {
 impl From<FILETIME> for SystemTime {
     fn from(value: FILETIME) -> Self {
         let intervals = (value.dwLowDateTime as u64) | ((value.dwHighDateTime as u64) << 32);
-        let duration = std::time::Duration::from_nanos(intervals * 100);
+        let duration = core::time::Duration::from_nanos(intervals * 100);
         SystemTime(std::time::UNIX_EPOCH + duration)
     }
 }

@@ -1,10 +1,9 @@
-use std::mem::ManuallyDrop;
+use core::mem::ManuallyDrop;
 
 use windows::Win32::Foundation::E_INVALIDARG;
 
 use crate::com::{
     base::{SystemTime, Variant},
-    bindings,
     utils::{PointerWriter, TryWriteArray, TryWriteTo},
 };
 
@@ -163,7 +162,7 @@ impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
         let result = opc_da_bindings::tagOPCITEMPROPERTIES {
             hrErrorID: value.error_id,
             dwNumProperties: value.item_properties.len() as u32,
-            pItemProperties: std::ptr::null_mut(),
+            pItemProperties: core::ptr::null_mut(),
             dwReserved: 0,
         };
 
@@ -173,11 +172,10 @@ impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
                 .into_iter()
                 .map(|item_property| match item_property.try_into() {
                     Ok(item_property) => item_property,
-                    Err(error) => {
-                        let mut result = opc_da_bindings::tagOPCITEMPROPERTY::default();
-                        result.hrErrorID = (error as windows_core::Error).code();
-                        result
-                    }
+                    Err(error) => opc_da_bindings::tagOPCITEMPROPERTY {
+                        hrErrorID: (error as windows_core::Error).code(),
+                        ..Default::default()
+                    },
                 })
                 .collect::<Vec<_>>(),
             result.pItemProperties,
@@ -322,12 +320,12 @@ impl From<BrowseType> for opc_da_bindings::tagOPCBROWSETYPE {
     }
 }
 
-impl TryFrom<bindings::tagOPCITEMVQT> for ItemVqt {
+impl TryFrom<opc_da_bindings::tagOPCITEMVQT> for ItemVqt {
     type Error = windows_core::Error;
 
-    fn try_from(value: bindings::tagOPCITEMVQT) -> Result<Self, Self::Error> {
+    fn try_from(value: opc_da_bindings::tagOPCITEMVQT) -> Result<Self, Self::Error> {
         Ok(ItemVqt {
-            value: value.vDataValue.as_raw().clone().into(),
+            value: (*value.vDataValue.as_raw()).into(),
             quality: if value.bQualitySpecified.as_bool() {
                 Some(value.wQuality)
             } else {
@@ -342,7 +340,7 @@ impl TryFrom<bindings::tagOPCITEMVQT> for ItemVqt {
     }
 }
 
-impl TryFrom<ServerStatus> for bindings::tagOPCSERVERSTATUS {
+impl TryFrom<ServerStatus> for opc_da_bindings::tagOPCSERVERSTATUS {
     type Error = windows_core::Error;
 
     fn try_from(value: ServerStatus) -> Result<Self, Self::Error> {
@@ -362,30 +360,30 @@ impl TryFrom<ServerStatus> for bindings::tagOPCSERVERSTATUS {
     }
 }
 
-impl From<ServerState> for bindings::tagOPCSERVERSTATE {
+impl From<ServerState> for opc_da_bindings::tagOPCSERVERSTATE {
     fn from(value: ServerState) -> Self {
         match value {
-            ServerState::Running => bindings::OPC_STATUS_RUNNING,
-            ServerState::Failed => bindings::OPC_STATUS_FAILED,
-            ServerState::NoConfig => bindings::OPC_STATUS_NOCONFIG,
-            ServerState::Suspended => bindings::OPC_STATUS_SUSPENDED,
-            ServerState::Test => bindings::OPC_STATUS_TEST,
-            ServerState::CommunicationFault => bindings::OPC_STATUS_COMM_FAULT,
+            ServerState::Running => opc_da_bindings::OPC_STATUS_RUNNING,
+            ServerState::Failed => opc_da_bindings::OPC_STATUS_FAILED,
+            ServerState::NoConfig => opc_da_bindings::OPC_STATUS_NOCONFIG,
+            ServerState::Suspended => opc_da_bindings::OPC_STATUS_SUSPENDED,
+            ServerState::Test => opc_da_bindings::OPC_STATUS_TEST,
+            ServerState::CommunicationFault => opc_da_bindings::OPC_STATUS_COMM_FAULT,
         }
     }
 }
 
-impl TryFrom<bindings::tagOPCENUMSCOPE> for EnumScope {
+impl TryFrom<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
     type Error = windows_core::Error;
 
-    fn try_from(value: bindings::tagOPCENUMSCOPE) -> Result<Self, Self::Error> {
+    fn try_from(value: opc_da_bindings::tagOPCENUMSCOPE) -> Result<Self, Self::Error> {
         match value {
-            bindings::OPC_ENUM_PRIVATE_CONNECTIONS => Ok(EnumScope::PrivateConnections),
-            bindings::OPC_ENUM_PUBLIC_CONNECTIONS => Ok(EnumScope::PublicConnections),
-            bindings::OPC_ENUM_ALL_CONNECTIONS => Ok(EnumScope::AllConnections),
-            bindings::OPC_ENUM_PUBLIC => Ok(EnumScope::Public),
-            bindings::OPC_ENUM_PRIVATE => Ok(EnumScope::Private),
-            bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
+            opc_da_bindings::OPC_ENUM_PRIVATE_CONNECTIONS => Ok(EnumScope::PrivateConnections),
+            opc_da_bindings::OPC_ENUM_PUBLIC_CONNECTIONS => Ok(EnumScope::PublicConnections),
+            opc_da_bindings::OPC_ENUM_ALL_CONNECTIONS => Ok(EnumScope::AllConnections),
+            opc_da_bindings::OPC_ENUM_PUBLIC => Ok(EnumScope::Public),
+            opc_da_bindings::OPC_ENUM_PRIVATE => Ok(EnumScope::Private),
+            opc_da_bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
             _ => Err(windows_core::Error::new(E_INVALIDARG, "Invalid EnumScope")),
         }
     }

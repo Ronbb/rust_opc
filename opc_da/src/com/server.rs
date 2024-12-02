@@ -1,18 +1,6 @@
-use std::ops::Deref;
-
-use windows::Win32::{
-    Foundation::E_INVALIDARG,
-    System::Com::{
-        IConnectionPoint, IConnectionPointContainer, IConnectionPointContainer_Impl,
-        IEnumConnectionPoints,
-    },
-};
-use windows_core::{implement, ComObjectInner, PWSTR};
-
 use crate::traits::{ItemOptionalVqt, ItemWithMaxAge, ServerTrait};
 
 use super::{
-    bindings,
     enumeration::{ConnectionPointsEnumerator, StringEnumerator},
     utils::{
         PointerReader, PointerWriter, TryReadArray, TryWrite, TryWriteArrayPointer, TryWriteInto,
@@ -20,22 +8,22 @@ use super::{
     },
 };
 
-#[implement(
+#[windows_core::implement(
     // implicit implement IUnknown
-    bindings::IOPCServer,
-    bindings::IOPCCommon,
-    IConnectionPointContainer,
-    bindings::IOPCItemProperties,
-    bindings::IOPCBrowse,
-    bindings::IOPCServerPublicGroups,
-    bindings::IOPCBrowseServerAddressSpace,
-    bindings::IOPCItemIO
+    opc_da_bindings::IOPCServer,
+    opc_da_bindings::IOPCCommon,
+    windows::Win32::System::Com::IConnectionPointContainer,
+    opc_da_bindings::IOPCItemProperties,
+    opc_da_bindings::IOPCBrowse,
+    opc_da_bindings::IOPCServerPublicGroups,
+    opc_da_bindings::IOPCBrowseServerAddressSpace,
+    opc_da_bindings::IOPCItemIO
 )]
 pub struct Server<T>(pub T)
 where
     T: ServerTrait + 'static;
 
-impl<T: ServerTrait + 'static> Deref for Server<T> {
+impl<T: ServerTrait + 'static> core::ops::Deref for Server<T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -46,7 +34,7 @@ impl<T: ServerTrait + 'static> Deref for Server<T> {
 // 1.0 required
 // 2.0 required
 // 3.0 required
-impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
+impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServer_Impl for Server_Impl<T> {
     fn AddGroup(
         &self,
         name: &windows_core::PCWSTR,
@@ -103,8 +91,8 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
         )
     }
 
-    fn GetStatus(&self) -> windows_core::Result<*mut bindings::tagOPCSERVERSTATUS> {
-        let status: bindings::tagOPCSERVERSTATUS = self.get_status()?.try_into()?;
+    fn GetStatus(&self) -> windows_core::Result<*mut opc_da_bindings::tagOPCSERVERSTATUS> {
+        let status: opc_da_bindings::tagOPCSERVERSTATUS = self.get_status()?.try_into()?;
         PointerWriter::try_write_to(status)
     }
 
@@ -118,7 +106,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
 
     fn CreateGroupEnumerator(
         &self,
-        scope: bindings::tagOPCENUMSCOPE,
+        scope: opc_da_bindings::tagOPCENUMSCOPE,
         reference_interface_id: *const windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
         self.create_group_enumerator(
@@ -131,7 +119,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCServer_Impl for Server_Impl<T> {
 // 1.0 N/A
 // 2.0 required
 // 3.0 required
-impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
+impl<T: ServerTrait + 'static> opc_da_bindings::IOPCCommon_Impl for Server_Impl<T> {
     fn SetLocaleID(&self, locale_id: u32) -> windows_core::Result<()> {
         self.set_locale_id(locale_id)
     }
@@ -146,7 +134,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
         locale_ids: *mut *mut u32,
     ) -> windows_core::Result<()> {
         let available_locale_ids = self.query_available_locale_ids()?;
-        PointerWriter::try_write(available_locale_ids.len() as _, count);
+        PointerWriter::try_write(available_locale_ids.len() as _, count)?;
         PointerWriter::try_write_array_pointer(&available_locale_ids, locale_ids)?;
         Ok(())
     }
@@ -156,7 +144,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
         error: windows_core::HRESULT,
     ) -> windows_core::Result<windows_core::PWSTR> {
         let s = self.get_error_string(error.0)?;
-        let mut out = PWSTR::null();
+        let mut out = windows_core::PWSTR::null();
         PointerWriter::try_write_into(&s, &mut out)?;
         Ok(out)
     }
@@ -169,19 +157,26 @@ impl<T: ServerTrait + 'static> bindings::IOPCCommon_Impl for Server_Impl<T> {
 // 1.0 N/A
 // 2.0 required
 // 3.0 required
-impl<T: ServerTrait + 'static> IConnectionPointContainer_Impl for Server_Impl<T> {
-    fn EnumConnectionPoints(&self) -> windows_core::Result<IEnumConnectionPoints> {
+impl<T: ServerTrait + 'static> windows::Win32::System::Com::IConnectionPointContainer_Impl
+    for Server_Impl<T>
+{
+    fn EnumConnectionPoints(
+        &self,
+    ) -> windows_core::Result<windows::Win32::System::Com::IEnumConnectionPoints> {
         let connection_points = self.enum_connection_points()?;
 
-        Ok(ConnectionPointsEnumerator::new(connection_points)
-            .into_object()
-            .into_interface())
+        Ok(
+            windows_core::ComObjectInner::into_object(ConnectionPointsEnumerator::new(
+                connection_points,
+            ))
+            .into_interface(),
+        )
     }
 
     fn FindConnectionPoint(
         &self,
         reference_interface_id: *const windows_core::GUID,
-    ) -> windows_core::Result<IConnectionPoint> {
+    ) -> windows_core::Result<windows::Win32::System::Com::IConnectionPoint> {
         self.find_connection_point(reference_interface_id)
     }
 }
@@ -189,7 +184,7 @@ impl<T: ServerTrait + 'static> IConnectionPointContainer_Impl for Server_Impl<T>
 // 1.0 N/A
 // 2.0 required
 // 3.0 N/A
-impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl<T> {
+impl<T: ServerTrait + 'static> opc_da_bindings::IOPCItemProperties_Impl for Server_Impl<T> {
     fn QueryAvailableProperties(
         &self,
         item_id: &windows_core::PCWSTR,
@@ -200,7 +195,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
     ) -> windows_core::Result<()> {
         let vec = self.query_available_properties(unsafe { item_id.to_string() }?)?;
 
-        PointerWriter::try_write(vec.len() as _, count);
+        PointerWriter::try_write(vec.len() as _, count)?;
 
         PointerWriter::try_write_array_pointer(
             &vec.iter().map(|p| p.property_id).collect::<Vec<_>>(),
@@ -278,7 +273,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemProperties_Impl for Server_Impl
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
+impl<T: ServerTrait + 'static> opc_da_bindings::IOPCBrowse_Impl for Server_Impl<T> {
     fn GetProperties(
         &self,
         item_count: u32,
@@ -286,7 +281,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
         return_property_values: windows::Win32::Foundation::BOOL,
         property_count: u32,
         property_ids: *const u32,
-        item_properties: *mut *mut bindings::tagOPCITEMPROPERTIES,
+        item_properties: *mut *mut opc_da_bindings::tagOPCITEMPROPERTIES,
     ) -> windows_core::Result<()> {
         let item_ids = PointerReader::try_read_array(item_count, item_ids)?;
         let property_ids = PointerReader::try_read_array(property_count, property_ids)?;
@@ -299,11 +294,10 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
                 .into_iter()
                 .map(|item| match item.try_into() {
                     Ok(item) => item,
-                    Err(error) => {
-                        let mut item = bindings::tagOPCITEMPROPERTIES::default();
-                        item.hrErrorID = (error as windows_core::Error).code();
-                        item
-                    }
+                    Err(error) => opc_da_bindings::tagOPCITEMPROPERTIES {
+                        hrErrorID: (error as windows_core::Error).code(),
+                        ..Default::default()
+                    },
                 })
                 .collect::<Vec<_>>(),
             item_properties,
@@ -317,7 +311,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
         item_id: &windows_core::PCWSTR,
         continuation_point: *mut windows_core::PWSTR,
         max_elements_returned: u32,
-        browse_filter: bindings::tagOPCBROWSEFILTER,
+        browse_filter: opc_da_bindings::tagOPCBROWSEFILTER,
         element_name_filter: &windows_core::PCWSTR,
         vendor_filter: &windows_core::PCWSTR,
         return_all_properties: windows::Win32::Foundation::BOOL,
@@ -326,7 +320,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
         property_ids: *const u32,
         more_elements: *mut windows::Win32::Foundation::BOOL,
         count: *mut u32,
-        browse_elements: *mut *mut bindings::tagOPCBROWSEELEMENT,
+        browse_elements: *mut *mut opc_da_bindings::tagOPCBROWSEELEMENT,
     ) -> windows_core::Result<()> {
         let item_id = unsafe { item_id.to_string()? };
         let element_name_filter = unsafe { element_name_filter.to_string()? };
@@ -350,7 +344,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
             property_ids,
         )?;
 
-        PointerWriter::try_write(result.elements.len() as _, count);
+        PointerWriter::try_write(result.elements.len() as _, count)?;
 
         PointerWriter::try_write_array_pointer(
             &result
@@ -359,7 +353,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
                 .map(|element| match element.try_into() {
                     Ok(element) => element,
                     Err(error) => {
-                        let mut element = bindings::tagOPCBROWSEELEMENT::default();
+                        let mut element = opc_da_bindings::tagOPCBROWSEELEMENT::default();
                         element.ItemProperties.hrErrorID = (error as windows_core::Error).code();
                         element
                     }
@@ -375,7 +369,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
                 PointerWriter::try_write_into(&new_continuation_point, continuation_point)?
             }
             None => unsafe {
-                *continuation_point = PWSTR::null();
+                *continuation_point = windows_core::PWSTR::null();
             },
         }
 
@@ -386,7 +380,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowse_Impl for Server_Impl<T> {
 // 1.0 optional
 // 2.0 optional
 // 3.0 N/A
-impl<T: ServerTrait + 'static> bindings::IOPCServerPublicGroups_Impl for Server_Impl<T> {
+impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServerPublicGroups_Impl for Server_Impl<T> {
     fn GetPublicGroupByName(
         &self,
         name: &windows_core::PCWSTR,
@@ -394,7 +388,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCServerPublicGroups_Impl for Server_
     ) -> windows_core::Result<windows_core::IUnknown> {
         if reference_interface_id.is_null() {
             return Err(windows_core::Error::new(
-                E_INVALIDARG,
+                windows::Win32::Foundation::E_INVALIDARG,
                 "Null reference_interface_id",
             ));
         }
@@ -417,14 +411,16 @@ impl<T: ServerTrait + 'static> bindings::IOPCServerPublicGroups_Impl for Server_
 // 1.0 optional
 // 2.0 optional
 // 3.0 N/A
-impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for Server_Impl<T> {
-    fn QueryOrganization(&self) -> windows_core::Result<bindings::tagOPCNAMESPACETYPE> {
+impl<T: ServerTrait + 'static> opc_da_bindings::IOPCBrowseServerAddressSpace_Impl
+    for Server_Impl<T>
+{
+    fn QueryOrganization(&self) -> windows_core::Result<opc_da_bindings::tagOPCNAMESPACETYPE> {
         self.query_organization().map(Into::into)
     }
 
     fn ChangeBrowsePosition(
         &self,
-        browse_direction: bindings::tagOPCBROWSEDIRECTION,
+        browse_direction: opc_da_bindings::tagOPCBROWSEDIRECTION,
         string: &windows_core::PCWSTR,
     ) -> windows_core::Result<()> {
         self.change_browse_position((browse_direction, unsafe { string.to_string() }?).try_into()?)
@@ -432,7 +428,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for S
 
     fn BrowseOPCItemIDs(
         &self,
-        browse_filter_type: bindings::tagOPCBROWSETYPE,
+        browse_filter_type: opc_da_bindings::tagOPCBROWSETYPE,
         filter_criteria: &windows_core::PCWSTR,
         variant_data_type_filter: u16,
         access_rights_filter: u32,
@@ -459,16 +455,17 @@ impl<T: ServerTrait + 'static> bindings::IOPCBrowseServerAddressSpace_Impl for S
     ) -> windows_core::Result<windows::Win32::System::Com::IEnumString> {
         let access_paths = self.browse_access_paths(unsafe { item_id.to_string() }?)?;
 
-        Ok(StringEnumerator::new(access_paths)
-            .into_object()
-            .into_interface())
+        Ok(
+            windows_core::ComObjectInner::into_object(StringEnumerator::new(access_paths))
+                .into_interface(),
+        )
     }
 }
 
 // 1.0 N/A
 // 2.0 N/A
 // 3.0 required
-impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
+impl<T: ServerTrait + 'static> opc_da_bindings::IOPCItemIO_Impl for Server_Impl<T> {
     fn Read(
         &self,
         count: u32,
@@ -523,7 +520,7 @@ impl<T: ServerTrait + 'static> bindings::IOPCItemIO_Impl for Server_Impl<T> {
         &self,
         count: u32,
         item_ids: *const windows_core::PCWSTR,
-        item_vqt: *const bindings::tagOPCITEMVQT,
+        item_vqt: *const opc_da_bindings::tagOPCITEMVQT,
         errors: *mut *mut windows_core::HRESULT,
     ) -> windows_core::Result<()> {
         let item_ids = PointerReader::try_read_array(count, item_ids)?;

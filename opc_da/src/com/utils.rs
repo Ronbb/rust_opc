@@ -112,7 +112,7 @@ impl<T: AsRef<str>> TryWriteInto<T, windows_core::PWSTR> for PointerWriter {
             .collect::<Vec<u16>>();
 
         let ptr = unsafe {
-            windows::Win32::System::Com::CoTaskMemAlloc(p.len() * std::mem::size_of::<u16>())
+            windows::Win32::System::Com::CoTaskMemAlloc(p.len() * core::mem::size_of::<u16>())
         };
 
         if ptr.is_null() {
@@ -123,7 +123,7 @@ impl<T: AsRef<str>> TryWriteInto<T, windows_core::PWSTR> for PointerWriter {
         }
 
         unsafe {
-            std::ptr::copy_nonoverlapping(p.as_ptr(), ptr as *mut u16, p.len());
+            core::ptr::copy_nonoverlapping(p.as_ptr(), ptr as *mut u16, p.len());
             *pointer = windows_core::PWSTR::from_raw(ptr as *mut u16);
         }
 
@@ -142,7 +142,7 @@ impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows_core::PWSTR> for Poin
                 .chain(core::iter::once(0))
                 .collect::<Vec<u16>>();
             let ptr = unsafe {
-                windows::Win32::System::Com::CoTaskMemAlloc(p.len() * std::mem::size_of::<u16>())
+                windows::Win32::System::Com::CoTaskMemAlloc(p.len() * core::mem::size_of::<u16>())
             };
 
             if ptr.is_null() {
@@ -153,14 +153,14 @@ impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows_core::PWSTR> for Poin
             }
 
             unsafe {
-                std::ptr::copy_nonoverlapping(p.as_ptr(), ptr as *mut u16, p.len());
+                core::ptr::copy_nonoverlapping(p.as_ptr(), ptr as *mut u16, p.len());
                 strings.push(windows_core::PWSTR::from_raw(ptr as *mut u16));
             }
         }
 
         let ptr = unsafe {
             windows::Win32::System::Com::CoTaskMemAlloc(
-                strings.len() * std::mem::size_of::<windows_core::PWSTR>(),
+                strings.len() * core::mem::size_of::<windows_core::PWSTR>(),
             )
         };
 
@@ -172,7 +172,7 @@ impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows_core::PWSTR> for Poin
         }
 
         unsafe {
-            std::ptr::copy_nonoverlapping(
+            core::ptr::copy_nonoverlapping(
                 strings.as_ptr(),
                 ptr as *mut windows_core::PWSTR,
                 strings.len(),
@@ -188,7 +188,7 @@ impl<T, W: TryWrite<T, Error = windows_core::Error>> TryWriteTo<T, *mut T> for W
     type Error = windows_core::Error;
 
     fn try_write_to(value: T) -> windows_core::Result<*mut T> {
-        let ptr: *mut T = std::ptr::null_mut();
+        let ptr: *mut T = core::ptr::null_mut();
         Self::try_write(value, ptr)?;
         Ok(ptr)
     }
@@ -198,7 +198,7 @@ impl<T: AsRef<str>> TryWriteTo<T, windows_core::PWSTR> for PointerWriter {
     type Error = windows_core::Error;
 
     fn try_write_to(value: T) -> windows_core::Result<windows_core::PWSTR> {
-        let ptr: *mut windows_core::PWSTR = std::ptr::null_mut();
+        let ptr: *mut windows_core::PWSTR = core::ptr::null_mut();
         Self::try_write_into(value, ptr)?;
         Ok(unsafe { *ptr })
     }
@@ -237,7 +237,7 @@ impl<T> TryWriteArray<T> for PointerWriter {
         }
 
         unsafe {
-            std::ptr::copy_nonoverlapping(values.as_ptr(), pointer, values.len());
+            core::ptr::copy_nonoverlapping(values.as_ptr(), pointer, values.len());
         }
 
         Ok(())
@@ -255,7 +255,7 @@ impl<T> TryWriteArrayPointer<T> for PointerWriter {
             ));
         }
 
-        let size = std::mem::size_of::<T>() * values.len();
+        let size = core::mem::size_of_val(values);
         let ptr = unsafe { windows::Win32::System::Com::CoTaskMemAlloc(size) };
 
         if ptr.is_null() {
@@ -266,7 +266,7 @@ impl<T> TryWriteArrayPointer<T> for PointerWriter {
         }
 
         unsafe {
-            std::ptr::copy_nonoverlapping(values.as_ptr(), ptr as *mut T, values.len());
+            core::ptr::copy_nonoverlapping(values.as_ptr(), ptr as *mut T, values.len());
             *pointer = ptr as *mut T;
         }
 

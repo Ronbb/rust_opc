@@ -1,6 +1,3 @@
-use std::{collections::BTreeMap, mem::ManuallyDrop, sync::Arc};
-
-use tokio::sync::Mutex;
 use windows::Win32::{
     Foundation::{S_FALSE, S_OK},
     System::Com::{
@@ -9,99 +6,125 @@ use windows::Win32::{
         CONNECTDATA,
     },
 };
-use windows_core::{implement, IUnknown};
+use windows_core::PWSTR;
 
-use super::{
-    bindings,
-    utils::{PointerWriter, TryWriteTo},
-};
+use crate::safe_call;
 
-#[implement(IEnumString)]
-pub struct StringEnumerator {
-    strings: Arc<Vec<String>>,
-    index: Mutex<usize>,
+use super::memory::{FreeRaw as _, IntoArrayRef, IntoComArrayRef, IntoRef as _};
+
+struct Enumerator<T> {
+    items: Vec<T>,
+    index: core::sync::atomic::AtomicUsize,
 }
 
-#[implement(IEnumUnknown)]
-pub struct UnknownEnumerator {
-    items: Arc<Vec<IUnknown>>,
-    index: Mutex<usize>,
-}
-
-#[implement(IEnumConnectionPoints)]
-pub struct ConnectionPointsEnumerator {
-    pub connection_points: Vec<IConnectionPoint>,
-    index: Mutex<usize>,
-}
-
-#[implement(IEnumConnections)]
-pub struct ConnectionsEnumerator {
-    pub connections: Arc<Vec<CONNECTDATA>>,
-    index: Mutex<usize>,
-}
-
-#[implement(bindings::IEnumOPCItemAttributes)]
-pub struct ItemAttributesEnumerator {
-    index: Mutex<usize>,
-    items: Arc<Vec<bindings::tagOPCITEMATTRIBUTES>>,
-}
-
-impl StringEnumerator {
-    pub fn new(strings: Vec<String>) -> Self {
+impl<T: Clone> Enumerator<T> {
+    fn new(items: Vec<T>) -> Self {
         Self {
-            strings: Arc::new(strings),
-            index: Mutex::new(0),
+            items,
+            index: core::sync::atomic::AtomicUsize::default(),
+        }
+    }
+
+    pub fn next(&self, count: u32, fetched: &mut u32, elements: &mut [T]) -> windows_core::HRESULT {
+        let current_index = self
+            .index
+            .fetch_add(count as _, core::sync::atomic::Ordering::SeqCst);
+        if current_index >= self.items.len() {
+            return S_FALSE;
+        }
+
+        let end_index = (current_index + count as usize).min(self.items.len());
+        let slice = &self.items[current_index..end_index];
+        *fetched = slice.len() as u32;
+
+        for (i, element) in slice.iter().enumerate() {
+            elements[i] = element.clone();
+        }
+
+        S_OK
+    }
+
+    pub fn skip(&self, count: u32) -> windows_core::HRESULT {
+        let current_index = self.index.load(core::sync::atomic::Ordering::SeqCst);
+        let new_index = current_index.saturating_add(count as usize);
+        let max_index = self.items.len();
+
+        if new_index >= max_index {
+            self.index
+                .store(max_index, core::sync::atomic::Ordering::SeqCst);
+        } else {
+            self.index
+                .store(new_index, core::sync::atomic::Ordering::SeqCst);
+        }
+
+        S_OK
+    }
+
+    fn reset(&self) -> windows_core::HRESULT {
+        self.index.store(0, core::sync::atomic::Ordering::SeqCst);
+        S_OK
+    }
+}
+
+impl<T: Clone> Clone for Enumerator<T> {
+    fn clone(&self) -> Self {
+        Self {
+            items: self.items.clone(),
+            index: core::sync::atomic::AtomicUsize::new(
+                self.index.load(core::sync::atomic::Ordering::SeqCst),
+            ),
         }
     }
 }
 
+#[windows_core::implement(IEnumString)]
+#[repr(transparent)]
+pub struct StringEnumerator(Enumerator<Vec<u16>>);
+
+#[windows_core::implement(IEnumUnknown)]
+pub struct UnknownEnumerator(Enumerator<windows_core::IUnknown>);
+
+#[windows_core::implement(IEnumConnectionPoints)]
+pub struct ConnectionPointsEnumerator(Enumerator<IConnectionPoint>);
+
+#[windows_core::implement(IEnumConnections)]
+pub struct ConnectionsEnumerator(Enumerator<CONNECTDATA>);
+
+#[windows_core::implement(opc_da_bindings::IEnumOPCItemAttributes)]
+pub struct ItemAttributesEnumerator(Enumerator<opc_da_bindings::tagOPCITEMATTRIBUTES>);
+
+impl StringEnumerator {
+    pub fn new(strings: Vec<String>) -> Self {
+        Self(Enumerator::new(
+            strings
+                .into_iter()
+                .map(|s| s.encode_utf16().chain(Some(0)).collect())
+                .collect(),
+        ))
+    }
+}
+
 impl UnknownEnumerator {
-    pub fn new(items: Vec<IUnknown>) -> Self {
-        Self {
-            items: Arc::new(items),
-            index: Mutex::new(0),
-        }
+    pub fn new(items: Vec<windows_core::IUnknown>) -> Self {
+        Self(Enumerator::new(items))
     }
 }
 
 impl ConnectionPointsEnumerator {
     pub fn new(connection_points: Vec<IConnectionPoint>) -> Self {
-        Self {
-            connection_points,
-            index: Mutex::new(0),
-        }
+        Self(Enumerator::new(connection_points))
     }
 }
 
 impl ConnectionsEnumerator {
-    pub fn new(connections: Arc<Vec<CONNECTDATA>>) -> Self {
-        Self {
-            connections,
-            index: Mutex::new(0),
-        }
-    }
-
-    pub fn from_map(map: BTreeMap<u32, windows_core::IUnknown>) -> Self {
-        let connections = map
-            .into_iter()
-            .map(|(cookie, unknown)| CONNECTDATA {
-                dwCookie: cookie,
-                pUnk: ManuallyDrop::new(Some(unknown)),
-            })
-            .collect();
-        Self {
-            connections: Arc::new(connections),
-            index: Mutex::new(0),
-        }
+    pub fn new(connections: Vec<CONNECTDATA>) -> Self {
+        Self(Enumerator::new(connections))
     }
 }
 
 impl ItemAttributesEnumerator {
-    pub fn new(items: Vec<bindings::tagOPCITEMATTRIBUTES>) -> Self {
-        Self {
-            index: Mutex::new(0),
-            items: Arc::new(items),
-        }
+    pub fn new(items: Vec<opc_da_bindings::tagOPCITEMATTRIBUTES>) -> Self {
+        Self(Enumerator::new(items))
     }
 }
 
@@ -112,51 +135,41 @@ impl IEnumString_Impl for StringEnumerator_Impl {
         range_elements: *mut windows_core::PWSTR,
         count_fetched: *mut u32,
     ) -> windows_core::HRESULT {
-        let mut index = self.index.blocking_lock();
-        if *index >= self.strings.len() {
-            unsafe { *count_fetched = 0 };
-            S_FALSE
-        } else {
-            let mut fetched = 0;
-            while fetched < count && *index < self.strings.len() {
-                let buffer: windows_core::Result<_> =
-                    PointerWriter::try_write_to(&self.strings[*index]);
-                let buffer = match buffer {
-                    Ok(buffer) => buffer,
-                    Err(e) => return e.code(),
-                };
+        let fetched = match count_fetched.into_ref() {
+            Ok(fetched) => fetched,
+            Err(e) => return e.code(),
+        };
 
-                unsafe { range_elements.add(fetched as usize).write(buffer) };
-                fetched += 1;
-                *index += 1;
-            }
-            unsafe { *count_fetched = fetched };
-            S_OK
+        let elements = match range_elements.into_array_ref(count) {
+            Ok(elements) => elements,
+            Err(e) => return e.code(),
+        };
+
+        let mut strings = Vec::with_capacity(count as usize);
+
+        let code = self.0.next(count, fetched, &mut strings);
+        if code != S_OK {
+            return code;
         }
+
+        for (i, string) in strings.iter_mut().enumerate() {
+            let pwstr = PWSTR::from_raw(string.as_mut_ptr());
+            elements[i] = pwstr;
+        }
+
+        S_OK
     }
 
     fn Skip(&self, count: u32) -> windows_core::HRESULT {
-        let mut index = self.index.blocking_lock();
-        if *index + count as usize > self.strings.len() {
-            *index = self.strings.len();
-            S_FALSE
-        } else {
-            *index += count as usize;
-            S_OK
-        }
+        self.0.skip(count)
     }
 
     fn Reset(&self) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        *index = 0;
-        Ok(())
+        self.0.reset().ok()
     }
 
     fn Clone(&self) -> windows_core::Result<IEnumString> {
-        Ok(IEnumString::from(StringEnumerator {
-            strings: self.strings.clone(),
-            index: Mutex::new(self.index.blocking_lock().clone()),
-        }))
+        Ok(IEnumString::from(StringEnumerator(self.0.clone())))
     }
 }
 
@@ -167,48 +180,40 @@ impl IEnumUnknown_Impl for UnknownEnumerator_Impl {
         range_elements: *mut Option<windows_core::IUnknown>,
         fetched_count: *mut u32,
     ) -> windows_core::HRESULT {
-        let mut index = self.index.blocking_lock();
-        if *index >= self.items.len() {
-            unsafe { *fetched_count = 0 };
-            return S_FALSE;
+        let fetched = match fetched_count.into_ref() {
+            Ok(fetched) => fetched,
+            Err(e) => return e.code(),
+        };
+
+        let elements = match range_elements.into_array_ref(count) {
+            Ok(elements) => elements,
+            Err(e) => return e.code(),
+        };
+
+        let mut items = Vec::with_capacity(count as usize);
+
+        let code = self.0.next(count, fetched, &mut items);
+        if code != S_OK {
+            return code;
         }
 
-        let mut fetched = 0;
-        while fetched < count && *index < self.items.len() {
-            unsafe {
-                range_elements
-                    .add(fetched as usize)
-                    .write(Some(self.items[*index].clone()));
-            }
-            fetched += 1;
-            *index += 1;
+        for (i, unk) in items.into_iter().enumerate() {
+            elements[i] = Some(unk);
         }
-        unsafe { *fetched_count = fetched };
+
         S_OK
     }
 
     fn Skip(&self, count: u32) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        if *index + count as usize > self.items.len() {
-            *index = self.items.len();
-            Ok(())
-        } else {
-            *index += count as usize;
-            Ok(())
-        }
+        self.0.skip(count).ok()
     }
 
     fn Reset(&self) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        *index = 0;
-        Ok(())
+        self.0.reset().ok()
     }
 
     fn Clone(&self) -> windows_core::Result<IEnumUnknown> {
-        Ok(IEnumUnknown::from(UnknownEnumerator {
-            items: self.items.clone(),
-            index: Mutex::new(self.index.blocking_lock().clone()),
-        }))
+        Ok(IEnumUnknown::from(UnknownEnumerator(self.0.clone())))
     }
 }
 
@@ -219,48 +224,42 @@ impl IEnumConnectionPoints_Impl for ConnectionPointsEnumerator_Impl {
         range_connection_points: *mut Option<IConnectionPoint>,
         count_fetched: *mut u32,
     ) -> windows_core::HRESULT {
-        let mut index = self.index.blocking_lock();
-        if *index >= self.connection_points.len() {
-            unsafe { *count_fetched = 0 };
-            return S_FALSE;
+        let fetched = match count_fetched.into_ref() {
+            Ok(fetched) => fetched,
+            Err(e) => return e.code(),
+        };
+
+        let elements = match range_connection_points.into_array_ref(count) {
+            Ok(elements) => elements,
+            Err(e) => return e.code(),
+        };
+
+        let mut items = Vec::with_capacity(count as usize);
+
+        let code = self.0.next(count, fetched, &mut items);
+        if code != S_OK {
+            return code;
         }
 
-        let mut fetched = 0;
-        while fetched < count && *index < self.connection_points.len() {
-            unsafe {
-                range_connection_points
-                    .add(fetched as usize)
-                    .write(Some(self.connection_points[*index].clone()));
-            }
-            fetched += 1;
-            *index += 1;
+        for (i, cp) in items.into_iter().enumerate() {
+            elements[i] = Some(cp);
         }
-        unsafe { *count_fetched = fetched };
+
         S_OK
     }
 
     fn Skip(&self, count: u32) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        if *index + count as usize > self.connection_points.len() {
-            *index = self.connection_points.len();
-            Ok(())
-        } else {
-            *index += count as usize;
-            Ok(())
-        }
+        self.0.skip(count).ok()
     }
 
     fn Reset(&self) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        *index = 0;
-        Ok(())
+        self.0.reset().ok()
     }
 
     fn Clone(&self) -> windows_core::Result<IEnumConnectionPoints> {
-        Ok(IEnumConnectionPoints::from(ConnectionPointsEnumerator {
-            connection_points: self.connection_points.clone(),
-            index: Mutex::new(self.index.blocking_lock().clone()),
-        }))
+        Ok(IEnumConnectionPoints::from(ConnectionPointsEnumerator(
+            self.0.clone(),
+        )))
     }
 }
 
@@ -271,100 +270,61 @@ impl IEnumConnections_Impl for ConnectionsEnumerator_Impl {
         range_connect_data: *mut CONNECTDATA,
         count_fetched: *mut u32,
     ) -> windows_core::HRESULT {
-        let mut index = self.index.blocking_lock();
-        if *index >= self.connections.len() {
-            unsafe { *count_fetched = 0 };
-            return S_FALSE;
-        }
+        let fetched = match count_fetched.into_ref() {
+            Ok(fetched) => fetched,
+            Err(e) => return e.code(),
+        };
 
-        let mut fetched = 0;
-        while fetched < count && *index < self.connections.len() {
-            unsafe {
-                range_connect_data
-                    .add(fetched as usize)
-                    .write(self.connections[*index].clone());
-            }
-            fetched += 1;
-            *index += 1;
-        }
-        unsafe { *count_fetched = fetched };
-        S_OK
+        let elements = match range_connect_data.into_array_ref(count) {
+            Ok(elements) => elements,
+            Err(e) => return e.code(),
+        };
+
+        self.0.next(count, fetched, elements)
     }
 
     fn Skip(&self, count: u32) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        if *index + count as usize > self.connections.len() {
-            *index = self.connections.len();
-            Ok(())
-        } else {
-            *index += count as usize;
-            Ok(())
-        }
+        self.0.skip(count).ok()
     }
 
     fn Reset(&self) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        *index = 0;
-        Ok(())
+        self.0.reset().ok()
     }
 
     fn Clone(&self) -> windows_core::Result<IEnumConnections> {
-        Ok(IEnumConnections::from(ConnectionsEnumerator {
-            connections: self.connections.clone(),
-            index: Mutex::new(self.index.blocking_lock().clone()),
-        }))
+        Ok(IEnumConnections::from(ConnectionsEnumerator(
+            self.0.clone(),
+        )))
     }
 }
 
-impl bindings::IEnumOPCItemAttributes_Impl for ItemAttributesEnumerator_Impl {
+impl opc_da_bindings::IEnumOPCItemAttributes_Impl for ItemAttributesEnumerator_Impl {
     fn Next(
         &self,
         count: u32,
-        items: *mut *mut bindings::tagOPCITEMATTRIBUTES,
+        items: *mut *mut opc_da_bindings::tagOPCITEMATTRIBUTES,
         fetched_count: *mut u32,
     ) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        if *index >= self.items.len() {
-            unsafe { *fetched_count = 0 };
-            return Ok(());
-        }
+        let fetched = fetched_count.into_ref()?;
+        let elements = items.into_com_array_ref(count)?;
 
-        let items: *mut *const bindings::tagOPCITEMATTRIBUTES = items.cast();
-
-        let mut fetched = 0;
-        while fetched < count && *index < self.items.len() {
-            unsafe {
-                items.add(fetched as usize).write(&self.items[*index]);
-            }
-            fetched += 1;
-            *index += 1;
+        safe_call! {
+            self.0.next(count, fetched, elements).ok(),
+            items
         }
-        unsafe { *fetched_count = fetched };
-        Ok(())
     }
 
     fn Skip(&self, count: u32) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        if *index + count as usize > self.items.len() {
-            *index = self.items.len();
-        } else {
-            *index += count as usize;
-        }
-        Ok(())
+        self.0.skip(count).ok()
     }
 
     fn Reset(&self) -> windows_core::Result<()> {
-        let mut index = self.index.blocking_lock();
-        *index = 0;
-        Ok(())
+        self.0.reset().ok()
     }
 
-    fn Clone(&self) -> windows_core::Result<bindings::IEnumOPCItemAttributes> {
-        Ok(bindings::IEnumOPCItemAttributes::from(
-            ItemAttributesEnumerator {
-                index: Mutex::new(self.index.blocking_lock().clone()),
-                items: self.items.clone(),
-            },
+    fn Clone(&self) -> windows_core::Result<opc_da_bindings::IEnumOPCItemAttributes> {
+        Ok(opc_da_bindings::IEnumOPCItemAttributes::from(
+            ItemAttributesEnumerator(self.0.clone()),
         ))
     }
 }
