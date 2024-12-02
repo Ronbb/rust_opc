@@ -1,6 +1,5 @@
 pub mod base;
 pub mod builder;
-pub mod client;
 pub mod connection_point;
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub mod enumeration;
