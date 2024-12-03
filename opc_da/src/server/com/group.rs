@@ -1,7 +1,9 @@
 use crate::{
-    com::memory::{FreeRaw as _, IntoRef as _},
     safe_call,
-    traits::GroupTrait,
+    server::{
+        com::memory::{FreeRaw as _, IntoRef as _},
+        traits::GroupTrait,
+    },
 };
 
 use super::memory::IntoComArrayRef;
