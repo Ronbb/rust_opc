@@ -1,6 +1,9 @@
 use actix::prelude::*;
 
-use super::{Client, ServerFilter};
+use crate::{
+    client::{Client, ServerFilter},
+    convert_error,
+};
 
 impl Actor for Client {
     type Context = Context<Self>;
@@ -10,16 +13,16 @@ impl Actor for Client {
     }
 }
 
-pub struct ClientAsync(Addr<Client>);
+pub struct ClientActor(Addr<Client>);
 
-impl From<Client> for ClientAsync {
-    fn from(value: Client) -> Self {
-        Self(Actor::start(value))
+impl ClientActor {
+    pub fn new() -> windows_core::Result<Self> {
+        Ok(Self(Client::new()?.start()))
     }
 }
 
 // deref to the inner Addr<Client>
-impl std::ops::Deref for ClientAsync {
+impl std::ops::Deref for ClientActor {
     type Target = Addr<Client>;
 
     fn deref(&self) -> &Self::Target {
@@ -27,24 +30,11 @@ impl std::ops::Deref for ClientAsync {
     }
 }
 
-fn convert_error(err: MailboxError) -> windows_core::Error {
-    windows_core::Error::new(
-        windows::Win32::Foundation::E_FAIL,
-        format!("Failed to send message to client actor: {:?}", err),
-    )
-}
-
-macro_rules! convert_error {
-    ($err:expr) => {
-        $err.map_err(convert_error)?
-    };
-}
-
 #[derive(Message)]
 #[rtype(result = "windows_core::Result<Vec<(windows_core::GUID, String)>>")]
 struct GetServerGuids(pub ServerFilter);
 
-impl ClientAsync {
+impl ClientActor {
     pub async fn get_servers(
         &self,
         filter: ServerFilter,
