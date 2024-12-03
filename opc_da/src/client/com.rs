@@ -25,7 +25,7 @@ impl Client {
     /// # Safety
     /// This method should be called when the thread is shutting down
     /// and no more COM calls will be made.
-    pub(crate) fn uninitialize() {
-        unsafe { windows::Win32::System::Com::CoUninitialize() };
+    pub(crate) unsafe fn uninitialize() {
+        windows::Win32::System::Com::CoUninitialize();
     }
 }

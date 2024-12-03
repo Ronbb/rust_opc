@@ -65,6 +65,6 @@ impl Client {
 
 impl Drop for Client {
     fn drop(&mut self) {
-        Self::uninitialize();
+        unsafe { Self::uninitialize() };
     }
 }

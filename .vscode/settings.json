@@ -1,7 +1,8 @@
 {
   "cSpell.ignorePaths": [
     ".git/**/*",
-    ".vscode",
+    ".vscode/**/*",
+    "Cargo.lock",
     "target/**/*",
     "opc_da_bindings/.metadata/**/*",
     "opc_da_bindings/src/bindings.rs"
