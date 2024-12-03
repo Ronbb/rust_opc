@@ -25,21 +25,17 @@ impl Iterator for GuidIter {
     type Item = windows_core::Result<windows_core::GUID>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if self.finished {
-            return None;
-        }
-
         if self.count == 0 {
-            if self.count > 0 {
-                self.count -= 1;
-                return Some(Ok(self.cache[self.count as usize]));
-            }
-
             let ids = &mut self.cache;
             let count = &mut self.count;
 
             let code = unsafe { self.iter.Next(ids, Some(count)) };
-            if code.is_err() {
+            if code.is_ok() {
+                if *count == 0 {
+                    self.finished = true;
+                    return None;
+                }
+            } else {
                 self.finished = true;
                 return Some(Err(windows_core::Error::new(
                     code,
@@ -48,12 +44,7 @@ impl Iterator for GuidIter {
             }
         }
 
-        if self.count == 0 {
-            self.finished = true;
-            None
-        } else {
-            self.count -= 1;
-            Some(Ok(self.cache[self.count as usize]))
-        }
+        self.count -= 1;
+        Some(Ok(self.cache[self.count as usize]))
     }
 }
