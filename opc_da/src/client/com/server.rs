@@ -13,6 +13,7 @@ impl std::ops::Deref for Server {
 }
 
 impl Server {
+    #[allow(clippy::too_many_arguments)]
     pub fn add_group(
         &self,
         name: &str,
