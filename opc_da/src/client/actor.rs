@@ -41,22 +41,34 @@ macro_rules! convert_error {
 }
 
 #[derive(Message)]
-#[rtype(result = "windows_core::Result<Vec<windows_core::GUID>>")]
+#[rtype(result = "windows_core::Result<Vec<(windows_core::GUID, String)>>")]
 struct GetServerGuids(pub ServerFilter);
 
 impl ClientAsync {
     pub async fn get_servers(
         &self,
         filter: ServerFilter,
-    ) -> windows_core::Result<Vec<windows_core::GUID>> {
+    ) -> windows_core::Result<Vec<(windows_core::GUID, String)>> {
         convert_error!(self.send(GetServerGuids(filter)).await)
     }
 }
 
 impl Handler<GetServerGuids> for Client {
-    type Result = windows_core::Result<Vec<windows_core::GUID>>;
+    type Result = windows_core::Result<Vec<(windows_core::GUID, String)>>;
 
     fn handle(&mut self, message: GetServerGuids, _: &mut Self::Context) -> Self::Result {
-        self.get_servers(message.0)?.collect()
+        self.get_servers(message.0)?
+            .map(|r| match r {
+                Ok(guid) => {
+                    let name = unsafe {
+                        windows::Win32::System::Com::ProgIDFromCLSID(&guid)
+                            .map_err(|e| windows_core::Error::new(e.code(), "Failed to get ProgID"))
+                    }?;
+
+                    Ok((guid, unsafe { name.to_string() }?))
+                }
+                Err(e) => Err(e),
+            })
+            .collect()
     }
 }
