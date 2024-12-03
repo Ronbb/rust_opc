@@ -1,23 +1,31 @@
 use super::Client;
 
-thread_local! {
-    pub static COM_INIT: std::cell::RefCell<std::sync::Once> = const { std::cell::RefCell::new(std::sync::Once::new()) };
-    pub static COM_RESULT: std::cell::RefCell<windows_core::HRESULT> = const { std::cell::RefCell::new(windows::Win32::Foundation::S_OK) };
-}
-
 impl Client {
-    pub fn ensure_com() -> windows_core::HRESULT {
-        COM_INIT.with(|init| {
-            init.borrow().call_once(|| unsafe {
-                COM_RESULT.with(|result| {
-                    *result.borrow_mut() = windows::Win32::System::Com::CoInitializeEx(
-                        None,
-                        windows::Win32::System::Com::COINIT_MULTITHREADED,
-                    );
-                });
-            });
-        });
+    /// Ensures COM is initialized for the current thread.
+    ///
+    /// # Returns
+    /// Returns the HRESULT of the COM initialization.
+    ///
+    /// # Thread Safety
+    /// COM initialization is performed with COINIT_MULTITHREADED flag.
+    ///
+    /// # Note
+    /// Callers should check the returned HRESULT for initialization failures.
+    pub(crate) fn initialize() -> windows_core::HRESULT {
+        unsafe {
+            windows::Win32::System::Com::CoInitializeEx(
+                None,
+                windows::Win32::System::Com::COINIT_MULTITHREADED,
+            )
+        }
+    }
 
-        COM_RESULT.with(|result| *result.borrow())
+    /// Uninitializes COM for the current thread.
+    ///
+    /// # Safety
+    /// This method should be called when the thread is shutting down
+    /// and no more COM calls will be made.
+    pub(crate) fn uninitialize() {
+        unsafe { windows::Win32::System::Com::CoUninitialize() };
     }
 }

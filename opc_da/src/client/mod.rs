@@ -1,15 +1,31 @@
+mod actor;
 mod com;
 mod def;
 mod iter;
 
-pub use com::*;
+pub use actor::*;
 pub use def::*;
 pub use iter::*;
 
-pub struct Client {}
+#[derive(Debug)]
+pub struct Client {
+    /// Marker to ensure `Client` is not `Send` and not `Sync`.
+    _marker: std::marker::PhantomData<*const ()>,
+}
 
 impl Client {
-    pub fn get_servers(filter: ServerFilter) -> windows_core::Result<GuidIter> {
+    pub fn new() -> windows_core::Result<Self> {
+        Self::initialize().ok()?;
+        Ok(Self {
+            _marker: std::marker::PhantomData,
+        })
+    }
+
+    pub fn start() -> windows_core::Result<ClientAsync> {
+        Client::new().map(Into::into)
+    }
+
+    pub fn get_servers(&self, filter: ServerFilter) -> windows_core::Result<GuidIter> {
         let id = unsafe {
             windows::Win32::System::Com::CLSIDFromProgID(windows_core::w!("OPC.ServerList.1"))?
         };
@@ -44,5 +60,11 @@ impl Client {
         };
 
         Ok(GuidIter::new(iter))
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
+        Self::uninitialize();
     }
 }
