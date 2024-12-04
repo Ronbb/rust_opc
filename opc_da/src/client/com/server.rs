@@ -1,57 +1,83 @@
 use windows_core::Interface as _;
 
+use crate::client::traits::ServerTrait;
+
+use super::Group;
+
+/*
+    opc_da_bindings::IOPCServer,
+    opc_da_bindings::IOPCCommon,
+    windows::Win32::System::Com::IConnectionPointContainer,
+    opc_da_bindings::IOPCItemProperties,
+    opc_da_bindings::IOPCBrowse,
+    opc_da_bindings::IOPCServerPublicGroups,
+    opc_da_bindings::IOPCBrowseServerAddressSpace,
+    opc_da_bindings::IOPCItemIO
+*/
 pub struct Server {
-    pub(crate) raw: opc_da_bindings::IOPCServer,
+    // 1.0 required
+    // 2.0 required
+    // 3.0 required
+    pub(crate) server: opc_da_bindings::IOPCServer,
+    // 1.0 N/A
+    // 2.0 required
+    // 3.0 required
+    pub(crate) common: Option<opc_da_bindings::IOPCCommon>,
+    // 1.0 N/A
+    // 2.0 required
+    // 3.0 required
+    pub(crate) connection_point_container:
+        Option<windows::Win32::System::Com::IConnectionPointContainer>,
+    // 1.0 N/A
+    // 2.0 required
+    // 3.0 N/A
+    pub(crate) item_properties: Option<opc_da_bindings::IOPCItemProperties>,
+    // 1.0 N/A
+    // 2.0 N/A
+    // 3.0 required
+    pub(crate) browse: Option<opc_da_bindings::IOPCBrowse>,
+    // 1.0 optional
+    // 2.0 optional
+    // 3.0 N/A
+    pub(crate) server_public_groups: Option<opc_da_bindings::IOPCServerPublicGroups>,
+    // 1.0 optional
+    // 2.0 optional
+    // 3.0 N/A
+    pub(crate) browse_server_address_space: Option<opc_da_bindings::IOPCBrowseServerAddressSpace>,
+    // 1.0 N/A
+    // 2.0 N/A
+    // 3.0 required
+    pub(crate) item_io: Option<opc_da_bindings::IOPCItemIO>,
 }
 
-impl std::ops::Deref for Server {
-    type Target = opc_da_bindings::IOPCServer;
+impl TryFrom<windows_core::IUnknown> for Server {
+    type Error = windows_core::Error;
 
-    fn deref(&self) -> &Self::Target {
-        &self.raw
+    fn try_from(value: windows_core::IUnknown) -> windows_core::Result<Self> {
+        let server = value.cast()?;
+        let common = value.cast().ok();
+        let connection_point_container = value.cast().ok();
+        let item_properties = value.cast().ok();
+        let browse = value.cast().ok();
+        let server_public_groups = value.cast().ok();
+        let browse_server_address_space = value.cast().ok();
+        let item_io = value.cast().ok();
+
+        Ok(Self {
+            server,
+            common,
+            connection_point_container,
+            item_properties,
+            browse,
+            server_public_groups,
+            browse_server_address_space,
+            item_io,
+        })
     }
 }
 
-impl Server {
-    #[allow(clippy::too_many_arguments)]
-    pub fn add_group(
-        &self,
-        name: &str,
-        active: bool,
-        client_handle: u32,
-        update_rate: u32,
-        locale_id: u32,
-        time_bias: i32,
-        percent_deadband: f32,
-    ) -> windows_core::Result<opc_da_bindings::IOPCItemMgt> {
-        let mut group = None;
-        let mut group_server_handle = 0u32;
-        let mut group_name = name.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-        let group_name = windows_core::PWSTR::from_raw(group_name.as_mut_ptr());
-        let mut revised_percent_deadband = 0;
-
-        unsafe {
-            self.raw.AddGroup(
-                group_name,
-                windows::Win32::Foundation::BOOL::from(active),
-                update_rate,
-                client_handle,
-                &time_bias,
-                &percent_deadband,
-                locale_id,
-                &mut group_server_handle,
-                &mut revised_percent_deadband,
-                &opc_da_bindings::IOPCItemMgt::IID,
-                &mut group,
-            )?;
-
-            match group {
-                None => Err(windows_core::Error::new(
-                    windows::Win32::Foundation::E_POINTER,
-                    "Failed to add group, returned null",
-                )),
-                Some(group) => Ok(group.cast()?),
-            }
-        }
+impl ServerTrait<Group> for Server {
+    fn server(&self) -> &opc_da_bindings::IOPCServer {
+        &self.server
     }
 }

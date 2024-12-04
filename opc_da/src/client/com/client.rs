@@ -1,3 +1,5 @@
+use windows_core::Interface;
+
 use super::{GuidIter, Server, ServerFilter};
 
 #[derive(Debug)]
@@ -96,6 +98,6 @@ impl Client {
             )?
         };
 
-        Ok(Server { raw: server })
+        server.cast::<windows_core::IUnknown>()?.try_into()
     }
 }
