@@ -42,60 +42,60 @@ impl<T: Sized> Drop for Array<T> {
 }
 
 #[repr(transparent)]
-pub struct Pointer<T: Sized> {
-    pointer: *mut T,
+pub struct RemotePointer<T: Sized> {
+    inner: *mut T,
 }
 
-impl<T: Sized> Pointer<T> {
+impl<T: Sized> RemotePointer<T> {
     #[inline(always)]
     pub fn new() -> Self {
         Self {
-            pointer: unsafe { core::mem::zeroed() },
+            inner: unsafe { core::mem::zeroed() },
         }
     }
 
     #[inline(always)]
     pub fn as_mut_ptr(&mut self) -> *mut *mut T {
-        &mut self.pointer
+        &mut self.inner
     }
 
     #[inline(always)]
     pub fn as_option(&self) -> Option<&T> {
-        unsafe { self.pointer.as_ref() }
+        unsafe { self.inner.as_ref() }
     }
 }
 
-impl<T: Sized> Drop for Pointer<T> {
+impl<T: Sized> Drop for RemotePointer<T> {
     #[inline(always)]
     fn drop(&mut self) {
-        if !self.pointer.is_null() {
+        if !self.inner.is_null() {
             unsafe {
-                CoTaskMemFree(Some(self.pointer as _));
+                CoTaskMemFree(Some(self.inner as _));
             }
         }
     }
 }
 
-pub struct Ref<T: Sized> {
-    value: Option<T>,
+pub struct LocalPointer<T: Sized> {
+    inner: Option<T>,
 }
 
-impl<T: Sized> Ref<T> {
+impl<T: Sized> LocalPointer<T> {
     #[inline(always)]
     pub fn new(value: Option<T>) -> Self {
-        Self { value }
+        Self { inner: value }
     }
 
     #[inline(always)]
     pub fn as_ptr(&self) -> *const T {
-        match &self.value {
+        match &self.inner {
             Some(value) => value as *const T,
             None => unsafe { core::mem::zeroed() },
         }
     }
 
     pub fn as_mut_ptr(&mut self) -> *mut T {
-        match &mut self.value {
+        match &mut self.inner {
             Some(value) => value as *mut T,
             None => unsafe { core::mem::zeroed() },
         }
@@ -103,11 +103,11 @@ impl<T: Sized> Ref<T> {
 
     #[inline(always)]
     pub fn into_inner(self) -> Option<T> {
-        self.value
+        self.inner
     }
 }
 
-impl FromStr for Ref<Vec<u16>> {
+impl FromStr for LocalPointer<Vec<u16>> {
     type Err = windows_core::HRESULT;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -115,10 +115,10 @@ impl FromStr for Ref<Vec<u16>> {
     }
 }
 
-impl Ref<Vec<u16>> {
+impl LocalPointer<Vec<u16>> {
     #[inline(always)]
     pub fn as_pwstr(&self) -> windows_core::PWSTR {
-        match &self.value {
+        match &self.inner {
             Some(value) => windows_core::PWSTR::from_raw(value.as_ptr() as _),
             None => windows_core::PWSTR::null(),
         }

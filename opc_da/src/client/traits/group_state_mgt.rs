@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use crate::{client::memory::Ref, def};
+use crate::{client::memory::LocalPointer, def};
 
 pub trait GroupStateMgtTrait {
     fn group_state_mgt(&self) -> &opc_da_bindings::IOPCGroupStateMgt;
@@ -39,13 +39,13 @@ pub trait GroupStateMgtTrait {
         locale_id: Option<u32>,
         client_group_handle: Option<u32>,
     ) -> windows_core::Result<u32> {
-        let requested_update_rate = Ref::new(update_rate);
-        let mut revised_update_rate = Ref::new(Some(0));
-        let active = Ref::new(active.map(windows::Win32::Foundation::BOOL::from));
-        let time_bias = Ref::new(time_bias);
-        let percent_deadband = Ref::new(percent_deadband);
-        let locale_id = Ref::new(locale_id);
-        let client_group_handle = Ref::new(client_group_handle);
+        let requested_update_rate = LocalPointer::new(update_rate);
+        let mut revised_update_rate = LocalPointer::new(Some(0));
+        let active = LocalPointer::new(active.map(windows::Win32::Foundation::BOOL::from));
+        let time_bias = LocalPointer::new(time_bias);
+        let percent_deadband = LocalPointer::new(percent_deadband);
+        let locale_id = LocalPointer::new(locale_id);
+        let client_group_handle = LocalPointer::new(client_group_handle);
 
         unsafe {
             self.group_state_mgt().SetState(
@@ -63,7 +63,7 @@ pub trait GroupStateMgtTrait {
     }
 
     fn set_name(&self, name: &str) -> windows_core::Result<()> {
-        let name = Ref::from_str(name)?;
+        let name = LocalPointer::from_str(name)?;
 
         unsafe { self.group_state_mgt().SetName(name.as_pwstr()) }
     }
@@ -73,7 +73,7 @@ pub trait GroupStateMgtTrait {
         name: &str,
         id: &windows_core::GUID,
     ) -> windows_core::Result<windows_core::IUnknown> {
-        let name = Ref::from_str(name)?;
+        let name = LocalPointer::from_str(name)?;
 
         unsafe { self.group_state_mgt().CloneGroup(name.as_pwstr(), id) }
     }

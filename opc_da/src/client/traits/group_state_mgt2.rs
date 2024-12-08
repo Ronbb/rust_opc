@@ -1,4 +1,4 @@
-use crate::client::{memory::Ref, traits::group_state_mgt::GroupStateMgtTrait};
+use crate::client::{memory::LocalPointer, traits::group_state_mgt::GroupStateMgtTrait};
 
 pub trait GroupStateMgt2Trait: GroupStateMgtTrait {
     fn group_state_mgt2(&self) -> &opc_da_bindings::IOPCGroupStateMgt2;
