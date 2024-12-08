@@ -1,4 +1,4 @@
-use crate::traits::{ItemOptionalVqt, ItemWithMaxAge, ServerTrait};
+use crate::server::traits::{ItemOptionalVqt, ItemWithMaxAge, ServerTrait};
 
 use super::{
     enumeration::{ConnectionPointsEnumerator, StringEnumerator},
