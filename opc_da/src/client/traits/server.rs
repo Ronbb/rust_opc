@@ -48,4 +48,35 @@ where
             }
         }
     }
+
+    fn get_status(&self) -> windows_core::Result<opc_da_bindings::tagOPCSERVERSTATUS> {
+        let status = unsafe { self.server().GetStatus()?.as_ref() };
+        match status {
+            Some(status) => Ok(*status),
+            None => Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_FAIL,
+                "Failed to get server status",
+            )),
+        }
+    }
+
+    fn remove_group(&self, server_handle: u32, force: bool) -> windows_core::Result<()> {
+        unsafe {
+            self.server()
+                .RemoveGroup(server_handle, windows::Win32::Foundation::BOOL::from(force))?;
+        }
+        Ok(())
+    }
+
+    fn create_group_enumerator(
+        &self,
+        scope: opc_da_bindings::tagOPCENUMSCOPE,
+    ) -> windows_core::Result<windows::Win32::System::Com::IEnumUnknown> {
+        let enumerator = unsafe {
+            self.server()
+                .CreateGroupEnumerator(scope, &windows::Win32::System::Com::IEnumUnknown::IID)?
+        };
+
+        enumerator.cast()
+    }
 }

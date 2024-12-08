@@ -1,5 +1,7 @@
 use windows_core::Interface;
 
+use crate::client::traits::{GroupStateMgtTrait, ItemMgtTrait};
+
 /*
 opc_da_bindings::IOPCItemMgt,
 opc_da_bindings::IOPCGroupStateMgt,
@@ -75,19 +77,25 @@ impl TryFrom<windows_core::IUnknown> for Group {
     type Error = windows_core::Error;
 
     fn try_from(value: windows_core::IUnknown) -> windows_core::Result<Self> {
-        let item_mgt = value.cast()?;
-        let group_state_mgt = value.cast()?;
-        let group_state_mgt2 = value.cast().ok();
-        let public_group_state_mgt = value.cast().ok();
-        let sync_io = value.cast()?;
-        let sync_io2 = value.cast().ok();
-        let async_io = value.cast().ok();
-        let async_io2 = value.cast().ok();
-        let async_io3 = value.cast().ok();
-        let item_deadband_mgt = value.cast().ok();
-        let item_sampling_mgt = value.cast().ok();
-        let connection_point_container = value.cast().ok();
-        let data_object = value.cast().ok();
+        let item_mgt = value.cast::<opc_da_bindings::IOPCItemMgt>()?;
+        let group_state_mgt = value.cast::<opc_da_bindings::IOPCGroupStateMgt>()?;
+        let group_state_mgt2 = value.cast::<opc_da_bindings::IOPCGroupStateMgt2>().ok();
+        let public_group_state_mgt = value
+            .cast::<opc_da_bindings::IOPCPublicGroupStateMgt>()
+            .ok();
+        let sync_io = value.cast::<opc_da_bindings::IOPCSyncIO>()?;
+        let sync_io2 = value.cast::<opc_da_bindings::IOPCSyncIO2>().ok();
+        let async_io = value.cast::<opc_da_bindings::IOPCAsyncIO>().ok();
+        let async_io2 = value.cast::<opc_da_bindings::IOPCAsyncIO2>().ok();
+        let async_io3 = value.cast::<opc_da_bindings::IOPCAsyncIO3>().ok();
+        let item_deadband_mgt = value.cast::<opc_da_bindings::IOPCItemDeadbandMgt>().ok();
+        let item_sampling_mgt = value.cast::<opc_da_bindings::IOPCItemSamplingMgt>().ok();
+        let connection_point_container = value
+            .cast::<windows::Win32::System::Com::IConnectionPointContainer>()
+            .ok();
+        let data_object = value
+            .cast::<windows::Win32::System::Com::IDataObject>()
+            .ok();
 
         Ok(Self {
             item_mgt,
@@ -104,5 +112,17 @@ impl TryFrom<windows_core::IUnknown> for Group {
             connection_point_container,
             data_object,
         })
+    }
+}
+
+impl ItemMgtTrait for Group {
+    fn item_mgt(&self) -> &opc_da_bindings::IOPCItemMgt {
+        &self.item_mgt
+    }
+}
+
+impl GroupStateMgtTrait for Group {
+    fn group_state_mgt(&self) -> &opc_da_bindings::IOPCGroupStateMgt {
+        &self.group_state_mgt
     }
 }

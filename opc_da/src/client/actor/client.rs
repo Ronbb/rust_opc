@@ -1,9 +1,6 @@
 use actix::prelude::*;
 
-use crate::{
-    client::{Client, ServerFilter},
-    convert_error,
-};
+use crate::{client::Client, convert_error, def};
 
 impl Actor for Client {
     type Context = Context<Self>;
@@ -32,12 +29,12 @@ impl std::ops::Deref for ClientActor {
 
 #[derive(Message)]
 #[rtype(result = "windows_core::Result<Vec<(windows_core::GUID, String)>>")]
-struct GetServerGuids(pub ServerFilter);
+struct GetServerGuids(pub def::ServerFilter);
 
 impl ClientActor {
     pub async fn get_servers(
         &self,
-        filter: ServerFilter,
+        filter: def::ServerFilter,
     ) -> windows_core::Result<Vec<(windows_core::GUID, String)>> {
         convert_error!(self.send(GetServerGuids(filter)).await)
     }

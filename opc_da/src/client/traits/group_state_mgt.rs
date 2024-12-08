@@ -1,0 +1,80 @@
+use std::str::FromStr;
+
+use crate::{client::memory::Ref, def};
+
+pub trait GroupStateMgtTrait {
+    fn group_state_mgt(&self) -> &opc_da_bindings::IOPCGroupStateMgt;
+
+    fn get_state(&self) -> windows_core::Result<def::GroupState> {
+        let mut state = def::GroupState::default();
+
+        let mut active = windows::Win32::Foundation::BOOL::default();
+        let mut name = windows_core::PWSTR::null();
+
+        unsafe {
+            self.group_state_mgt().GetState(
+                &mut state.update_rate,
+                &mut active,
+                &mut name,
+                &mut state.time_bias,
+                &mut state.percent_deadband,
+                &mut state.locale_id,
+                &mut state.client_group_handle,
+                &mut state.server_group_handle,
+            )
+        }?;
+
+        state.active = active.as_bool();
+        state.name = unsafe { name.to_string() }?;
+
+        Ok(state)
+    }
+
+    fn set_state(
+        &self,
+        update_rate: Option<u32>,
+        active: Option<bool>,
+        time_bias: Option<i32>,
+        percent_deadband: Option<f32>,
+        locale_id: Option<u32>,
+        client_group_handle: Option<u32>,
+    ) -> windows_core::Result<u32> {
+        let requested_update_rate = Ref::new(update_rate);
+        let mut revised_update_rate = Ref::new(Some(0));
+        let active = Ref::new(active.map(windows::Win32::Foundation::BOOL::from));
+        let time_bias = Ref::new(time_bias);
+        let percent_deadband = Ref::new(percent_deadband);
+        let locale_id = Ref::new(locale_id);
+        let client_group_handle = Ref::new(client_group_handle);
+
+        unsafe {
+            self.group_state_mgt().SetState(
+                requested_update_rate.as_ptr(),
+                revised_update_rate.as_mut_ptr(),
+                active.as_ptr(),
+                time_bias.as_ptr(),
+                percent_deadband.as_ptr(),
+                locale_id.as_ptr(),
+                client_group_handle.as_ptr(),
+            )
+        }?;
+
+        Ok(revised_update_rate.into_inner().unwrap_or_default())
+    }
+
+    fn set_name(&self, name: &str) -> windows_core::Result<()> {
+        let name = Ref::from_str(name)?;
+
+        unsafe { self.group_state_mgt().SetName(name.as_pwstr()) }
+    }
+
+    fn clone_group(
+        &self,
+        name: &str,
+        id: &windows_core::GUID,
+    ) -> windows_core::Result<windows_core::IUnknown> {
+        let name = Ref::from_str(name)?;
+
+        unsafe { self.group_state_mgt().CloneGroup(name.as_pwstr(), id) }
+    }
+}

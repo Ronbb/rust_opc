@@ -1,6 +1,8 @@
 use windows_core::Interface;
 
-use super::{GuidIter, Server, ServerFilter};
+use crate::def;
+
+use super::{GuidIter, Server};
 
 #[derive(Debug)]
 pub struct Client {
@@ -52,7 +54,7 @@ impl Client {
         windows::Win32::System::Com::CoUninitialize();
     }
 
-    pub fn get_servers(&self, filter: ServerFilter) -> windows_core::Result<GuidIter> {
+    pub fn get_servers(&self, filter: def::ServerFilter) -> windows_core::Result<GuidIter> {
         let id = unsafe {
             windows::Win32::System::Com::CLSIDFromProgID(windows_core::w!("OPC.ServerList.1"))?
         };
