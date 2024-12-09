@@ -1,7 +1,10 @@
 use windows_core::Interface as _;
 
-use crate::client::traits::{
-    BrowseServerAddressSpaceTrait, ItemPropertiesTrait, ServerPublicGroupsTrait, ServerTrait,
+use crate::client::{
+    traits::{
+        BrowseServerAddressSpaceTrait, ItemPropertiesTrait, ServerPublicGroupsTrait, ServerTrait,
+    },
+    BrowseTrait, CommonTrait, ConnectionPointContainerTrait, ItemIoTrait,
 };
 
 use super::Group;
@@ -84,6 +87,30 @@ impl ServerTrait<Group> for Server {
     }
 }
 
+impl CommonTrait for Server {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCCommon> {
+        self.common.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCCommon not supported",
+            )
+        })
+    }
+}
+
+impl ConnectionPointContainerTrait for Server {
+    fn interface(
+        &self,
+    ) -> windows_core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
+        self.connection_point_container.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IConnectionPointContainer not supported",
+            )
+        })
+    }
+}
+
 impl ServerPublicGroupsTrait for Server {
     fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServerPublicGroups> {
         self.server_public_groups.as_ref().ok_or_else(|| {
@@ -112,6 +139,28 @@ impl ItemPropertiesTrait for Server {
             windows_core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCItemProperties not supported",
+            )
+        })
+    }
+}
+
+impl BrowseTrait for Server {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCBrowse> {
+        self.browse.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCBrowse not supported",
+            )
+        })
+    }
+}
+
+impl ItemIoTrait for Server {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemIO> {
+        self.item_io.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCItemIO not supported",
             )
         })
     }

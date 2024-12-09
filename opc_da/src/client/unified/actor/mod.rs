@@ -14,6 +14,6 @@ fn convert_error(err: actix::MailboxError) -> windows_core::Error {
 #[macro_export]
 macro_rules! convert_error {
     ($err:expr) => {
-        $err.map_err($crate::client::actor::convert_error)?
+        $err.map_err($crate::client::unified::actor::convert_error)?
     };
 }

@@ -1,6 +1,6 @@
 use actix::prelude::*;
 
-use crate::client::Server;
+use crate::client::unified::Server;
 
 impl Actor for Server {
     type Context = Context<Self>;

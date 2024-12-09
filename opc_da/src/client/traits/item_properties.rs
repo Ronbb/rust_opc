@@ -1,4 +1,4 @@
-use crate::client::memory::{LocalPointer, RemoteArray, RemotePointer};
+use crate::client::memory::{LocalPointer, RemoteArray};
 use opc_da_bindings::IOPCItemProperties;
 use std::str::FromStr;
 

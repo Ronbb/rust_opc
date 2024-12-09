@@ -70,6 +70,12 @@ impl<T: Sized> RemotePointer<T> {
     }
 }
 
+impl<T: Sized> Default for RemotePointer<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<PWSTR> for RemotePointer<u16> {
     #[inline(always)]
     fn from(value: PWSTR) -> Self {

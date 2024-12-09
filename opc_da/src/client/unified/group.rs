@@ -1,6 +1,11 @@
 use windows_core::Interface;
 
-use crate::client::traits::{AsyncIo2Trait, DataObjectTrait, GroupStateMgtTrait, ItemMgtTrait};
+use crate::client::{
+    traits::{AsyncIo2Trait, DataObjectTrait, GroupStateMgtTrait, ItemMgtTrait},
+    AsyncIo3Trait, AsyncIoTrait, ConnectionPointContainerTrait, GroupStateMgt2Trait,
+    ItemDeadbandMgtTrait, ItemSamplingMgtTrait, PublicGroupStateMgtTrait, SyncIo2Trait,
+    SyncIoTrait,
+};
 
 /*
 opc_da_bindings::IOPCItemMgt,
@@ -127,12 +132,108 @@ impl GroupStateMgtTrait for Group {
     }
 }
 
+impl GroupStateMgt2Trait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCGroupStateMgt2> {
+        self.group_state_mgt2.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCGroupStateMgt2 not supported",
+            )
+        })
+    }
+}
+
+impl PublicGroupStateMgtTrait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCPublicGroupStateMgt> {
+        self.public_group_state_mgt.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCPublicGroupStateMgt not supported",
+            )
+        })
+    }
+}
+
+impl SyncIoTrait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCSyncIO> {
+        Ok(&self.sync_io)
+    }
+}
+
+impl SyncIo2Trait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCSyncIO2> {
+        self.sync_io2.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCSyncIO2 not supported",
+            )
+        })
+    }
+}
+
+impl AsyncIoTrait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO> {
+        self.async_io.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCAsyncIO not supported",
+            )
+        })
+    }
+}
+
 impl AsyncIo2Trait for Group {
     fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO2> {
         self.async_io2.as_ref().ok_or_else(|| {
             windows_core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCAsyncIO2 not supported",
+            )
+        })
+    }
+}
+
+impl AsyncIo3Trait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO3> {
+        self.async_io3.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCAsyncIO3 not supported",
+            )
+        })
+    }
+}
+
+impl ItemDeadbandMgtTrait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemDeadbandMgt> {
+        self.item_deadband_mgt.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCItemDeadbandMgt not supported",
+            )
+        })
+    }
+}
+
+impl ItemSamplingMgtTrait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemSamplingMgt> {
+        self.item_sampling_mgt.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCItemSamplingMgt not supported",
+            )
+        })
+    }
+}
+
+impl ConnectionPointContainerTrait for Group {
+    fn interface(
+        &self,
+    ) -> windows_core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
+        self.connection_point_container.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IConnectionPointContainer not supported",
             )
         })
     }

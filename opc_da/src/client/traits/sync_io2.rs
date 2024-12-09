@@ -4,6 +4,7 @@ use windows::core::VARIANT;
 pub trait SyncIo2Trait {
     fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCSyncIO2>;
 
+    #[allow(clippy::type_complexity)]
     fn read_max_age(
         &self,
         server_handles: &[u32],

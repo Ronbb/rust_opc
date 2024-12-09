@@ -10,6 +10,7 @@
   "cSpell.spellCheckOnlyWorkspaceFiles": true,
   "cSpell.words": [
     "actix",
+    "advf",
     "bindgen",
     "BSTR",
     "CATID",
@@ -19,8 +20,10 @@
     "COINIT",
     "Comn",
     "CONNECTDATA",
+    "dadvise",
     "Datatypes",
     "Deadband",
+    "dunadvise",
     "enumer",
     "FILETIME",
     "FORMATETC",

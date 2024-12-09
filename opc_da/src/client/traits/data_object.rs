@@ -7,28 +7,25 @@ pub trait DataObjectTrait {
         unsafe { self.interface()?.GetData(format) }
     }
 
-    fn get_data_here(
-        &self,
-        format: &FORMATETC,
-        medium: *mut STGMEDIUM,
-    ) -> windows::core::Result<()> {
-        unsafe { self.interface()?.GetDataHere(format, medium) }
+    fn get_data_here(&self, format: &FORMATETC) -> windows::core::Result<STGMEDIUM> {
+        let mut output = STGMEDIUM::default();
+        unsafe { self.interface()?.GetDataHere(format, &mut output)? };
+        Ok(output)
     }
 
     fn query_get_data(&self, format: &FORMATETC) -> windows::core::Result<()> {
         unsafe { self.interface()?.QueryGetData(format) }.ok()
     }
 
-    fn get_canonical_format(
-        &self,
-        format_in: &FORMATETC,
-        format_out: *mut FORMATETC,
-    ) -> windows::core::Result<()> {
+    fn get_canonical_format(&self, format_in: &FORMATETC) -> windows::core::Result<FORMATETC> {
+        let mut output = FORMATETC::default();
         unsafe {
             self.interface()?
-                .GetCanonicalFormatEtc(format_in, format_out)
+                .GetCanonicalFormatEtc(format_in, &mut output)
         }
-        .ok()
+        .ok()?;
+
+        Ok(output)
     }
 
     fn set_data(
