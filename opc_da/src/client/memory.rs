@@ -30,6 +30,14 @@ impl<T: Sized> RemoteArray<T> {
         unsafe { core::slice::from_raw_parts(self.pointer, self.len) }
     }
 
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
     pub fn set_len(&mut self, len: usize) {
         self.len = len;
     }

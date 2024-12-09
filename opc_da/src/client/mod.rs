@@ -7,3 +7,6 @@ pub mod v3;
 
 pub use memory::*;
 pub use traits::*;
+
+#[cfg(test)]
+mod tests;
