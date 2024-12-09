@@ -2,7 +2,7 @@ use windows::Win32::{
     Foundation::{FILETIME, VARIANT_BOOL, VARIANT_TRUE},
     System::Variant::VARENUM,
 };
-use windows_core::{BSTR, VARIANT};
+use windows::core::{BSTR, VARIANT};
 
 use super::base::{AccessRight, Quality, SystemTime, Variant};
 
@@ -55,14 +55,14 @@ impl From<Variant> for VARIANT {
         match val.clone() {
             Variant::Empty => VARIANT::new(),
             Variant::Null => unsafe {
-                VARIANT::from_raw(windows_core::imp::VARIANT {
-                    Anonymous: windows_core::imp::VARIANT_0 {
-                        Anonymous: windows_core::imp::VARIANT_0_0 {
+                VARIANT::from_raw(windows::core::imp::VARIANT {
+                    Anonymous: windows::core::imp::VARIANT_0 {
+                        Anonymous: windows::core::imp::VARIANT_0_0 {
                             vt: windows::Win32::System::Variant::VT_NULL.0,
                             wReserved1: 0,
                             wReserved2: 0,
                             wReserved3: 0,
-                            Anonymous: windows_core::imp::VARIANT_0_0_0 { llVal: 0 },
+                            Anonymous: windows::core::imp::VARIANT_0_0_0 { llVal: 0 },
                         },
                     },
                 })
@@ -83,7 +83,7 @@ impl From<Variant> for VARIANT {
     }
 }
 
-impl From<Variant> for windows_core::imp::VARIANT {
+impl From<Variant> for windows::core::imp::VARIANT {
     fn from(val: Variant) -> Self {
         let variant: VARIANT = val.into();
         *variant.as_raw()
@@ -119,8 +119,8 @@ impl From<VARIANT> for Variant {
     }
 }
 
-impl From<windows_core::imp::VARIANT> for Variant {
-    fn from(value: windows_core::imp::VARIANT) -> Self {
+impl From<windows::core::imp::VARIANT> for Variant {
+    fn from(value: windows::core::imp::VARIANT) -> Self {
         unsafe { Variant::from(VARIANT::from_raw(value)) }
     }
 }

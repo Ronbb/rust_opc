@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use unified::StringIter;
+use unified::StringIterator;
 
 use crate::def::ServerFilter;
 
@@ -31,7 +31,7 @@ fn test_client() {
         .create_server(server_id)
         .expect("Failed to create server");
 
-    let branch = StringIter::new(
+    let branch = StringIterator::new(
         server
             .browse_opc_item_ids(opc_da_bindings::OPC_BRANCH, "", 0, 0)
             .expect("Failed to browse items"),
@@ -48,7 +48,7 @@ fn test_client() {
         .change_browse_position(opc_da_bindings::OPC_BROWSE_TO, &branch)
         .expect("Failed to change browse position");
 
-    let leaf = StringIter::new(
+    let leaf = StringIterator::new(
         server
             .browse_opc_item_ids(opc_da_bindings::OPC_FLAT, "", 0, 0)
             .expect("Failed to browse items"),
@@ -71,7 +71,7 @@ fn test_client() {
     let name = LocalPointer::from_str(&name).expect("Failed to convert name");
     let (results, errors) = group
         .add_items(&[opc_da_bindings::tagOPCITEMDEF {
-            szAccessPath: windows_core::PWSTR::null(),
+            szAccessPath: windows::core::PWSTR::null(),
             szItemID: name.as_pwstr(),
             bActive: true.into(),
             hClient: 0,

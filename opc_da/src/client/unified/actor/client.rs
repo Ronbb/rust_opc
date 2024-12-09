@@ -13,7 +13,7 @@ impl Actor for Client {
 pub struct ClientActor(Addr<Client>);
 
 impl ClientActor {
-    pub fn new() -> windows_core::Result<Self> {
+    pub fn new() -> windows::core::Result<Self> {
         Ok(Self(Client::new()?.start()))
     }
 }
@@ -28,20 +28,20 @@ impl std::ops::Deref for ClientActor {
 }
 
 #[derive(Message)]
-#[rtype(result = "windows_core::Result<Vec<(windows_core::GUID, String)>>")]
+#[rtype(result = "windows::core::Result<Vec<(windows::core::GUID, String)>>")]
 struct GetServerGuids(pub def::ServerFilter);
 
 impl ClientActor {
     pub async fn get_servers(
         &self,
         filter: def::ServerFilter,
-    ) -> windows_core::Result<Vec<(windows_core::GUID, String)>> {
+    ) -> windows::core::Result<Vec<(windows::core::GUID, String)>> {
         convert_error!(self.send(GetServerGuids(filter)).await)
     }
 }
 
 impl Handler<GetServerGuids> for Client {
-    type Result = windows_core::Result<Vec<(windows_core::GUID, String)>>;
+    type Result = windows::core::Result<Vec<(windows::core::GUID, String)>>;
 
     fn handle(&mut self, message: GetServerGuids, _: &mut Self::Context) -> Self::Result {
         self.get_servers(message.0)?
@@ -49,7 +49,7 @@ impl Handler<GetServerGuids> for Client {
                 Ok(guid) => {
                     let name = unsafe {
                         windows::Win32::System::Com::ProgIDFromCLSID(&guid)
-                            .map_err(|e| windows_core::Error::new(e.code(), "Failed to get ProgID"))
+                            .map_err(|e| windows::core::Error::new(e.code(), "Failed to get ProgID"))
                     }?;
 
                     Ok((guid, unsafe { name.to_string() }?))

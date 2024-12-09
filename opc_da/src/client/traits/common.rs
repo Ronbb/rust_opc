@@ -1,28 +1,29 @@
-use crate::client::memory::{LocalPointer, RemotePointer};
+use crate::client::{
+    memory::{LocalPointer, RemotePointer},
+    RemoteArray,
+};
 use opc_da_bindings::IOPCCommon;
 
 pub trait CommonTrait {
-    fn interface(&self) -> windows_core::Result<&IOPCCommon>;
+    fn interface(&self) -> windows::core::Result<&IOPCCommon>;
 
-    fn set_locale_id(&self, lcid: u32) -> windows::core::Result<()> {
-        unsafe { self.interface()?.SetLocaleID(lcid) }
+    fn set_locale_id(&self, locale_id: u32) -> windows::core::Result<()> {
+        unsafe { self.interface()?.SetLocaleID(locale_id) }
     }
 
     fn get_locale_id(&self) -> windows::core::Result<u32> {
         unsafe { self.interface()?.GetLocaleID() }
     }
 
-    fn query_available_locale_ids(&self) -> windows::core::Result<Vec<u32>> {
-        let mut count = 0;
-        let mut lcids = RemotePointer::new();
+    fn query_available_locale_ids(&self) -> windows::core::Result<RemoteArray<u32>> {
+        let mut locale_ids = RemoteArray::emptry();
 
         unsafe {
             self.interface()?
-                .QueryAvailableLocaleIDs(&mut count, lcids.as_mut_ptr())?;
-
-            let slice = std::slice::from_raw_parts(lcids.as_option().unwrap(), count as usize);
-            Ok(slice.to_vec())
+                .QueryAvailableLocaleIDs(locale_ids.as_mut_len_ptr(), locale_ids.as_mut_ptr())?;
         }
+
+        Ok(locale_ids)
     }
 
     fn get_error_string(&self, error: windows::core::HRESULT) -> windows::core::Result<String> {

@@ -1,7 +1,7 @@
 use crate::client::memory::RemoteArray;
 
 pub trait AsyncIo3Trait {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO3>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCAsyncIO3>;
 
     fn read_max_age(
         &self,
@@ -10,14 +10,14 @@ pub trait AsyncIo3Trait {
         transaction_id: u32,
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
         if server_handles.len() != max_age.len() {
-            return Err(windows_core::Error::new(
+            return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "server_handles and max_age must have the same length",
             ));
         }
 
         let mut cancel_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
 
         unsafe {
             self.interface()?.ReadMaxAge(
@@ -40,14 +40,14 @@ pub trait AsyncIo3Trait {
         transaction_id: u32,
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
         if server_handles.len() != values.len() {
-            return Err(windows_core::Error::new(
+            return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "server_handles and values must have the same length",
             ));
         }
 
         let mut cancel_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
 
         unsafe {
             self.interface()?.WriteVQT(

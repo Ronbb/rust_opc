@@ -5,6 +5,10 @@ edition = "2021"
 repository = "https://github.com/Ronbb/rust_opc"
 keywords = ["opc", "da"]
 
+[package.metadata.docs.rs]
+default-target = "x86_64-pc-windows-msvc"
+targets = []
+
 [dependencies]
 opc_da_bindings = { path = "../opc_da_bindings" }
 globset = "0.4.15"

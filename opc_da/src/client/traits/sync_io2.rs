@@ -2,7 +2,7 @@ use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
 pub trait SyncIo2Trait {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCSyncIO2>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCSyncIO2>;
 
     #[allow(clippy::type_complexity)]
     fn read_max_age(
@@ -22,14 +22,16 @@ pub trait SyncIo2Trait {
             ));
         }
 
-        let mut values = RemoteArray::new(server_handles.len());
-        let mut qualities = RemoteArray::new(server_handles.len());
-        let mut timestamps = RemoteArray::new(server_handles.len());
-        let mut errors = RemoteArray::new(server_handles.len());
+        let len = server_handles.len().try_into()?;
+
+        let mut values = RemoteArray::new(len);
+        let mut qualities = RemoteArray::new(len);
+        let mut timestamps = RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.ReadMaxAge(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 max_age.as_ptr(),
                 values.as_mut_ptr(),
@@ -54,11 +56,13 @@ pub trait SyncIo2Trait {
             ));
         }
 
-        let mut errors = RemoteArray::new(server_handles.len());
+        let len = server_handles.len().try_into()?;
+
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.WriteVQT(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 values.as_ptr(),
                 errors.as_mut_ptr(),

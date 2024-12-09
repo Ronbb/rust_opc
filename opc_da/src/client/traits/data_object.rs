@@ -1,7 +1,7 @@
 use windows::Win32::System::Com::{FORMATETC, STGMEDIUM};
 
 pub trait DataObjectTrait {
-    fn interface(&self) -> windows_core::Result<&windows::Win32::System::Com::IDataObject>;
+    fn interface(&self) -> windows::core::Result<&windows::Win32::System::Com::IDataObject>;
 
     fn get_data(&self, format: &FORMATETC) -> windows::core::Result<STGMEDIUM> {
         unsafe { self.interface()?.GetData(format) }

@@ -6,7 +6,7 @@ use opc_da_bindings::{
 };
 
 pub trait BrowseServerAddressSpaceTrait {
-    fn interface(&self) -> windows_core::Result<&IOPCBrowseServerAddressSpace>;
+    fn interface(&self) -> windows::core::Result<&IOPCBrowseServerAddressSpace>;
 
     fn query_organization(&self) -> windows::core::Result<tagOPCNAMESPACETYPE> {
         unsafe { self.interface()?.QueryOrganization() }

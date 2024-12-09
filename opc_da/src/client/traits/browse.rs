@@ -3,7 +3,7 @@ use opc_da_bindings::{tagOPCBROWSEELEMENT, tagOPCBROWSEFILTER, tagOPCITEMPROPERT
 use std::str::FromStr;
 
 pub trait BrowseTrait {
-    fn interface(&self) -> windows_core::Result<&IOPCBrowse>;
+    fn interface(&self) -> windows::core::Result<&IOPCBrowse>;
 
     fn get_properties(
         &self,
@@ -12,7 +12,7 @@ pub trait BrowseTrait {
         property_ids: &[u32],
     ) -> windows::core::Result<RemoteArray<tagOPCITEMPROPERTIES>> {
         if item_ids.is_empty() {
-            return Err(windows_core::Error::new(
+            return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "item_ids is empty",
             ));
@@ -21,7 +21,7 @@ pub trait BrowseTrait {
         let item_ptrs: LocalPointer<Vec<Vec<u16>>> = LocalPointer::from(item_ids);
         let item_ptrs = item_ptrs.as_pcwstr_array();
 
-        let mut results = RemoteArray::new(item_ids.len() as _);
+        let mut results = RemoteArray::new(item_ids.len().try_into()?);
 
         unsafe {
             self.interface()?.GetProperties(
@@ -74,7 +74,7 @@ pub trait BrowseTrait {
         }
 
         if count > 0 {
-            elements.set_len(count as _);
+            elements.set_len(count);
         }
 
         Ok((more_elements.into(), elements))

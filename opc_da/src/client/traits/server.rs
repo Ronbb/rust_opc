@@ -1,10 +1,10 @@
-use windows_core::Interface as _;
+use windows::core::Interface as _;
 
 pub trait ServerTrait<Group>
 where
-    Group: TryFrom<windows_core::IUnknown, Error = windows_core::Error>,
+    Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>,
 {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServer>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer>;
 
     #[allow(clippy::too_many_arguments)]
     fn add_group(
@@ -16,11 +16,11 @@ where
         locale_id: u32,
         time_bias: i32,
         percent_deadband: f32,
-    ) -> windows_core::Result<Group> {
+    ) -> windows::core::Result<Group> {
         let mut group = None;
         let mut group_server_handle = 0u32;
         let mut group_name = name.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-        let group_name = windows_core::PWSTR::from_raw(group_name.as_mut_ptr());
+        let group_name = windows::core::PWSTR::from_raw(group_name.as_mut_ptr());
         let mut revised_percent_deadband = 0;
 
         unsafe {
@@ -39,7 +39,7 @@ where
             )?;
 
             match group {
-                None => Err(windows_core::Error::new(
+                None => Err(windows::core::Error::new(
                     windows::Win32::Foundation::E_POINTER,
                     "Failed to add group, returned null",
                 )),
@@ -48,18 +48,18 @@ where
         }
     }
 
-    fn get_status(&self) -> windows_core::Result<opc_da_bindings::tagOPCSERVERSTATUS> {
+    fn get_status(&self) -> windows::core::Result<opc_da_bindings::tagOPCSERVERSTATUS> {
         let status = unsafe { self.interface()?.GetStatus()?.as_ref() };
         match status {
             Some(status) => Ok(*status),
-            None => Err(windows_core::Error::new(
+            None => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_FAIL,
                 "Failed to get server status",
             )),
         }
     }
 
-    fn remove_group(&self, server_handle: u32, force: bool) -> windows_core::Result<()> {
+    fn remove_group(&self, server_handle: u32, force: bool) -> windows::core::Result<()> {
         unsafe {
             self.interface()?
                 .RemoveGroup(server_handle, windows::Win32::Foundation::BOOL::from(force))?;
@@ -70,7 +70,7 @@ where
     fn create_group_enumerator(
         &self,
         scope: opc_da_bindings::tagOPCENUMSCOPE,
-    ) -> windows_core::Result<windows::Win32::System::Com::IEnumUnknown> {
+    ) -> windows::core::Result<windows::Win32::System::Com::IEnumUnknown> {
         let enumerator = unsafe {
             self.interface()?
                 .CreateGroupEnumerator(scope, &windows::Win32::System::Com::IEnumUnknown::IID)?

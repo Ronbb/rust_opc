@@ -6,7 +6,7 @@ use windows::Win32::{
         CONNECTDATA,
     },
 };
-use windows_core::PWSTR;
+use windows::core::PWSTR;
 
 use crate::safe_call;
 
@@ -25,7 +25,7 @@ impl<T: Clone> Enumerator<T> {
         }
     }
 
-    pub fn next(&self, count: u32, fetched: &mut u32, elements: &mut [T]) -> windows_core::HRESULT {
+    pub fn next(&self, count: u32, fetched: &mut u32, elements: &mut [T]) -> windows::core::HRESULT {
         let current_index = self
             .index
             .fetch_add(count as _, core::sync::atomic::Ordering::SeqCst);
@@ -44,7 +44,7 @@ impl<T: Clone> Enumerator<T> {
         S_OK
     }
 
-    pub fn skip(&self, count: u32) -> windows_core::HRESULT {
+    pub fn skip(&self, count: u32) -> windows::core::HRESULT {
         let current_index = self.index.load(core::sync::atomic::Ordering::SeqCst);
         let new_index = current_index.saturating_add(count as usize);
         let max_index = self.items.len();
@@ -60,7 +60,7 @@ impl<T: Clone> Enumerator<T> {
         S_OK
     }
 
-    fn reset(&self) -> windows_core::HRESULT {
+    fn reset(&self) -> windows::core::HRESULT {
         self.index.store(0, core::sync::atomic::Ordering::SeqCst);
         S_OK
     }
@@ -77,20 +77,20 @@ impl<T: Clone> Clone for Enumerator<T> {
     }
 }
 
-#[windows_core::implement(IEnumString)]
+#[windows::core::implement(IEnumString)]
 #[repr(transparent)]
 pub struct StringEnumerator(Enumerator<Vec<u16>>);
 
-#[windows_core::implement(IEnumUnknown)]
-pub struct UnknownEnumerator(Enumerator<windows_core::IUnknown>);
+#[windows::core::implement(IEnumUnknown)]
+pub struct UnknownEnumerator(Enumerator<windows::core::IUnknown>);
 
-#[windows_core::implement(IEnumConnectionPoints)]
+#[windows::core::implement(IEnumConnectionPoints)]
 pub struct ConnectionPointsEnumerator(Enumerator<IConnectionPoint>);
 
-#[windows_core::implement(IEnumConnections)]
+#[windows::core::implement(IEnumConnections)]
 pub struct ConnectionsEnumerator(Enumerator<CONNECTDATA>);
 
-#[windows_core::implement(opc_da_bindings::IEnumOPCItemAttributes)]
+#[windows::core::implement(opc_da_bindings::IEnumOPCItemAttributes)]
 pub struct ItemAttributesEnumerator(Enumerator<opc_da_bindings::tagOPCITEMATTRIBUTES>);
 
 impl StringEnumerator {
@@ -105,7 +105,7 @@ impl StringEnumerator {
 }
 
 impl UnknownEnumerator {
-    pub fn new(items: Vec<windows_core::IUnknown>) -> Self {
+    pub fn new(items: Vec<windows::core::IUnknown>) -> Self {
         Self(Enumerator::new(items))
     }
 }
@@ -132,9 +132,9 @@ impl IEnumString_Impl for StringEnumerator_Impl {
     fn Next(
         &self,
         count: u32,
-        range_elements: *mut windows_core::PWSTR,
+        range_elements: *mut windows::core::PWSTR,
         count_fetched: *mut u32,
-    ) -> windows_core::HRESULT {
+    ) -> windows::core::HRESULT {
         let fetched = match count_fetched.into_ref() {
             Ok(fetched) => fetched,
             Err(e) => return e.code(),
@@ -160,15 +160,15 @@ impl IEnumString_Impl for StringEnumerator_Impl {
         S_OK
     }
 
-    fn Skip(&self, count: u32) -> windows_core::HRESULT {
+    fn Skip(&self, count: u32) -> windows::core::HRESULT {
         self.0.skip(count)
     }
 
-    fn Reset(&self) -> windows_core::Result<()> {
+    fn Reset(&self) -> windows::core::Result<()> {
         self.0.reset().ok()
     }
 
-    fn Clone(&self) -> windows_core::Result<IEnumString> {
+    fn Clone(&self) -> windows::core::Result<IEnumString> {
         Ok(IEnumString::from(StringEnumerator(self.0.clone())))
     }
 }
@@ -177,9 +177,9 @@ impl IEnumUnknown_Impl for UnknownEnumerator_Impl {
     fn Next(
         &self,
         count: u32,
-        range_elements: *mut Option<windows_core::IUnknown>,
+        range_elements: *mut Option<windows::core::IUnknown>,
         fetched_count: *mut u32,
-    ) -> windows_core::HRESULT {
+    ) -> windows::core::HRESULT {
         let fetched = match fetched_count.into_ref() {
             Ok(fetched) => fetched,
             Err(e) => return e.code(),
@@ -204,15 +204,15 @@ impl IEnumUnknown_Impl for UnknownEnumerator_Impl {
         S_OK
     }
 
-    fn Skip(&self, count: u32) -> windows_core::Result<()> {
+    fn Skip(&self, count: u32) -> windows::core::Result<()> {
         self.0.skip(count).ok()
     }
 
-    fn Reset(&self) -> windows_core::Result<()> {
+    fn Reset(&self) -> windows::core::Result<()> {
         self.0.reset().ok()
     }
 
-    fn Clone(&self) -> windows_core::Result<IEnumUnknown> {
+    fn Clone(&self) -> windows::core::Result<IEnumUnknown> {
         Ok(IEnumUnknown::from(UnknownEnumerator(self.0.clone())))
     }
 }
@@ -223,7 +223,7 @@ impl IEnumConnectionPoints_Impl for ConnectionPointsEnumerator_Impl {
         count: u32,
         range_connection_points: *mut Option<IConnectionPoint>,
         count_fetched: *mut u32,
-    ) -> windows_core::HRESULT {
+    ) -> windows::core::HRESULT {
         let fetched = match count_fetched.into_ref() {
             Ok(fetched) => fetched,
             Err(e) => return e.code(),
@@ -248,15 +248,15 @@ impl IEnumConnectionPoints_Impl for ConnectionPointsEnumerator_Impl {
         S_OK
     }
 
-    fn Skip(&self, count: u32) -> windows_core::Result<()> {
+    fn Skip(&self, count: u32) -> windows::core::Result<()> {
         self.0.skip(count).ok()
     }
 
-    fn Reset(&self) -> windows_core::Result<()> {
+    fn Reset(&self) -> windows::core::Result<()> {
         self.0.reset().ok()
     }
 
-    fn Clone(&self) -> windows_core::Result<IEnumConnectionPoints> {
+    fn Clone(&self) -> windows::core::Result<IEnumConnectionPoints> {
         Ok(IEnumConnectionPoints::from(ConnectionPointsEnumerator(
             self.0.clone(),
         )))
@@ -269,7 +269,7 @@ impl IEnumConnections_Impl for ConnectionsEnumerator_Impl {
         count: u32,
         range_connect_data: *mut CONNECTDATA,
         count_fetched: *mut u32,
-    ) -> windows_core::HRESULT {
+    ) -> windows::core::HRESULT {
         let fetched = match count_fetched.into_ref() {
             Ok(fetched) => fetched,
             Err(e) => return e.code(),
@@ -283,15 +283,15 @@ impl IEnumConnections_Impl for ConnectionsEnumerator_Impl {
         self.0.next(count, fetched, elements)
     }
 
-    fn Skip(&self, count: u32) -> windows_core::Result<()> {
+    fn Skip(&self, count: u32) -> windows::core::Result<()> {
         self.0.skip(count).ok()
     }
 
-    fn Reset(&self) -> windows_core::Result<()> {
+    fn Reset(&self) -> windows::core::Result<()> {
         self.0.reset().ok()
     }
 
-    fn Clone(&self) -> windows_core::Result<IEnumConnections> {
+    fn Clone(&self) -> windows::core::Result<IEnumConnections> {
         Ok(IEnumConnections::from(ConnectionsEnumerator(
             self.0.clone(),
         )))
@@ -304,7 +304,7 @@ impl opc_da_bindings::IEnumOPCItemAttributes_Impl for ItemAttributesEnumerator_I
         count: u32,
         items: *mut *mut opc_da_bindings::tagOPCITEMATTRIBUTES,
         fetched_count: *mut u32,
-    ) -> windows_core::Result<()> {
+    ) -> windows::core::Result<()> {
         let fetched = fetched_count.into_ref()?;
         let elements = items.into_com_array_ref(count)?;
 
@@ -314,15 +314,15 @@ impl opc_da_bindings::IEnumOPCItemAttributes_Impl for ItemAttributesEnumerator_I
         }
     }
 
-    fn Skip(&self, count: u32) -> windows_core::Result<()> {
+    fn Skip(&self, count: u32) -> windows::core::Result<()> {
         self.0.skip(count).ok()
     }
 
-    fn Reset(&self) -> windows_core::Result<()> {
+    fn Reset(&self) -> windows::core::Result<()> {
         self.0.reset().ok()
     }
 
-    fn Clone(&self) -> windows_core::Result<opc_da_bindings::IEnumOPCItemAttributes> {
+    fn Clone(&self) -> windows::core::Result<opc_da_bindings::IEnumOPCItemAttributes> {
         Ok(opc_da_bindings::IEnumOPCItemAttributes::from(
             ItemAttributesEnumerator(self.0.clone()),
         ))

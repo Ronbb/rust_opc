@@ -2,7 +2,7 @@ use crate::client::memory::LocalPointer;
 use std::str::FromStr;
 
 pub trait ServerPublicGroupsTrait {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServerPublicGroups>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServerPublicGroups>;
 
     fn get_public_group_by_name(
         &self,

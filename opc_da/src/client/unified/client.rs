@@ -1,8 +1,8 @@
-use windows_core::Interface;
+use windows::core::Interface;
 
 use crate::def;
 
-use super::{GuidIter, Server};
+use super::{GuidIterator, Server};
 
 #[derive(Debug)]
 pub struct Client {
@@ -11,7 +11,7 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn new() -> windows_core::Result<Self> {
+    pub fn new() -> windows::core::Result<Self> {
         Self::initialize().ok()?;
         Ok(Self {
             _marker: std::marker::PhantomData,
@@ -36,7 +36,7 @@ impl Client {
     ///
     /// # Note
     /// Callers should check the returned HRESULT for initialization failures.
-    pub(crate) fn initialize() -> windows_core::HRESULT {
+    pub(crate) fn initialize() -> windows::core::HRESULT {
         unsafe {
             windows::Win32::System::Com::CoInitializeEx(
                 None,
@@ -54,9 +54,9 @@ impl Client {
         windows::Win32::System::Com::CoUninitialize();
     }
 
-    pub fn get_servers(&self, filter: def::ServerFilter) -> windows_core::Result<GuidIter> {
+    pub fn get_servers(&self, filter: def::ServerFilter) -> windows::core::Result<GuidIterator> {
         let id = unsafe {
-            windows::Win32::System::Com::CLSIDFromProgID(windows_core::w!("OPC.ServerList.1"))?
+            windows::Win32::System::Com::CLSIDFromProgID(windows::core::w!("OPC.ServerList.1"))?
         };
 
         let servers: opc_da_bindings::IOPCServerList = unsafe {
@@ -84,14 +84,14 @@ impl Client {
                         .collect::<Vec<_>>(),
                 )
                 .map_err(|e| {
-                    windows_core::Error::new(e.code(), "Failed to enumerate server classes")
+                    windows::core::Error::new(e.code(), "Failed to enumerate server classes")
                 })?
         };
 
-        Ok(GuidIter::new(iter))
+        Ok(GuidIterator::new(iter))
     }
 
-    pub fn create_server(&self, clsid: windows_core::GUID) -> windows_core::Result<Server> {
+    pub fn create_server(&self, clsid: windows::core::GUID) -> windows::core::Result<Server> {
         let server: opc_da_bindings::IOPCServer = unsafe {
             windows::Win32::System::Com::CoCreateInstance(
                 &clsid,
@@ -100,6 +100,6 @@ impl Client {
             )?
         };
 
-        server.cast::<windows_core::IUnknown>()?.try_into()
+        server.cast::<windows::core::IUnknown>()?.try_into()
     }
 }

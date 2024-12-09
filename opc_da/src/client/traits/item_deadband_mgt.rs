@@ -1,7 +1,7 @@
 use crate::client::memory::RemoteArray;
 
 pub trait ItemDeadbandMgtTrait {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemDeadbandMgt>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemDeadbandMgt>;
 
     fn set_item_deadband(
         &self,
@@ -15,7 +15,7 @@ pub trait ItemDeadbandMgtTrait {
             ));
         }
 
-        let mut errors = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
 
         unsafe {
             self.interface()?.SetItemDeadband(
@@ -33,8 +33,8 @@ pub trait ItemDeadbandMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<(RemoteArray<f32>, RemoteArray<windows::core::HRESULT>)> {
-        let mut errors = RemoteArray::new(server_handles.len());
-        let mut deadbands = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
+        let mut deadbands = RemoteArray::new(server_handles.len().try_into()?);
 
         unsafe {
             self.interface()?.GetItemDeadband(
@@ -52,7 +52,7 @@ pub trait ItemDeadbandMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
-        let mut errors = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
 
         unsafe {
             self.interface()?.ClearItemDeadband(

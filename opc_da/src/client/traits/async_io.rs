@@ -2,7 +2,7 @@ use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
 pub trait AsyncIoTrait {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCAsyncIO>;
 
     fn read(
         &self,
@@ -11,7 +11,7 @@ pub trait AsyncIoTrait {
         server_handles: &[u32],
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
         let mut transaction_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
 
         unsafe {
             self.interface()?.Read(
@@ -34,7 +34,7 @@ pub trait AsyncIoTrait {
         values: &[VARIANT],
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
         let mut transaction_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
 
         unsafe {
             self.interface()?.Write(

@@ -1,4 +1,4 @@
-use windows_core::Interface as _;
+use windows::core::Interface as _;
 
 use super::traits::{
     AsyncIo2Trait, AsyncIoTrait, BrowseServerAddressSpaceTrait, CommonTrait,
@@ -16,10 +16,10 @@ pub struct Server {
     pub(crate) browse_server_address_space: Option<opc_da_bindings::IOPCBrowseServerAddressSpace>,
 }
 
-impl TryFrom<windows_core::IUnknown> for Server {
-    type Error = windows_core::Error;
+impl TryFrom<windows::core::IUnknown> for Server {
+    type Error = windows::core::Error;
 
-    fn try_from(value: windows_core::IUnknown) -> windows_core::Result<Self> {
+    fn try_from(value: windows::core::IUnknown) -> windows::core::Result<Self> {
         Ok(Self {
             server: value.cast()?,
             common: value.cast()?,
@@ -32,13 +32,13 @@ impl TryFrom<windows_core::IUnknown> for Server {
 }
 
 impl ServerTrait<Group> for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServer> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer> {
         Ok(&self.server)
     }
 }
 
 impl CommonTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCCommon> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCCommon> {
         Ok(&self.common)
     }
 }
@@ -46,21 +46,21 @@ impl CommonTrait for Server {
 impl ConnectionPointContainerTrait for Server {
     fn interface(
         &self,
-    ) -> windows_core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
+    ) -> windows::core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
         Ok(&self.connection_point_container)
     }
 }
 
 impl ItemPropertiesTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemProperties> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemProperties> {
         Ok(&self.item_properties)
     }
 }
 
 impl ServerPublicGroupsTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServerPublicGroups> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServerPublicGroups> {
         self.server_public_groups.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCServerPublicGroups not supported",
             )
@@ -69,9 +69,9 @@ impl ServerPublicGroupsTrait for Server {
 }
 
 impl BrowseServerAddressSpaceTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCBrowseServerAddressSpace> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCBrowseServerAddressSpace> {
         self.browse_server_address_space.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCBrowseServerAddressSpace not supported",
             )
@@ -90,10 +90,10 @@ pub struct Group {
     pub(crate) data_object: Option<windows::Win32::System::Com::IDataObject>,
 }
 
-impl TryFrom<windows_core::IUnknown> for Group {
-    type Error = windows_core::Error;
+impl TryFrom<windows::core::IUnknown> for Group {
+    type Error = windows::core::Error;
 
-    fn try_from(value: windows_core::IUnknown) -> windows_core::Result<Self> {
+    fn try_from(value: windows::core::IUnknown) -> windows::core::Result<Self> {
         Ok(Self {
             item_mgt: value.cast()?,
             group_state_mgt: value.cast()?,
@@ -108,21 +108,21 @@ impl TryFrom<windows_core::IUnknown> for Group {
 }
 
 impl ItemMgtTrait for Group {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemMgt> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemMgt> {
         Ok(&self.item_mgt)
     }
 }
 
 impl GroupStateMgtTrait for Group {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCGroupStateMgt> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCGroupStateMgt> {
         Ok(&self.group_state_mgt)
     }
 }
 
 impl PublicGroupStateMgtTrait for Group {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCPublicGroupStateMgt> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCPublicGroupStateMgt> {
         self.public_group_state_mgt.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCPublicGroupStateMgt not supported",
             )
@@ -131,15 +131,15 @@ impl PublicGroupStateMgtTrait for Group {
 }
 
 impl SyncIoTrait for Group {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCSyncIO> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCSyncIO> {
         Ok(&self.sync_io)
     }
 }
 
 impl AsyncIoTrait for Group {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCAsyncIO> {
         self.async_io.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCAsyncIO not supported",
             )
@@ -148,7 +148,7 @@ impl AsyncIoTrait for Group {
 }
 
 impl AsyncIo2Trait for Group {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO2> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCAsyncIO2> {
         Ok(&self.async_io2)
     }
 }
@@ -156,15 +156,15 @@ impl AsyncIo2Trait for Group {
 impl ConnectionPointContainerTrait for Group {
     fn interface(
         &self,
-    ) -> windows_core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
+    ) -> windows::core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
         Ok(&self.connection_point_container)
     }
 }
 
 impl DataObjectTrait for Group {
-    fn interface(&self) -> windows_core::Result<&windows::Win32::System::Com::IDataObject> {
+    fn interface(&self) -> windows::core::Result<&windows::Win32::System::Com::IDataObject> {
         self.data_object.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IDataObject not supported",
             )

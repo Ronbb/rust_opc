@@ -2,27 +2,27 @@
 ///
 /// # Safety  
 /// This struct wraps a COM interface and must be used according to COM rules.  
-pub struct GuidIter {
+pub struct GuidIterator {
     iter: windows::Win32::System::Com::IEnumGUID,
-    cache: [windows_core::GUID; 16],
+    cache: [windows::core::GUID; 16],
     count: u32,
     finished: bool,
 }
 
-impl GuidIter {
+impl GuidIterator {
     /// Creates a new iterator from a COM interface.  
-    pub(super) fn new(iter: windows::Win32::System::Com::IEnumGUID) -> Self {
+    pub fn new(iter: windows::Win32::System::Com::IEnumGUID) -> Self {
         Self {
             iter,
-            cache: [windows_core::GUID::zeroed(); 16],
+            cache: [windows::core::GUID::zeroed(); 16],
             count: 0,
             finished: false,
         }
     }
 }
 
-impl Iterator for GuidIter {
-    type Item = windows_core::Result<windows_core::GUID>;
+impl Iterator for GuidIterator {
+    type Item = windows::core::Result<windows::core::GUID>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.count == 0 {
@@ -37,7 +37,7 @@ impl Iterator for GuidIter {
                 }
             } else {
                 self.finished = true;
-                return Some(Err(windows_core::Error::new(
+                return Some(Err(windows::core::Error::new(
                     code,
                     "Failed to get next GUID",
                 )));
@@ -49,26 +49,26 @@ impl Iterator for GuidIter {
     }
 }
 
-pub struct StringIter {
+pub struct StringIterator {
     iter: windows::Win32::System::Com::IEnumString,
-    cache: [windows_core::PWSTR; 16],
+    cache: [windows::core::PWSTR; 16],
     count: u32,
     finished: bool,
 }
 
-impl StringIter {
-    pub(crate) fn new(iter: windows::Win32::System::Com::IEnumString) -> Self {
+impl StringIterator {
+    pub fn new(iter: windows::Win32::System::Com::IEnumString) -> Self {
         Self {
             iter,
-            cache: [windows_core::PWSTR::null(); 16],
+            cache: [windows::core::PWSTR::null(); 16],
             count: 0,
             finished: false,
         }
     }
 }
 
-impl Iterator for StringIter {
-    type Item = windows_core::Result<String>;
+impl Iterator for StringIterator {
+    type Item = windows::core::Result<String>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.count == 0 {
@@ -83,7 +83,7 @@ impl Iterator for StringIter {
                 }
             } else {
                 self.finished = true;
-                return Some(Err(windows_core::Error::new(
+                return Some(Err(windows::core::Error::new(
                     code,
                     "Failed to get next string",
                 )));

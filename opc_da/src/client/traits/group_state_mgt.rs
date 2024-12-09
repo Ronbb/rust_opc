@@ -3,13 +3,13 @@ use std::str::FromStr;
 use crate::{client::memory::LocalPointer, def};
 
 pub trait GroupStateMgtTrait {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCGroupStateMgt>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCGroupStateMgt>;
 
-    fn get_state(&self) -> windows_core::Result<def::GroupState> {
+    fn get_state(&self) -> windows::core::Result<def::GroupState> {
         let mut state = def::GroupState::default();
 
         let mut active = windows::Win32::Foundation::BOOL::default();
-        let mut name = windows_core::PWSTR::null();
+        let mut name = windows::core::PWSTR::null();
 
         unsafe {
             self.interface()?.GetState(
@@ -38,7 +38,7 @@ pub trait GroupStateMgtTrait {
         percent_deadband: Option<f32>,
         locale_id: Option<u32>,
         client_group_handle: Option<u32>,
-    ) -> windows_core::Result<u32> {
+    ) -> windows::core::Result<u32> {
         let requested_update_rate = LocalPointer::new(update_rate);
         let mut revised_update_rate = LocalPointer::new(Some(0));
         let active = LocalPointer::new(active.map(windows::Win32::Foundation::BOOL::from));
@@ -62,7 +62,7 @@ pub trait GroupStateMgtTrait {
         Ok(revised_update_rate.into_inner().unwrap_or_default())
     }
 
-    fn set_name(&self, name: &str) -> windows_core::Result<()> {
+    fn set_name(&self, name: &str) -> windows::core::Result<()> {
         let name = LocalPointer::from_str(name)?;
 
         unsafe { self.interface()?.SetName(name.as_pwstr()) }
@@ -71,8 +71,8 @@ pub trait GroupStateMgtTrait {
     fn clone_group(
         &self,
         name: &str,
-        id: &windows_core::GUID,
-    ) -> windows_core::Result<windows_core::IUnknown> {
+        id: &windows::core::GUID,
+    ) -> windows::core::Result<windows::core::IUnknown> {
         let name = LocalPointer::from_str(name)?;
 
         unsafe { self.interface()?.CloneGroup(name.as_pwstr(), id) }

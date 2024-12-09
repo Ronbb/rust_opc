@@ -4,8 +4,8 @@ mod server;
 pub use client::*;
 pub use server::*;
 
-fn convert_error(err: actix::MailboxError) -> windows_core::Error {
-    windows_core::Error::new(
+fn convert_error(err: actix::MailboxError) -> windows::core::Error {
+    windows::core::Error::new(
         windows::Win32::Foundation::E_FAIL,
         format!("Failed to send message to client actor: {:?}", err),
     )

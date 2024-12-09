@@ -4,7 +4,7 @@ use windows::Win32::System::Com::IConnectionPoint;
 pub trait ConnectionPointContainerTrait {
     fn interface(
         &self,
-    ) -> windows_core::Result<&windows::Win32::System::Com::IConnectionPointContainer>;
+    ) -> windows::core::Result<&windows::Win32::System::Com::IConnectionPointContainer>;
 
     fn find_connection_point(&self, id: &GUID) -> windows::core::Result<IConnectionPoint> {
         unsafe { self.interface()?.FindConnectionPoint(id) }

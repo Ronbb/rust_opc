@@ -1,4 +1,4 @@
-use windows_core::Interface as _;
+use windows::core::Interface as _;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ServerVersion {
@@ -14,7 +14,7 @@ impl ServerVersion {
         ServerVersion::Version30,
     ];
 
-    pub fn to_guid(&self) -> windows_core::GUID {
+    pub fn to_guid(&self) -> windows::core::GUID {
         match self {
             ServerVersion::Version10 => opc_da_bindings::CATID_OPCDAServer10::IID,
             ServerVersion::Version20 => opc_da_bindings::CATID_OPCDAServer20::IID,

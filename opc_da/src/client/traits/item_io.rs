@@ -2,7 +2,7 @@ use crate::client::memory::{LocalPointer, RemoteArray};
 use opc_da_bindings::{tagOPCITEMVQT, IOPCItemIO};
 
 pub trait ItemIoTrait {
-    fn interface(&self) -> windows_core::Result<&IOPCItemIO>;
+    fn interface(&self) -> windows::core::Result<&IOPCItemIO>;
 
     #[allow(clippy::type_complexity)]
     fn read(
@@ -10,13 +10,13 @@ pub trait ItemIoTrait {
         item_ids: &[String],
         max_age: &[u32],
     ) -> windows::core::Result<(
-        RemoteArray<windows_core::VARIANT>,
+        RemoteArray<windows::core::VARIANT>,
         RemoteArray<u16>,
         RemoteArray<windows::Win32::Foundation::FILETIME>,
         RemoteArray<windows::core::HRESULT>,
     )> {
         if item_ids.is_empty() || max_age.is_empty() || item_ids.len() != max_age.len() {
-            return Err(windows_core::Error::new(
+            return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid arguments - arrays must be non-empty and have same length",
             ));
@@ -25,10 +25,12 @@ pub trait ItemIoTrait {
         let item_ptrs: LocalPointer<Vec<Vec<u16>>> = LocalPointer::from(item_ids);
         let item_ptrs = item_ptrs.as_pcwstr_array();
 
-        let mut values = RemoteArray::new(item_ids.len());
-        let mut qualities = RemoteArray::new(item_ids.len());
-        let mut timestamps = RemoteArray::new(item_ids.len());
-        let mut errors = RemoteArray::new(item_ids.len());
+        let len = item_ids.len().try_into()?;
+
+        let mut values = RemoteArray::new(len);
+        let mut qualities = RemoteArray::new(len);
+        let mut timestamps = RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.Read(
@@ -51,20 +53,22 @@ pub trait ItemIoTrait {
         item_vqts: &[tagOPCITEMVQT],
     ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
         if item_ids.is_empty() || item_vqts.is_empty() || item_ids.len() != item_vqts.len() {
-            return Err(windows_core::Error::new(
+            return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid arguments - arrays must be non-empty and have same length",
             ));
         }
 
+        let len = item_ids.len().try_into()?;
+
         let item_ptrs = LocalPointer::from(item_ids);
         let item_ptrs = item_ptrs.as_pcwstr_array();
 
-        let mut errors = RemoteArray::new(item_ids.len());
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.WriteVQT(
-                item_ids.len() as u32,
+                len,
                 item_ptrs.as_ptr(),
                 item_vqts.as_ptr(),
                 errors.as_mut_ptr(),

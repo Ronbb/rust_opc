@@ -2,7 +2,7 @@ use crate::client::memory::RemoteArray;
 use windows::Win32::Foundation::BOOL;
 
 pub trait ItemSamplingMgtTrait {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemSamplingMgt>;
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemSamplingMgt>;
 
     fn set_item_sampling_rate(
         &self,
@@ -16,12 +16,14 @@ pub trait ItemSamplingMgtTrait {
             ));
         }
 
-        let mut revised_rates = RemoteArray::new(server_handles.len());
-        let mut errors = RemoteArray::new(server_handles.len());
+        let len = server_handles.len().try_into()?;
+
+        let mut revised_rates = RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.SetItemSamplingRate(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 sampling_rates.as_ptr(),
                 revised_rates.as_mut_ptr(),
@@ -36,12 +38,14 @@ pub trait ItemSamplingMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<(RemoteArray<u32>, RemoteArray<windows::core::HRESULT>)> {
-        let mut sampling_rates = RemoteArray::new(server_handles.len());
-        let mut errors = RemoteArray::new(server_handles.len());
+        let len = server_handles.len().try_into()?;
+
+        let mut sampling_rates = RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.GetItemSamplingRate(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 sampling_rates.as_mut_ptr(),
                 errors.as_mut_ptr(),
@@ -55,11 +59,13 @@ pub trait ItemSamplingMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
-        let mut errors = RemoteArray::new(server_handles.len());
+        let len = server_handles.len().try_into()?;
+
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.ClearItemSamplingRate(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 errors.as_mut_ptr(),
             )?;
@@ -80,12 +86,14 @@ pub trait ItemSamplingMgtTrait {
             ));
         }
 
-        let mut errors = RemoteArray::new(server_handles.len());
+        let len = server_handles.len().try_into()?;
+
+        let mut errors = RemoteArray::new(len);
         let enable_bool: Vec<BOOL> = enable.iter().map(|&v| BOOL::from(v)).collect();
 
         unsafe {
             self.interface()?.SetItemBufferEnable(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 enable_bool.as_ptr(),
                 errors.as_mut_ptr(),
@@ -102,12 +110,14 @@ pub trait ItemSamplingMgtTrait {
         RemoteArray<windows::Win32::Foundation::BOOL>,
         RemoteArray<windows::core::HRESULT>,
     )> {
-        let mut enable = RemoteArray::new(server_handles.len());
-        let mut errors = RemoteArray::new(server_handles.len());
+        let len = server_handles.len().try_into()?;
+
+        let mut enable = RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.GetItemBufferEnable(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 enable.as_mut_ptr(),
                 errors.as_mut_ptr(),

@@ -1,4 +1,4 @@
-use windows_core::Interface as _;
+use windows::core::Interface as _;
 
 use crate::client::{
     traits::{
@@ -55,10 +55,10 @@ pub struct Server {
     pub(crate) item_io: Option<opc_da_bindings::IOPCItemIO>,
 }
 
-impl TryFrom<windows_core::IUnknown> for Server {
-    type Error = windows_core::Error;
+impl TryFrom<windows::core::IUnknown> for Server {
+    type Error = windows::core::Error;
 
-    fn try_from(value: windows_core::IUnknown) -> windows_core::Result<Self> {
+    fn try_from(value: windows::core::IUnknown) -> windows::core::Result<Self> {
         let server = value.cast()?;
         let common = value.cast().ok();
         let connection_point_container = value.cast().ok();
@@ -82,15 +82,15 @@ impl TryFrom<windows_core::IUnknown> for Server {
 }
 
 impl ServerTrait<Group> for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServer> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer> {
         Ok(&self.server)
     }
 }
 
 impl CommonTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCCommon> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCCommon> {
         self.common.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCCommon not supported",
             )
@@ -101,9 +101,9 @@ impl CommonTrait for Server {
 impl ConnectionPointContainerTrait for Server {
     fn interface(
         &self,
-    ) -> windows_core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
+    ) -> windows::core::Result<&windows::Win32::System::Com::IConnectionPointContainer> {
         self.connection_point_container.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IConnectionPointContainer not supported",
             )
@@ -112,9 +112,9 @@ impl ConnectionPointContainerTrait for Server {
 }
 
 impl ServerPublicGroupsTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServerPublicGroups> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServerPublicGroups> {
         self.server_public_groups.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCServerPublicGroups not supported",
             )
@@ -123,9 +123,9 @@ impl ServerPublicGroupsTrait for Server {
 }
 
 impl BrowseServerAddressSpaceTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCBrowseServerAddressSpace> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCBrowseServerAddressSpace> {
         self.browse_server_address_space.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCBrowseServerAddressSpace not supported",
             )
@@ -134,9 +134,9 @@ impl BrowseServerAddressSpaceTrait for Server {
 }
 
 impl ItemPropertiesTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemProperties> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemProperties> {
         self.item_properties.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCItemProperties not supported",
             )
@@ -145,9 +145,9 @@ impl ItemPropertiesTrait for Server {
 }
 
 impl BrowseTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCBrowse> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCBrowse> {
         self.browse.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCBrowse not supported",
             )
@@ -156,9 +156,9 @@ impl BrowseTrait for Server {
 }
 
 impl ItemIoTrait for Server {
-    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemIO> {
+    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemIO> {
         self.item_io.as_ref().ok_or_else(|| {
-            windows_core::Error::new(
+            windows::core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
                 "IOPCItemIO not supported",
             )
