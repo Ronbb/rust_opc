@@ -3,7 +3,7 @@ use windows_core::Interface as _;
 use crate::client::memory;
 
 pub trait ItemMgtTrait {
-    fn interface(&self) -> &opc_da_bindings::IOPCItemMgt;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemMgt>;
 
     fn add_items(
         &self,
@@ -17,7 +17,7 @@ pub trait ItemMgtTrait {
         let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.interface().AddItems(
+            self.interface()?.AddItems(
                 len.try_into()?,
                 items.as_ptr(),
                 results.as_mut_ptr(),
@@ -41,7 +41,7 @@ pub trait ItemMgtTrait {
         let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.interface().ValidateItems(
+            self.interface()?.ValidateItems(
                 len.try_into()?,
                 items.as_ptr(),
                 windows::Win32::Foundation::BOOL::from(blob_update),
@@ -61,7 +61,7 @@ pub trait ItemMgtTrait {
         let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.interface().RemoveItems(
+            self.interface()?.RemoveItems(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 errors.as_mut_ptr(),
@@ -80,7 +80,7 @@ pub trait ItemMgtTrait {
         let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.interface().SetActiveState(
+            self.interface()?.SetActiveState(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 windows::Win32::Foundation::BOOL::from(active),
@@ -100,7 +100,7 @@ pub trait ItemMgtTrait {
         let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.interface().SetClientHandles(
+            self.interface()?.SetClientHandles(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 client_handles.as_ptr(),
@@ -120,7 +120,7 @@ pub trait ItemMgtTrait {
         let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.interface().SetDatatypes(
+            self.interface()?.SetDatatypes(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 requested_datatypes.as_ptr(),
@@ -135,7 +135,7 @@ pub trait ItemMgtTrait {
         &self,
         id: &windows_core::GUID,
     ) -> windows_core::Result<windows::Win32::System::Com::IEnumUnknown> {
-        let enumerator = unsafe { self.interface().CreateEnumerator(id)? };
+        let enumerator = unsafe { self.interface()?.CreateEnumerator(id)? };
 
         enumerator.cast()
     }

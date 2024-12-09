@@ -1,7 +1,7 @@
 use crate::client::memory::RemoteArray;
 
 pub trait AsyncIo3Trait {
-    fn interface(&self) -> &opc_da_bindings::IOPCAsyncIO3;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO3>;
 
     fn read_max_age(
         &self,
@@ -20,7 +20,7 @@ pub trait AsyncIo3Trait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().ReadMaxAge(
+            self.interface()?.ReadMaxAge(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 max_age.as_ptr(),
@@ -50,7 +50,7 @@ pub trait AsyncIo3Trait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().WriteVQT(
+            self.interface()?.WriteVQT(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 values.as_ptr(),
@@ -64,6 +64,6 @@ pub trait AsyncIo3Trait {
     }
 
     fn refresh_max_age(&self, max_age: u32, transaction_id: u32) -> windows::core::Result<u32> {
-        unsafe { self.interface().RefreshMaxAge(max_age, transaction_id) }
+        unsafe { self.interface()?.RefreshMaxAge(max_age, transaction_id) }
     }
 }

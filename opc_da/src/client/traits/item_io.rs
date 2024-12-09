@@ -2,7 +2,7 @@ use crate::client::memory::{LocalPointer, RemoteArray};
 use opc_da_bindings::{tagOPCITEMVQT, IOPCItemIO};
 
 pub trait ItemIoTrait {
-    fn interface(&self) -> &IOPCItemIO;
+    fn interface(&self) -> windows_core::Result<&IOPCItemIO>;
 
     #[allow(clippy::type_complexity)]
     fn read(
@@ -31,7 +31,7 @@ pub trait ItemIoTrait {
         let mut errors = RemoteArray::new(item_ids.len());
 
         unsafe {
-            self.interface().Read(
+            self.interface()?.Read(
                 item_ids.len() as u32,
                 item_ptrs.as_ptr(),
                 max_age.as_ptr(),
@@ -63,7 +63,7 @@ pub trait ItemIoTrait {
         let mut errors = RemoteArray::new(item_ids.len());
 
         unsafe {
-            self.interface().WriteVQT(
+            self.interface()?.WriteVQT(
                 item_ids.len() as u32,
                 item_ptrs.as_ptr(),
                 item_vqts.as_ptr(),

@@ -3,7 +3,7 @@ use opc_da_bindings::IOPCItemProperties;
 use std::str::FromStr;
 
 pub trait ItemPropertiesTrait {
-    fn interface(&self) -> &IOPCItemProperties;
+    fn interface(&self) -> windows_core::Result<&IOPCItemProperties>;
 
     fn query_available_properties(
         &self,
@@ -21,7 +21,7 @@ pub trait ItemPropertiesTrait {
         let mut datatypes = RemoteArray::new(0);
 
         unsafe {
-            self.interface().QueryAvailableProperties(
+            self.interface()?.QueryAvailableProperties(
                 item_id.as_pcwstr(),
                 &mut count,
                 property_ids.as_mut_ptr(),
@@ -60,7 +60,7 @@ pub trait ItemPropertiesTrait {
         let mut errors = RemoteArray::new(property_ids.len());
 
         unsafe {
-            self.interface().GetItemProperties(
+            self.interface()?.GetItemProperties(
                 item_id.as_pcwstr(),
                 property_ids.len() as u32,
                 property_ids.as_ptr(),
@@ -93,7 +93,7 @@ pub trait ItemPropertiesTrait {
         let mut errors = RemoteArray::new(property_ids.len());
 
         unsafe {
-            self.interface().LookupItemIDs(
+            self.interface()?.LookupItemIDs(
                 item_id.as_pcwstr(),
                 property_ids.len() as u32,
                 property_ids.as_ptr(),

@@ -1,6 +1,8 @@
 use windows_core::Interface as _;
 
-use crate::client::traits::ServerTrait;
+use crate::client::traits::{
+    BrowseServerAddressSpaceTrait, ItemPropertiesTrait, ServerPublicGroupsTrait, ServerTrait,
+};
 
 use super::Group;
 
@@ -77,7 +79,40 @@ impl TryFrom<windows_core::IUnknown> for Server {
 }
 
 impl ServerTrait<Group> for Server {
-    fn interface(&self) -> &opc_da_bindings::IOPCServer {
-        &self.server
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServer> {
+        Ok(&self.server)
+    }
+}
+
+impl ServerPublicGroupsTrait for Server {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCServerPublicGroups> {
+        self.server_public_groups.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCServerPublicGroups not supported",
+            )
+        })
+    }
+}
+
+impl BrowseServerAddressSpaceTrait for Server {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCBrowseServerAddressSpace> {
+        self.browse_server_address_space.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCBrowseServerAddressSpace not supported",
+            )
+        })
+    }
+}
+
+impl ItemPropertiesTrait for Server {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemProperties> {
+        self.item_properties.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCItemProperties not supported",
+            )
+        })
     }
 }

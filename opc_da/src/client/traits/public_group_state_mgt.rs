@@ -1,11 +1,11 @@
 pub trait PublicGroupStateMgtTrait {
-    fn interface(&self) -> &opc_da_bindings::IOPCPublicGroupStateMgt;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCPublicGroupStateMgt>;
 
     fn get_state(&self) -> windows::core::Result<bool> {
-        unsafe { self.interface().GetState() }.map(|v| v.as_bool())
+        unsafe { self.interface()?.GetState() }.map(|v| v.as_bool())
     }
 
     fn move_to_public(&self) -> windows::core::Result<()> {
-        unsafe { self.interface().MoveToPublic() }
+        unsafe { self.interface()?.MoveToPublic() }
     }
 }

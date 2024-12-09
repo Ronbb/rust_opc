@@ -2,7 +2,7 @@ use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
 pub trait AsyncIo2Trait {
-    fn interface(&self) -> &opc_da_bindings::IOPCAsyncIO2;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO2>;
 
     fn read(
         &self,
@@ -13,7 +13,7 @@ pub trait AsyncIo2Trait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().Read(
+            self.interface()?.Read(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 transaction_id,
@@ -35,7 +35,7 @@ pub trait AsyncIo2Trait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().Write(
+            self.interface()?.Write(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 values.as_ptr(),
@@ -53,21 +53,21 @@ pub trait AsyncIo2Trait {
         source: opc_da_bindings::tagOPCDATASOURCE,
         transaction_id: u32,
     ) -> windows::core::Result<u32> {
-        unsafe { self.interface().Refresh2(source, transaction_id) }
+        unsafe { self.interface()?.Refresh2(source, transaction_id) }
     }
 
     fn cancel2(&self, cancel_id: u32) -> windows::core::Result<()> {
-        unsafe { self.interface().Cancel2(cancel_id) }
+        unsafe { self.interface()?.Cancel2(cancel_id) }
     }
 
     fn set_enable(&self, enable: bool) -> windows::core::Result<()> {
         unsafe {
-            self.interface()
+            self.interface()?
                 .SetEnable(windows::Win32::Foundation::BOOL::from(enable))
         }
     }
 
     fn get_enable(&self) -> windows::core::Result<bool> {
-        unsafe { self.interface().GetEnable().map(|v| v.as_bool()) }
+        unsafe { self.interface()?.GetEnable().map(|v| v.as_bool()) }
     }
 }

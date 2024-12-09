@@ -4,7 +4,7 @@ use std::str::FromStr;
 use windows::Win32::Foundation::BOOL;
 
 pub trait ServerPublicGroupsTrait {
-    fn interface(&self) -> &IOPCServerPublicGroups;
+    fn interface(&self) -> windows_core::Result<&IOPCServerPublicGroups>;
 
     fn get_public_group_by_name(
         &self,
@@ -13,12 +13,12 @@ pub trait ServerPublicGroupsTrait {
     ) -> windows::core::Result<windows::core::IUnknown> {
         let name = LocalPointer::from_str(name)?;
 
-        unsafe { self.interface().GetPublicGroupByName(name.as_pcwstr(), id) }
+        unsafe { self.interface()?.GetPublicGroupByName(name.as_pcwstr(), id) }
     }
 
     fn remove_public_group(&self, server_group: u32, force: bool) -> windows::core::Result<()> {
         unsafe {
-            self.interface()
+            self.interface()?
                 .RemovePublicGroup(server_group, BOOL::from(force))
         }
     }

@@ -1,6 +1,6 @@
 use windows_core::Interface;
 
-use crate::client::traits::{GroupStateMgtTrait, ItemMgtTrait};
+use crate::client::traits::{AsyncIo2Trait, DataObjectTrait, GroupStateMgtTrait, ItemMgtTrait};
 
 /*
 opc_da_bindings::IOPCItemMgt,
@@ -116,13 +116,35 @@ impl TryFrom<windows_core::IUnknown> for Group {
 }
 
 impl ItemMgtTrait for Group {
-    fn interface(&self) -> &opc_da_bindings::IOPCItemMgt {
-        &self.item_mgt
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemMgt> {
+        Ok(&self.item_mgt)
     }
 }
 
 impl GroupStateMgtTrait for Group {
-    fn interface(&self) -> &opc_da_bindings::IOPCGroupStateMgt {
-        &self.group_state_mgt
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCGroupStateMgt> {
+        Ok(&self.group_state_mgt)
+    }
+}
+
+impl AsyncIo2Trait for Group {
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCAsyncIO2> {
+        self.async_io2.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IOPCAsyncIO2 not supported",
+            )
+        })
+    }
+}
+
+impl DataObjectTrait for Group {
+    fn interface(&self) -> windows_core::Result<&windows::Win32::System::Com::IDataObject> {
+        self.data_object.as_ref().ok_or_else(|| {
+            windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "IDataObject not supported",
+            )
+        })
     }
 }

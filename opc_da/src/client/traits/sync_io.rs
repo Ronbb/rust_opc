@@ -2,7 +2,7 @@ use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
 pub trait SyncIoTrait {
-    fn interface(&self) -> &opc_da_bindings::IOPCSyncIO;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCSyncIO>;
 
     fn read(
         &self,
@@ -16,7 +16,7 @@ pub trait SyncIoTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().Read(
+            self.interface()?.Read(
                 source,
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
@@ -43,7 +43,7 @@ pub trait SyncIoTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().Write(
+            self.interface()?.Write(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 values.as_ptr(),

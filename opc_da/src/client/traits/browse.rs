@@ -3,7 +3,7 @@ use opc_da_bindings::{tagOPCBROWSEELEMENT, tagOPCBROWSEFILTER, tagOPCITEMPROPERT
 use std::str::FromStr;
 
 pub trait BrowseTrait {
-    fn interface(&self) -> &IOPCBrowse;
+    fn interface(&self) -> windows_core::Result<&IOPCBrowse>;
 
     fn get_properties(
         &self,
@@ -24,7 +24,7 @@ pub trait BrowseTrait {
         let mut results = RemoteArray::new(item_ids.len() as _);
 
         unsafe {
-            self.interface().GetProperties(
+            self.interface()?.GetProperties(
                 item_ids.len() as u32,
                 item_ptrs.as_ptr(),
                 windows::Win32::Foundation::BOOL::from(return_property_values),
@@ -57,7 +57,7 @@ pub trait BrowseTrait {
         let mut elements = RemoteArray::new(0);
 
         unsafe {
-            self.interface().Browse(
+            self.interface()?.Browse(
                 item_id.as_pcwstr(),
                 continuation_point.as_mut_pwstr_ptr(),
                 max_elements,

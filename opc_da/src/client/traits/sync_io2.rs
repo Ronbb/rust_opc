@@ -2,7 +2,7 @@ use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
 pub trait SyncIo2Trait {
-    fn interface(&self) -> &opc_da_bindings::IOPCSyncIO2;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCSyncIO2>;
 
     fn read_max_age(
         &self,
@@ -27,7 +27,7 @@ pub trait SyncIo2Trait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().ReadMaxAge(
+            self.interface()?.ReadMaxAge(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 max_age.as_ptr(),
@@ -56,7 +56,7 @@ pub trait SyncIo2Trait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().WriteVQT(
+            self.interface()?.WriteVQT(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 values.as_ptr(),

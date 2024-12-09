@@ -1,7 +1,7 @@
 use crate::client::memory::RemoteArray;
 
 pub trait ItemDeadbandMgtTrait {
-    fn interface(&self) -> &opc_da_bindings::IOPCItemDeadbandMgt;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemDeadbandMgt>;
 
     fn set_item_deadband(
         &self,
@@ -18,7 +18,7 @@ pub trait ItemDeadbandMgtTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().SetItemDeadband(
+            self.interface()?.SetItemDeadband(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 dead_bands.as_ptr(),
@@ -37,7 +37,7 @@ pub trait ItemDeadbandMgtTrait {
         let mut deadbands = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().GetItemDeadband(
+            self.interface()?.GetItemDeadband(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 deadbands.as_mut_ptr(),
@@ -55,7 +55,7 @@ pub trait ItemDeadbandMgtTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().ClearItemDeadband(
+            self.interface()?.ClearItemDeadband(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 errors.as_mut_ptr(),

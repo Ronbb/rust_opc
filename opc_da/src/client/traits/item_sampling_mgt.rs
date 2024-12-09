@@ -2,7 +2,7 @@ use crate::client::memory::RemoteArray;
 use windows::Win32::Foundation::BOOL;
 
 pub trait ItemSamplingMgtTrait {
-    fn interface(&self) -> &opc_da_bindings::IOPCItemSamplingMgt;
+    fn interface(&self) -> windows_core::Result<&opc_da_bindings::IOPCItemSamplingMgt>;
 
     fn set_item_sampling_rate(
         &self,
@@ -20,7 +20,7 @@ pub trait ItemSamplingMgtTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().SetItemSamplingRate(
+            self.interface()?.SetItemSamplingRate(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 sampling_rates.as_ptr(),
@@ -40,7 +40,7 @@ pub trait ItemSamplingMgtTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().GetItemSamplingRate(
+            self.interface()?.GetItemSamplingRate(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 sampling_rates.as_mut_ptr(),
@@ -58,7 +58,7 @@ pub trait ItemSamplingMgtTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().ClearItemSamplingRate(
+            self.interface()?.ClearItemSamplingRate(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 errors.as_mut_ptr(),
@@ -84,7 +84,7 @@ pub trait ItemSamplingMgtTrait {
         let enable_bool: Vec<BOOL> = enable.iter().map(|&v| BOOL::from(v)).collect();
 
         unsafe {
-            self.interface().SetItemBufferEnable(
+            self.interface()?.SetItemBufferEnable(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 enable_bool.as_ptr(),
@@ -106,7 +106,7 @@ pub trait ItemSamplingMgtTrait {
         let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.interface().GetItemBufferEnable(
+            self.interface()?.GetItemBufferEnable(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 enable.as_mut_ptr(),

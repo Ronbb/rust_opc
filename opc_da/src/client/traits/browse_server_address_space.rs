@@ -6,10 +6,10 @@ use opc_da_bindings::{
 };
 
 pub trait BrowseServerAddressSpaceTrait {
-    fn interface(&self) -> &IOPCBrowseServerAddressSpace;
+    fn interface(&self) -> windows_core::Result<&IOPCBrowseServerAddressSpace>;
 
     fn query_organization(&self) -> windows::core::Result<tagOPCNAMESPACETYPE> {
-        unsafe { self.interface().QueryOrganization() }
+        unsafe { self.interface()?.QueryOrganization() }
     }
 
     fn change_browse_position(
@@ -20,7 +20,7 @@ pub trait BrowseServerAddressSpaceTrait {
         let position = LocalPointer::from_str(position)?;
 
         unsafe {
-            self.interface()
+            self.interface()?
                 .ChangeBrowsePosition(browse_direction, position.as_pwstr())
         }
     }
@@ -35,7 +35,7 @@ pub trait BrowseServerAddressSpaceTrait {
         let filter_criteria = LocalPointer::from_str(filter_criteria)?;
 
         unsafe {
-            self.interface().BrowseOPCItemIDs(
+            self.interface()?.BrowseOPCItemIDs(
                 browse_type,
                 filter_criteria.as_pwstr(),
                 datatype_filter,
@@ -47,7 +47,7 @@ pub trait BrowseServerAddressSpaceTrait {
     fn get_item_id(&self, item_data_id: &str) -> windows::core::Result<String> {
         let item_data_id = LocalPointer::from_str(item_data_id)?;
 
-        let output = unsafe { self.interface().GetItemID(item_data_id.as_pwstr())? };
+        let output = unsafe { self.interface()?.GetItemID(item_data_id.as_pwstr())? };
 
         RemotePointer::from(output).try_into()
     }
@@ -57,6 +57,6 @@ pub trait BrowseServerAddressSpaceTrait {
         item_id: &str,
     ) -> windows::core::Result<windows::Win32::System::Com::IEnumString> {
         let item_id = LocalPointer::from_str(item_id)?;
-        unsafe { self.interface().BrowseAccessPaths(item_id.as_pwstr()) }
+        unsafe { self.interface()?.BrowseAccessPaths(item_id.as_pwstr()) }
     }
 }
