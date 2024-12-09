@@ -3,21 +3,21 @@ use windows_core::Interface as _;
 use crate::client::memory;
 
 pub trait ItemMgtTrait {
-    fn item_mgt(&self) -> &opc_da_bindings::IOPCItemMgt;
+    fn interface(&self) -> &opc_da_bindings::IOPCItemMgt;
 
     fn add_items(
         &self,
         items: &[opc_da_bindings::tagOPCITEMDEF],
     ) -> windows_core::Result<(
-        memory::Array<opc_da_bindings::tagOPCITEMRESULT>,
-        memory::Array<windows_core::HRESULT>,
+        memory::RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
+        memory::RemoteArray<windows_core::HRESULT>,
     )> {
         let len = items.len();
-        let mut results = memory::Array::new(len);
-        let mut errors = memory::Array::new(len);
+        let mut results = memory::RemoteArray::new(len);
+        let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.item_mgt().AddItems(
+            self.interface().AddItems(
                 len.try_into()?,
                 items.as_ptr(),
                 results.as_mut_ptr(),
@@ -33,15 +33,15 @@ pub trait ItemMgtTrait {
         items: &[opc_da_bindings::tagOPCITEMDEF],
         blob_update: bool,
     ) -> windows_core::Result<(
-        memory::Array<opc_da_bindings::tagOPCITEMRESULT>,
-        memory::Array<windows_core::HRESULT>,
+        memory::RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
+        memory::RemoteArray<windows_core::HRESULT>,
     )> {
         let len = items.len();
-        let mut results = memory::Array::new(len);
-        let mut errors = memory::Array::new(len);
+        let mut results = memory::RemoteArray::new(len);
+        let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.item_mgt().ValidateItems(
+            self.interface().ValidateItems(
                 len.try_into()?,
                 items.as_ptr(),
                 windows::Win32::Foundation::BOOL::from(blob_update),
@@ -56,12 +56,12 @@ pub trait ItemMgtTrait {
     fn remove_items(
         &self,
         server_handles: &[u32],
-    ) -> windows_core::Result<memory::Array<windows_core::HRESULT>> {
+    ) -> windows_core::Result<memory::RemoteArray<windows_core::HRESULT>> {
         let len = server_handles.len();
-        let mut errors = memory::Array::new(len);
+        let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.item_mgt().RemoveItems(
+            self.interface().RemoveItems(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 errors.as_mut_ptr(),
@@ -75,12 +75,12 @@ pub trait ItemMgtTrait {
         &self,
         server_handles: &[u32],
         active: bool,
-    ) -> windows_core::Result<memory::Array<windows_core::HRESULT>> {
+    ) -> windows_core::Result<memory::RemoteArray<windows_core::HRESULT>> {
         let len = server_handles.len();
-        let mut errors = memory::Array::new(len);
+        let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.item_mgt().SetActiveState(
+            self.interface().SetActiveState(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 windows::Win32::Foundation::BOOL::from(active),
@@ -95,12 +95,12 @@ pub trait ItemMgtTrait {
         &self,
         server_handles: &[u32],
         client_handles: &[u32],
-    ) -> windows_core::Result<memory::Array<windows_core::HRESULT>> {
+    ) -> windows_core::Result<memory::RemoteArray<windows_core::HRESULT>> {
         let len = server_handles.len();
-        let mut errors = memory::Array::new(len);
+        let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.item_mgt().SetClientHandles(
+            self.interface().SetClientHandles(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 client_handles.as_ptr(),
@@ -115,12 +115,12 @@ pub trait ItemMgtTrait {
         &self,
         server_handles: &[u32],
         requested_datatypes: &[u16],
-    ) -> windows_core::Result<memory::Array<windows_core::HRESULT>> {
+    ) -> windows_core::Result<memory::RemoteArray<windows_core::HRESULT>> {
         let len = server_handles.len();
-        let mut errors = memory::Array::new(len);
+        let mut errors = memory::RemoteArray::new(len);
 
         unsafe {
-            self.item_mgt().SetDatatypes(
+            self.interface().SetDatatypes(
                 len.try_into()?,
                 server_handles.as_ptr(),
                 requested_datatypes.as_ptr(),
@@ -135,7 +135,7 @@ pub trait ItemMgtTrait {
         &self,
         id: &windows_core::GUID,
     ) -> windows_core::Result<windows::Win32::System::Com::IEnumUnknown> {
-        let enumerator = unsafe { self.item_mgt().CreateEnumerator(id)? };
+        let enumerator = unsafe { self.interface().CreateEnumerator(id)? };
 
         enumerator.cast()
     }

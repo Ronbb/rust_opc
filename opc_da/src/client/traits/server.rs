@@ -4,8 +4,7 @@ pub trait ServerTrait<Group>
 where
     Group: TryFrom<windows_core::IUnknown, Error = windows_core::Error>,
 {
-    // declare server
-    fn server(&self) -> &opc_da_bindings::IOPCServer;
+    fn interface(&self) -> &opc_da_bindings::IOPCServer;
 
     #[allow(clippy::too_many_arguments)]
     fn add_group(
@@ -25,7 +24,7 @@ where
         let mut revised_percent_deadband = 0;
 
         unsafe {
-            self.server().AddGroup(
+            self.interface().AddGroup(
                 group_name,
                 windows::Win32::Foundation::BOOL::from(active),
                 update_rate,
@@ -50,7 +49,7 @@ where
     }
 
     fn get_status(&self) -> windows_core::Result<opc_da_bindings::tagOPCSERVERSTATUS> {
-        let status = unsafe { self.server().GetStatus()?.as_ref() };
+        let status = unsafe { self.interface().GetStatus()?.as_ref() };
         match status {
             Some(status) => Ok(*status),
             None => Err(windows_core::Error::new(
@@ -62,7 +61,7 @@ where
 
     fn remove_group(&self, server_handle: u32, force: bool) -> windows_core::Result<()> {
         unsafe {
-            self.server()
+            self.interface()
                 .RemoveGroup(server_handle, windows::Win32::Foundation::BOOL::from(force))?;
         }
         Ok(())
@@ -73,7 +72,7 @@ where
         scope: opc_da_bindings::tagOPCENUMSCOPE,
     ) -> windows_core::Result<windows::Win32::System::Com::IEnumUnknown> {
         let enumerator = unsafe {
-            self.server()
+            self.interface()
                 .CreateGroupEnumerator(scope, &windows::Win32::System::Com::IEnumUnknown::IID)?
         };
 

@@ -77,7 +77,7 @@ impl TryFrom<windows_core::IUnknown> for Server {
 }
 
 impl ServerTrait<Group> for Server {
-    fn server(&self) -> &opc_da_bindings::IOPCServer {
+    fn interface(&self) -> &opc_da_bindings::IOPCServer {
         &self.server
     }
 }

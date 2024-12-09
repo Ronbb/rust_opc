@@ -1,13 +1,14 @@
 use std::str::FromStr;
 
 use windows::Win32::System::Com::CoTaskMemFree;
+use windows_core::PWSTR;
 
-pub struct Array<T: Sized> {
+pub struct RemoteArray<T: Sized> {
     pointer: *mut T,
     len: usize,
 }
 
-impl<T: Sized> Array<T> {
+impl<T: Sized> RemoteArray<T> {
     #[inline(always)]
     pub fn new(len: usize) -> Self {
         Self {
@@ -28,9 +29,13 @@ impl<T: Sized> Array<T> {
         }
         unsafe { core::slice::from_raw_parts(self.pointer, self.len) }
     }
+
+    pub fn set_len(&mut self, len: usize) {
+        self.len = len;
+    }
 }
 
-impl<T: Sized> Drop for Array<T> {
+impl<T: Sized> Drop for RemoteArray<T> {
     #[inline(always)]
     fn drop(&mut self) {
         if !self.pointer.is_null() {
@@ -62,6 +67,34 @@ impl<T: Sized> RemotePointer<T> {
     #[inline(always)]
     pub fn as_option(&self) -> Option<&T> {
         unsafe { self.inner.as_ref() }
+    }
+}
+
+impl From<PWSTR> for RemotePointer<u16> {
+    #[inline(always)]
+    fn from(value: PWSTR) -> Self {
+        Self {
+            inner: value.as_ptr(),
+        }
+    }
+}
+
+impl TryFrom<RemotePointer<u16>> for String {
+    type Error = windows_core::Error;
+
+    fn try_from(value: RemotePointer<u16>) -> Result<Self, Self::Error> {
+        if value.inner.is_null() {
+            return Err(windows::Win32::Foundation::E_POINTER.into());
+        }
+
+        Ok(unsafe { PWSTR::from_raw(value.inner).to_string() }?)
+    }
+}
+
+impl RemotePointer<u16> {
+    #[inline(always)]
+    pub fn as_mut_pwstr_ptr(&mut self) -> *mut PWSTR {
+        &mut self.inner as *mut *mut u16 as *mut PWSTR
     }
 }
 
@@ -111,7 +144,48 @@ impl FromStr for LocalPointer<Vec<u16>> {
     type Err = windows_core::HRESULT;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::new(Some(s.encode_utf16().chain(Some(0)).collect())))
+        Ok(Self::from(s))
+    }
+}
+
+impl From<&str> for LocalPointer<Vec<u16>> {
+    fn from(s: &str) -> Self {
+        Self::new(Some(s.encode_utf16().chain(Some(0)).collect()))
+    }
+}
+
+impl From<&[String]> for LocalPointer<Vec<Vec<u16>>> {
+    fn from(values: &[String]) -> Self {
+        Self::new(Some(
+            values
+                .iter()
+                .map(|s| s.encode_utf16().chain(Some(0)).collect())
+                .collect(),
+        ))
+    }
+}
+
+impl LocalPointer<Vec<Vec<u16>>> {
+    #[inline(always)]
+    pub fn as_pwstr_array(&self) -> Vec<windows_core::PWSTR> {
+        match &self.inner {
+            Some(values) => values
+                .iter()
+                .map(|value| windows_core::PWSTR::from_raw(value.as_ptr() as _))
+                .collect(),
+            None => vec![windows_core::PWSTR::null()],
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_pcwstr_array(&self) -> Vec<windows_core::PCWSTR> {
+        match &self.inner {
+            Some(values) => values
+                .iter()
+                .map(|value| windows_core::PCWSTR::from_raw(value.as_ptr() as _))
+                .collect(),
+            None => vec![windows_core::PCWSTR::null()],
+        }
     }
 }
 
@@ -121,6 +195,14 @@ impl LocalPointer<Vec<u16>> {
         match &self.inner {
             Some(value) => windows_core::PWSTR::from_raw(value.as_ptr() as _),
             None => windows_core::PWSTR::null(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_pcwstr(&self) -> windows_core::PCWSTR {
+        match &self.inner {
+            Some(value) => windows_core::PCWSTR::from_raw(value.as_ptr() as _),
+            None => windows_core::PCWSTR::null(),
         }
     }
 }

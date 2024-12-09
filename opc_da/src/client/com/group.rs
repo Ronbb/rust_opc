@@ -116,13 +116,13 @@ impl TryFrom<windows_core::IUnknown> for Group {
 }
 
 impl ItemMgtTrait for Group {
-    fn item_mgt(&self) -> &opc_da_bindings::IOPCItemMgt {
+    fn interface(&self) -> &opc_da_bindings::IOPCItemMgt {
         &self.item_mgt
     }
 }
 
 impl GroupStateMgtTrait for Group {
-    fn group_state_mgt(&self) -> &opc_da_bindings::IOPCGroupStateMgt {
+    fn interface(&self) -> &opc_da_bindings::IOPCGroupStateMgt {
         &self.group_state_mgt
     }
 }

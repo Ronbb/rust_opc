@@ -1,22 +1,22 @@
-use crate::client::memory::Array;
+use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
 pub trait SyncIoTrait {
-    fn sync_io(&self) -> &opc_da_bindings::IOPCSyncIO;
+    fn interface(&self) -> &opc_da_bindings::IOPCSyncIO;
 
     fn read(
         &self,
         source: opc_da_bindings::tagOPCDATASOURCE,
         server_handles: &[u32],
     ) -> windows::core::Result<(
-        Array<opc_da_bindings::tagOPCITEMSTATE>,
-        Array<windows::core::HRESULT>,
+        RemoteArray<opc_da_bindings::tagOPCITEMSTATE>,
+        RemoteArray<windows::core::HRESULT>,
     )> {
-        let mut item_values = Array::new(server_handles.len());
-        let mut errors = Array::new(server_handles.len());
+        let mut item_values = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.sync_io().Read(
+            self.interface().Read(
                 source,
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
@@ -32,7 +32,7 @@ pub trait SyncIoTrait {
         &self,
         server_handles: &[u32],
         values: &[VARIANT],
-    ) -> windows::core::Result<Array<windows::core::HRESULT>> {
+    ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
         if server_handles.len() != values.len() {
             return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
@@ -40,10 +40,10 @@ pub trait SyncIoTrait {
             ));
         }
 
-        let mut errors = Array::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.sync_io().Write(
+            self.interface().Write(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 values.as_ptr(),

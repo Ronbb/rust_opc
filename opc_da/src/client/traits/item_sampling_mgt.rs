@@ -1,14 +1,14 @@
-use crate::client::memory::Array;
+use crate::client::memory::RemoteArray;
 use windows::Win32::Foundation::BOOL;
 
 pub trait ItemSamplingMgtTrait {
-    fn item_sampling_mgt(&self) -> &opc_da_bindings::IOPCItemSamplingMgt;
+    fn interface(&self) -> &opc_da_bindings::IOPCItemSamplingMgt;
 
     fn set_item_sampling_rate(
         &self,
         server_handles: &[u32],
         sampling_rates: &[u32],
-    ) -> windows::core::Result<(Array<u32>, Array<windows::core::HRESULT>)> {
+    ) -> windows::core::Result<(RemoteArray<u32>, RemoteArray<windows::core::HRESULT>)> {
         if server_handles.len() != sampling_rates.len() {
             return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
@@ -16,11 +16,11 @@ pub trait ItemSamplingMgtTrait {
             ));
         }
 
-        let mut revised_rates = Array::new(server_handles.len());
-        let mut errors = Array::new(server_handles.len());
+        let mut revised_rates = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.item_sampling_mgt().SetItemSamplingRate(
+            self.interface().SetItemSamplingRate(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 sampling_rates.as_ptr(),
@@ -35,12 +35,12 @@ pub trait ItemSamplingMgtTrait {
     fn get_item_sampling_rate(
         &self,
         server_handles: &[u32],
-    ) -> windows::core::Result<(Array<u32>, Array<windows::core::HRESULT>)> {
-        let mut sampling_rates = Array::new(server_handles.len());
-        let mut errors = Array::new(server_handles.len());
+    ) -> windows::core::Result<(RemoteArray<u32>, RemoteArray<windows::core::HRESULT>)> {
+        let mut sampling_rates = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.item_sampling_mgt().GetItemSamplingRate(
+            self.interface().GetItemSamplingRate(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 sampling_rates.as_mut_ptr(),
@@ -54,11 +54,11 @@ pub trait ItemSamplingMgtTrait {
     fn clear_item_sampling_rate(
         &self,
         server_handles: &[u32],
-    ) -> windows::core::Result<Array<windows::core::HRESULT>> {
-        let mut errors = Array::new(server_handles.len());
+    ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
+        let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.item_sampling_mgt().ClearItemSamplingRate(
+            self.interface().ClearItemSamplingRate(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 errors.as_mut_ptr(),
@@ -72,7 +72,7 @@ pub trait ItemSamplingMgtTrait {
         &self,
         server_handles: &[u32],
         enable: &[bool],
-    ) -> windows::core::Result<Array<windows::core::HRESULT>> {
+    ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
         if server_handles.len() != enable.len() {
             return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
@@ -80,11 +80,11 @@ pub trait ItemSamplingMgtTrait {
             ));
         }
 
-        let mut errors = Array::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len());
         let enable_bool: Vec<BOOL> = enable.iter().map(|&v| BOOL::from(v)).collect();
 
         unsafe {
-            self.item_sampling_mgt().SetItemBufferEnable(
+            self.interface().SetItemBufferEnable(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 enable_bool.as_ptr(),
@@ -99,14 +99,14 @@ pub trait ItemSamplingMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<(
-        Array<windows::Win32::Foundation::BOOL>,
-        Array<windows::core::HRESULT>,
+        RemoteArray<windows::Win32::Foundation::BOOL>,
+        RemoteArray<windows::core::HRESULT>,
     )> {
-        let mut enable = Array::new(server_handles.len());
-        let mut errors = Array::new(server_handles.len());
+        let mut enable = RemoteArray::new(server_handles.len());
+        let mut errors = RemoteArray::new(server_handles.len());
 
         unsafe {
-            self.item_sampling_mgt().GetItemBufferEnable(
+            self.interface().GetItemBufferEnable(
                 server_handles.len() as u32,
                 server_handles.as_ptr(),
                 enable.as_mut_ptr(),

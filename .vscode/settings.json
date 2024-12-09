@@ -75,6 +75,7 @@
     "Uninitializes",
     "usize",
     "VARENUM",
+    "vqts",
     "vtable",
     "Vtbl",
     "winmd",
