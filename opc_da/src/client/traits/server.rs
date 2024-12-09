@@ -1,5 +1,7 @@
 use windows::core::Interface as _;
 
+use crate::client::LocalPointer;
+
 pub trait ServerTrait<Group>
 where
     Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>,
@@ -19,8 +21,8 @@ where
     ) -> windows::core::Result<Group> {
         let mut group = None;
         let mut group_server_handle = 0u32;
-        let mut group_name = name.encode_utf16().chain(Some(0)).collect::<Vec<_>>();
-        let group_name = windows::core::PWSTR::from_raw(group_name.as_mut_ptr());
+        let group_name = LocalPointer::from(name);
+        let group_name = group_name.as_pcwstr();
         let mut revised_percent_deadband = 0;
 
         unsafe {

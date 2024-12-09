@@ -1,3 +1,4 @@
+use windows::core::PWSTR;
 use windows::Win32::{
     Foundation::{S_FALSE, S_OK},
     System::Com::{
@@ -6,7 +7,6 @@ use windows::Win32::{
         CONNECTDATA,
     },
 };
-use windows::core::PWSTR;
 
 use crate::safe_call;
 
@@ -25,7 +25,12 @@ impl<T: Clone> Enumerator<T> {
         }
     }
 
-    pub fn next(&self, count: u32, fetched: &mut u32, elements: &mut [T]) -> windows::core::HRESULT {
+    pub fn next(
+        &self,
+        count: u32,
+        fetched: &mut u32,
+        elements: &mut [T],
+    ) -> windows::core::HRESULT {
         let current_index = self
             .index
             .fetch_add(count as _, core::sync::atomic::Ordering::SeqCst);
@@ -153,7 +158,7 @@ impl IEnumString_Impl for StringEnumerator_Impl {
         }
 
         for (i, string) in strings.iter_mut().enumerate() {
-            let pwstr = PWSTR::from_raw(string.as_mut_ptr());
+            let pwstr = PWSTR(string.as_mut_ptr());
             elements[i] = pwstr;
         }
 

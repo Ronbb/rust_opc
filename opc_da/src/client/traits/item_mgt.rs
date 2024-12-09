@@ -12,6 +12,13 @@ pub trait ItemMgtTrait {
         memory::RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
         memory::RemoteArray<windows::core::HRESULT>,
     )> {
+        if items.is_empty() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "items cannot be empty",
+            ));
+        }
+
         let len = items.len().try_into()?;
         let mut results = memory::RemoteArray::new(len);
         let mut errors = memory::RemoteArray::new(len);
@@ -36,6 +43,13 @@ pub trait ItemMgtTrait {
         memory::RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
         memory::RemoteArray<windows::core::HRESULT>,
     )> {
+        if items.is_empty() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "items cannot be empty",
+            ));
+        }
+
         let len = items.len().try_into()?;
         let mut results = memory::RemoteArray::new(len);
         let mut errors = memory::RemoteArray::new(len);
@@ -57,6 +71,13 @@ pub trait ItemMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+        if server_handles.is_empty() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "server_handles cannot be empty",
+            ));
+        }
+
         let len = server_handles.len().try_into()?;
         let mut errors = memory::RemoteArray::new(len);
 
@@ -73,6 +94,13 @@ pub trait ItemMgtTrait {
         server_handles: &[u32],
         active: bool,
     ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+        if server_handles.is_empty() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "server_handles cannot be empty",
+            ));
+        }
+
         let len = server_handles.len().try_into()?;
         let mut errors = memory::RemoteArray::new(len);
 
@@ -93,6 +121,20 @@ pub trait ItemMgtTrait {
         server_handles: &[u32],
         client_handles: &[u32],
     ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+        if server_handles.len() != client_handles.len() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "server_handles and client_handles must have the same length",
+            ));
+        }
+
+        if server_handles.is_empty() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "server_handles cannot be empty",
+            ));
+        }
+
         let len = server_handles.len().try_into()?;
         let mut errors = memory::RemoteArray::new(len);
 
@@ -113,6 +155,20 @@ pub trait ItemMgtTrait {
         server_handles: &[u32],
         requested_datatypes: &[u16],
     ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+        if server_handles.len() != requested_datatypes.len() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "server_handles and requested_datatypes must have the same length",
+            ));
+        }
+
+        if server_handles.is_empty() {
+            return Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "items cannot be empty",
+            ));
+        }
+
         let len = server_handles.len().try_into()?;
         let mut errors = memory::RemoteArray::new(len);
 

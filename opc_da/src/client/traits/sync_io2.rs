@@ -22,6 +22,13 @@ pub trait SyncIo2Trait {
             ));
         }
 
+        if server_handles.is_empty() {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "server_handles cannot be empty",
+            ));
+        }
+
         let len = server_handles.len().try_into()?;
 
         let mut values = RemoteArray::new(len);
@@ -53,6 +60,13 @@ pub trait SyncIo2Trait {
             return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "server_handles and values must have the same length",
+            ));
+        }
+
+        if server_handles.is_empty() {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "server_handles cannot be empty",
             ));
         }
 

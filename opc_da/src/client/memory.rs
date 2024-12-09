@@ -119,7 +119,7 @@ impl TryFrom<RemotePointer<u16>> for String {
             return Err(windows::Win32::Foundation::E_POINTER.into());
         }
 
-        Ok(unsafe { PWSTR::from_raw(value.inner).to_string() }?)
+        Ok(unsafe { PWSTR(value.inner).to_string() }?)
     }
 }
 
@@ -207,7 +207,7 @@ impl LocalPointer<Vec<Vec<u16>>> {
         match &self.inner {
             Some(values) => values
                 .iter()
-                .map(|value| windows::core::PWSTR::from_raw(value.as_ptr() as _))
+                .map(|value| windows::core::PWSTR(value.as_ptr() as _))
                 .collect(),
             None => vec![windows::core::PWSTR::null()],
         }
@@ -229,7 +229,7 @@ impl LocalPointer<Vec<u16>> {
     #[inline(always)]
     pub fn as_pwstr(&self) -> windows::core::PWSTR {
         match &self.inner {
-            Some(value) => windows::core::PWSTR::from_raw(value.as_ptr() as _),
+            Some(value) => windows::core::PWSTR(value.as_ptr() as _),
             None => windows::core::PWSTR::null(),
         }
     }

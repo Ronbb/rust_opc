@@ -48,8 +48,9 @@ impl Handler<GetServerGuids> for Client {
             .map(|r| match r {
                 Ok(guid) => {
                     let name = unsafe {
-                        windows::Win32::System::Com::ProgIDFromCLSID(&guid)
-                            .map_err(|e| windows::core::Error::new(e.code(), "Failed to get ProgID"))
+                        windows::Win32::System::Com::ProgIDFromCLSID(&guid).map_err(|e| {
+                            windows::core::Error::new(e.code(), "Failed to get ProgID")
+                        })
                     }?;
 
                     Ok((guid, unsafe { name.to_string() }?))

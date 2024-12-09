@@ -124,7 +124,7 @@ impl<T: AsRef<str>> TryWriteInto<T, windows::core::PWSTR> for PointerWriter {
 
         unsafe {
             core::ptr::copy_nonoverlapping(p.as_ptr(), ptr as *mut u16, p.len());
-            *pointer = windows::core::PWSTR::from_raw(ptr as *mut u16);
+            *pointer = windows::core::PWSTR(ptr as *mut u16);
         }
 
         Ok(())
@@ -134,7 +134,10 @@ impl<T: AsRef<str>> TryWriteInto<T, windows::core::PWSTR> for PointerWriter {
 impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows::core::PWSTR> for PointerWriter {
     type Error = windows::core::Error;
 
-    fn try_write_into(value: T, pointer: *mut *mut windows::core::PWSTR) -> Result<(), Self::Error> {
+    fn try_write_into(
+        value: T,
+        pointer: *mut *mut windows::core::PWSTR,
+    ) -> Result<(), Self::Error> {
         let mut strings = Vec::with_capacity(value.as_ref().len());
         for s in value.as_ref() {
             let p = s
@@ -154,7 +157,7 @@ impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows::core::PWSTR> for Poi
 
             unsafe {
                 core::ptr::copy_nonoverlapping(p.as_ptr(), ptr as *mut u16, p.len());
-                strings.push(windows::core::PWSTR::from_raw(ptr as *mut u16));
+                strings.push(windows::core::PWSTR(ptr as *mut u16));
             }
         }
 
