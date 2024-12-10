@@ -1,12 +1,14 @@
 use crate::{
-    com::memory::{FreeRaw as _, IntoRef as _},
     safe_call,
-    traits::GroupTrait,
+    server::{
+        com::memory::{FreeRaw as _, IntoRef as _},
+        traits::GroupTrait,
+    },
 };
 
 use super::memory::IntoComArrayRef;
 
-#[windows_core::implement(
+#[windows::core::implement(
     // implicit implement IUnknown
     opc_da_bindings::IOPCItemMgt,
     opc_da_bindings::IOPCGroupStateMgt,
@@ -43,8 +45,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         count: u32,
         items: *const opc_da_bindings::tagOPCITEMDEF,
         results: *mut *mut opc_da_bindings::tagOPCITEMRESULT,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.add_items(
                 items.into_com_array_ref(count)?,
@@ -62,8 +64,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         items: *const opc_da_bindings::tagOPCITEMDEF,
         blob_update: windows::Win32::Foundation::BOOL,
         validation_results: *mut *mut opc_da_bindings::tagOPCITEMRESULT,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.validate_items(
                 items.into_com_array_ref(count)?,
@@ -80,8 +82,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         &self,
         count: u32,
         item_server_handles: *const u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.remove_items(
                 item_server_handles.into_com_array_ref(count)?,
@@ -96,8 +98,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         count: u32,
         item_server_handles: *const u32,
         active: windows::Win32::Foundation::BOOL,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.set_active_state(
                 item_server_handles.into_com_array_ref(count)?,
@@ -113,8 +115,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         count: u32,
         item_server_handles: *const u32,
         handle_client: *const u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.set_client_handles(
                 item_server_handles.into_com_array_ref(count)?,
@@ -130,8 +132,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         count: u32,
         item_server_handles: *const u32,
         requested_data_types: *const u16,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.set_data_types(
                 item_server_handles.into_com_array_ref(count)?,
@@ -144,8 +146,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
 
     fn CreateEnumerator(
         &self,
-        reference_interface_id: *const windows_core::GUID,
-    ) -> windows_core::Result<windows_core::IUnknown> {
+        reference_interface_id: *const windows::core::GUID,
+    ) -> windows::core::Result<windows::core::IUnknown> {
         safe_call! {
             self.create_enumerator(reference_interface_id.into_ref()?),
         }
@@ -160,13 +162,13 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt_Impl for Group_
         &self,
         update_rate: *mut u32,
         active: *mut windows::Win32::Foundation::BOOL,
-        name: *mut windows_core::PWSTR,
+        name: *mut windows::core::PWSTR,
         time_bias: *mut i32,
         percent_deadband: *mut f32,
         locale_id: *mut u32,
         group_client_handle: *mut u32,
         item_server_handle_group: *mut u32,
-    ) -> windows_core::Result<()> {
+    ) -> windows::core::Result<()> {
         self.get_state(
             update_rate.into_ref()?,
             active.into_ref()?,
@@ -188,7 +190,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt_Impl for Group_
         percent_deadband: *const f32,
         locale_id: *const u32,
         group_client_handle: *const u32,
-    ) -> windows_core::Result<()> {
+    ) -> windows::core::Result<()> {
         self.set_state(
             requested_update_rate.into_ref()?,
             revised_update_rate.into_ref()?,
@@ -200,15 +202,15 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt_Impl for Group_
         )
     }
 
-    fn SetName(&self, name: &windows_core::PCWSTR) -> windows_core::Result<()> {
+    fn SetName(&self, name: &windows::core::PCWSTR) -> windows::core::Result<()> {
         self.set_name(name)
     }
 
     fn CloneGroup(
         &self,
-        name: &windows_core::PCWSTR,
-        reference_interface_id: *const windows_core::GUID,
-    ) -> windows_core::Result<windows_core::IUnknown> {
+        name: &windows::core::PCWSTR,
+        reference_interface_id: *const windows::core::GUID,
+    ) -> windows::core::Result<windows::core::IUnknown> {
         self.clone_group(name, reference_interface_id.into_ref()?)
     }
 }
@@ -217,11 +219,11 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt_Impl for Group_
 // 2.0 N/A
 // 3.0 required
 impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt2_Impl for Group_Impl<T> {
-    fn SetKeepAlive(&self, keep_alive_time: u32) -> windows_core::Result<u32> {
+    fn SetKeepAlive(&self, keep_alive_time: u32) -> windows::core::Result<u32> {
         self.set_keep_alive(keep_alive_time)
     }
 
-    fn GetKeepAlive(&self) -> windows_core::Result<u32> {
+    fn GetKeepAlive(&self) -> windows::core::Result<u32> {
         self.get_keep_alive()
     }
 }
@@ -230,11 +232,11 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt2_Impl for Group
 // 2.0 optional
 // 3.0 N/A
 impl<T: GroupTrait + 'static> opc_da_bindings::IOPCPublicGroupStateMgt_Impl for Group_Impl<T> {
-    fn GetState(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL> {
+    fn GetState(&self) -> windows::core::Result<windows::Win32::Foundation::BOOL> {
         self.get_public_group_state()
     }
 
-    fn MoveToPublic(&self) -> windows_core::Result<()> {
+    fn MoveToPublic(&self) -> windows::core::Result<()> {
         self.move_to_public()
     }
 }
@@ -249,8 +251,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCSyncIO_Impl for Group_Impl<T>
         count: u32,
         item_server_handles: *const u32,
         item_values: *mut *mut opc_da_bindings::tagOPCITEMSTATE,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.read(
                 source,
@@ -267,9 +269,9 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCSyncIO_Impl for Group_Impl<T>
         &self,
         count: u32,
         item_server_handles: *const u32,
-        item_values: *const windows_core::VARIANT,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        item_values: *const windows::core::VARIANT,
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.write(
                 item_server_handles.into_com_array_ref(count)?,
@@ -290,11 +292,11 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCSyncIO2_Impl for Group_Impl<T
         count: u32,
         item_server_handles: *const u32,
         max_age: *const u32,
-        values: *mut *mut windows_core::VARIANT,
+        values: *mut *mut windows::core::VARIANT,
         qualities: *mut *mut u16,
         timestamps: *mut *mut windows::Win32::Foundation::FILETIME,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.read_max_age(
                 item_server_handles.into_com_array_ref(count)?,
@@ -316,8 +318,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCSyncIO2_Impl for Group_Impl<T
         count: u32,
         item_server_handles: *const u32,
         item_vqt: *const opc_da_bindings::tagOPCITEMVQT,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.write_vqt(
                 count,
@@ -340,8 +342,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO2_Impl for Group_Impl<
         item_server_handles: *const u32,
         transaction_id: u32,
         cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.read2(
                 item_server_handles.into_com_array_ref(count)?,
@@ -357,11 +359,11 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO2_Impl for Group_Impl<
         &self,
         count: u32,
         item_server_handles: *const u32,
-        item_values: *const windows_core::VARIANT,
+        item_values: *const windows::core::VARIANT,
         transaction_id: u32,
         cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.write2(
                 count,
@@ -379,19 +381,19 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO2_Impl for Group_Impl<
         &self,
         source: opc_da_bindings::tagOPCDATASOURCE,
         transaction_id: u32,
-    ) -> windows_core::Result<u32> {
+    ) -> windows::core::Result<u32> {
         self.refresh2(source, transaction_id)
     }
 
-    fn Cancel2(&self, cancel_id: u32) -> windows_core::Result<()> {
+    fn Cancel2(&self, cancel_id: u32) -> windows::core::Result<()> {
         self.cancel2(cancel_id)
     }
 
-    fn SetEnable(&self, enable: windows::Win32::Foundation::BOOL) -> windows_core::Result<()> {
+    fn SetEnable(&self, enable: windows::Win32::Foundation::BOOL) -> windows::core::Result<()> {
         self.set_enable(enable)
     }
 
-    fn GetEnable(&self) -> windows_core::Result<windows::Win32::Foundation::BOOL> {
+    fn GetEnable(&self) -> windows::core::Result<windows::Win32::Foundation::BOOL> {
         self.get_enable()
     }
 }
@@ -407,8 +409,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO3_Impl for Group_Impl<
         max_age: *const u32,
         transaction_id: u32,
         cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.read_max_age2(
                 item_server_handles.into_com_array_ref(count)?,
@@ -428,8 +430,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO3_Impl for Group_Impl<
         item_vqt: *const opc_da_bindings::tagOPCITEMVQT,
         transaction_id: u32,
         cancel_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.write_vqt2(
                 item_server_handles.into_com_array_ref(count)?,
@@ -442,7 +444,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO3_Impl for Group_Impl<
         }
     }
 
-    fn RefreshMaxAge(&self, max_age: u32, transaction_id: u32) -> windows_core::Result<u32> {
+    fn RefreshMaxAge(&self, max_age: u32, transaction_id: u32) -> windows::core::Result<u32> {
         self.refresh_max_age(max_age, transaction_id)
     }
 }
@@ -456,8 +458,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemDeadbandMgt_Impl for Grou
         count: u32,
         item_server_handles: *const u32,
         percent_deadband: *const f32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.set_item_deadband(
                 item_server_handles.into_com_array_ref(count)?,
@@ -473,8 +475,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemDeadbandMgt_Impl for Grou
         count: u32,
         item_server_handles: *const u32,
         percent_deadband: *mut *mut f32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.get_item_deadband(
                 item_server_handles.into_com_array_ref(count)?,
@@ -490,8 +492,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemDeadbandMgt_Impl for Grou
         &self,
         count: u32,
         item_server_handles: *const u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.clear_item_deadband(
                 item_server_handles.into_com_array_ref(count)?,
@@ -512,8 +514,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemSamplingMgt_Impl for Grou
         item_server_handles: *const u32,
         requested_sampling_rate: *const u32,
         revised_sampling_rate: *mut *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.set_item_sampling_rate(
                 count,
@@ -532,8 +534,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemSamplingMgt_Impl for Grou
         count: u32,
         item_server_handles: *const u32,
         sampling_rate: *mut *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.get_item_sampling_rate(
                 item_server_handles.into_com_array_ref(count)?,
@@ -549,8 +551,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemSamplingMgt_Impl for Grou
         &self,
         count: u32,
         item_server_handles: *const u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.clear_item_sampling_rate(
                 item_server_handles.into_com_array_ref(count)?,
@@ -565,8 +567,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemSamplingMgt_Impl for Grou
         count: u32,
         item_server_handles: *const u32,
         penable: *const windows::Win32::Foundation::BOOL,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.set_item_buffer_enable(
                 item_server_handles.into_com_array_ref(count)?,
@@ -582,8 +584,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemSamplingMgt_Impl for Grou
         count: u32,
         item_server_handles: *const u32,
         enable: *mut *mut windows::Win32::Foundation::BOOL,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.get_item_buffer_enable(
                 item_server_handles.into_com_array_ref(count)?,
@@ -604,14 +606,14 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IConnectionPointConta
 {
     fn EnumConnectionPoints(
         &self,
-    ) -> windows_core::Result<windows::Win32::System::Com::IEnumConnectionPoints> {
+    ) -> windows::core::Result<windows::Win32::System::Com::IEnumConnectionPoints> {
         self.enum_connection_points()
     }
 
     fn FindConnectionPoint(
         &self,
-        reference_interface_id: *const windows_core::GUID,
-    ) -> windows_core::Result<windows::Win32::System::Com::IConnectionPoint> {
+        reference_interface_id: *const windows::core::GUID,
+    ) -> windows::core::Result<windows::Win32::System::Com::IConnectionPoint> {
         self.find_connection_point(reference_interface_id.into_ref()?)
     }
 }
@@ -627,8 +629,8 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO_Impl for Group_Impl<T
         count: u32,
         item_server_handles: *const u32,
         transaction_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.read3(
                 connection,
@@ -646,10 +648,10 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO_Impl for Group_Impl<T
         connection: u32,
         count: u32,
         item_server_handles: *const u32,
-        item_values: *const windows_core::VARIANT,
+        item_values: *const windows::core::VARIANT,
         transaction_id: *mut u32,
-        errors: *mut *mut windows_core::HRESULT,
-    ) -> windows_core::Result<()> {
+        errors: *mut *mut windows::core::HRESULT,
+    ) -> windows::core::Result<()> {
         safe_call! {
             self.write3(
                 connection,
@@ -666,11 +668,11 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO_Impl for Group_Impl<T
         &self,
         connection: u32,
         source: opc_da_bindings::tagOPCDATASOURCE,
-    ) -> windows_core::Result<u32> {
+    ) -> windows::core::Result<u32> {
         self.refresh(connection, source)
     }
 
-    fn Cancel(&self, transaction_id: u32) -> windows_core::Result<()> {
+    fn Cancel(&self, transaction_id: u32) -> windows::core::Result<()> {
         self.cancel(transaction_id)
     }
 }
@@ -682,7 +684,7 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
     fn GetData(
         &self,
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
-    ) -> windows_core::Result<windows::Win32::System::Com::STGMEDIUM> {
+    ) -> windows::core::Result<windows::Win32::System::Com::STGMEDIUM> {
         self.get_data(format_etc_in.into_ref()?)
     }
 
@@ -690,14 +692,14 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
         &self,
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
         storage_medium: *mut windows::Win32::System::Com::STGMEDIUM,
-    ) -> windows_core::Result<()> {
+    ) -> windows::core::Result<()> {
         self.get_data_here(format_etc_in.into_ref()?, storage_medium.into_ref()?)
     }
 
     fn QueryGetData(
         &self,
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
-    ) -> windows_core::HRESULT {
+    ) -> windows::core::HRESULT {
         let format_etc_in = match format_etc_in.into_ref() {
             Ok(format_etc_in) => format_etc_in,
             Err(err) => return err.code(),
@@ -710,7 +712,7 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
         &self,
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
         format_etc_inout: *mut windows::Win32::System::Com::FORMATETC,
-    ) -> windows_core::HRESULT {
+    ) -> windows::core::HRESULT {
         let format_etc_in = match format_etc_in.into_ref() {
             Ok(format_etc_in) => format_etc_in,
             Err(err) => return err.code(),
@@ -729,7 +731,7 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
         storage_medium: *const windows::Win32::System::Com::STGMEDIUM,
         release: windows::Win32::Foundation::BOOL,
-    ) -> windows_core::Result<()> {
+    ) -> windows::core::Result<()> {
         self.set_data(
             format_etc_in.into_ref()?,
             storage_medium.into_ref()?,
@@ -740,7 +742,7 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
     fn EnumFormatEtc(
         &self,
         direction: u32,
-    ) -> windows_core::Result<windows::Win32::System::Com::IEnumFORMATETC> {
+    ) -> windows::core::Result<windows::Win32::System::Com::IEnumFORMATETC> {
         self.enum_format_etc(direction)
     }
 
@@ -749,15 +751,15 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
         adv: u32,
         sink: Option<&windows::Win32::System::Com::IAdviseSink>,
-    ) -> windows_core::Result<u32> {
+    ) -> windows::core::Result<u32> {
         self.data_advise(format_etc_in.into_ref()?, adv, sink)
     }
 
-    fn DUnadvise(&self, connection: u32) -> windows_core::Result<()> {
+    fn DUnadvise(&self, connection: u32) -> windows::core::Result<()> {
         self.data_unadvise(connection)
     }
 
-    fn EnumDAdvise(&self) -> windows_core::Result<windows::Win32::System::Com::IEnumSTATDATA> {
+    fn EnumDAdvise(&self) -> windows::core::Result<windows::Win32::System::Com::IEnumSTATDATA> {
         self.enum_data_advise()
     }
 }
