@@ -1,3 +1,8 @@
+//! OPC DA 3.0 server and group implementations.
+//!
+//! This module implements the OPC DA 3.0 interfaces for servers and groups,
+//! providing access to the latest features of the OPC DA specification.
+
 use windows::core::Interface as _;
 
 use super::traits::{
@@ -6,6 +11,20 @@ use super::traits::{
     ItemSamplingMgtTrait, ServerTrait, SyncIo2Trait, SyncIoTrait,
 };
 
+/// An OPC DA 3.0 server implementation.
+///
+/// Provides access to OPC DA 3.0 server interfaces including:
+/// - IOPCServer for basic server operations
+/// - IOPCCommon for server status and locale management
+/// - IOPCBrowse for browsing the server address space
+/// - IOPCItemIO for direct item read/write operations
+///
+/// # Example
+/// ```no_run
+/// use opc_da::client::v3::Server;
+/// // Create server from IUnknown interface
+/// let server: Server = unknown.try_into()?;
+/// ```
 pub struct Server {
     pub(crate) server: opc_da_bindings::IOPCServer,
     pub(crate) common: opc_da_bindings::IOPCCommon,
@@ -64,6 +83,16 @@ impl ItemIoTrait for Server {
     }
 }
 
+/// An OPC DA 3.0 group implementation.
+///
+/// Provides access to OPC DA 3.0 group interfaces including:
+/// - IOPCItemMgt for item management
+/// - IOPCGroupStateMgt/2 for group state management
+/// - IOPCSyncIO/2 for synchronous operations
+/// - IOPCAsyncIO2/3 for asynchronous operations
+/// - IOPCItemSamplingMgt for item sampling control
+/// - IOPCItemDeadbandMgt for deadband management
+#[derive(Debug)]
 pub struct Group {
     pub(crate) item_mgt: opc_da_bindings::IOPCItemMgt,
     pub(crate) group_state_mgt: opc_da_bindings::IOPCGroupStateMgt,

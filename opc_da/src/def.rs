@@ -104,7 +104,12 @@ impl ToNative for bridge::ItemDef {
             bActive: self.active.into(),
             hClient: self.item_client_handle,
             vtRequestedDataType: self.requested_data_type,
-            dwBlobSize: self.blob.len().try_into()?,
+            dwBlobSize: self.blob.len().try_into().map_err(|_| {
+                windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "Blob size exceeds u32 maximum value",
+                )
+            })?,
             pBlob: self.blob.as_mut_array_ptr(),
             wReserved: 0,
         })

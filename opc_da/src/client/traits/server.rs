@@ -2,28 +2,32 @@ use windows::core::Interface as _;
 
 use crate::client::LocalPointer;
 
+/// OPC Server management functionality.
+///
+/// Provides methods to create and manage groups within an OPC server,
+/// as well as monitor server status and enumerate existing groups.
 pub trait ServerTrait<Group> {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer>;
 
+    /// Creates a group wrapper from a COM interface.
     fn create_group(&self, unknown: windows::core::IUnknown) -> windows::core::Result<Group>;
 
-    /// Adds a new group to the OPC server.  
+    /// Adds a new group to the OPC server.
     ///
-    /// # Safety  
-    /// This method is unsafe because it calls into COM interfaces.  
-    /// The caller must ensure that the COM server is properly initialized.  
-    ///
-    /// # Arguments  
-    /// * `name` - The name of the group  
-    /// * `active` - Whether the group should be active  
-    /// * `client_handle` - The client handle for the group
-    /// * `update_rate` - The update rate for the group
-    /// * `locale_id` - The locale id for the group
-    /// * `time_bias` - The time bias for the group
-    /// * `percent_deadband` - The percent deadband for the group
+    /// # Arguments
+    /// * `name` - Group name for identification
+    /// * `active` - Whether the group should initially be active
+    /// * `client_handle` - Client-assigned handle for the group
+    /// * `update_rate` - Requested update rate in milliseconds
+    /// * `locale_id` - Locale ID for text strings
+    /// * `time_bias` - Time zone bias in minutes from UTC
+    /// * `percent_deadband` - Percent change required to trigger updates
     ///
     /// # Returns
-    /// The newly created group
+    /// The newly created group object
+    ///
+    /// # Errors
+    /// Returns E_POINTER if group creation fails
     #[allow(clippy::too_many_arguments)]
     fn add_group(
         &self,
@@ -66,6 +70,11 @@ pub trait ServerTrait<Group> {
         }
     }
 
+    /// Gets the current server status.
+    ///
+    /// # Returns
+    /// Server status structure containing vendor info, time, state,
+    /// and group counts
     fn get_status(&self) -> windows::core::Result<opc_da_bindings::tagOPCSERVERSTATUS> {
         let status = unsafe { self.interface()?.GetStatus()?.as_ref() };
         match status {
@@ -77,6 +86,11 @@ pub trait ServerTrait<Group> {
         }
     }
 
+    /// Removes a group from the server.
+    ///
+    /// # Arguments
+    /// * `server_handle` - Server's handle for the group
+    /// * `force` - If true, remove even if clients are connected
     fn remove_group(&self, server_handle: u32, force: bool) -> windows::core::Result<()> {
         unsafe {
             self.interface()?
@@ -85,6 +99,13 @@ pub trait ServerTrait<Group> {
         Ok(())
     }
 
+    /// Creates an enumerator for groups.
+    ///
+    /// # Arguments
+    /// * `scope` - Scope of groups to enumerate (public, private, or all)
+    ///
+    /// # Returns
+    /// Enumerator interface for iterating through groups
     fn create_group_enumerator(
         &self,
         scope: opc_da_bindings::tagOPCENUMSCOPE,

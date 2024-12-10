@@ -5,13 +5,29 @@ use opc_da_bindings::{
     tagOPCBROWSEDIRECTION, tagOPCBROWSETYPE, tagOPCNAMESPACETYPE, IOPCBrowseServerAddressSpace,
 };
 
+/// Server address space browsing functionality.
+///
+/// Provides methods to navigate and discover items in the OPC server's address space.
+/// Supports hierarchical and flat address spaces with filtering capabilities.
 pub trait BrowseServerAddressSpaceTrait {
     fn interface(&self) -> windows::core::Result<&IOPCBrowseServerAddressSpace>;
 
+    /// Queries the organization type of the server's address space.
+    ///
+    /// # Returns
+    /// The namespace type (hierarchical or flat)
     fn query_organization(&self) -> windows::core::Result<tagOPCNAMESPACETYPE> {
         unsafe { self.interface()?.QueryOrganization() }
     }
 
+    /// Changes the current position in the server's address space.
+    ///
+    /// # Arguments
+    /// * `browse_direction` - Direction to move (up, down, or to)
+    /// * `position` - Target position string (branch name for down/to)
+    ///
+    /// # Returns
+    /// Result indicating success or failure of position change
     fn change_browse_position(
         &self,
         browse_direction: tagOPCBROWSEDIRECTION,
@@ -25,6 +41,16 @@ pub trait BrowseServerAddressSpaceTrait {
         }
     }
 
+    /// Browses available item IDs at the current position.
+    ///
+    /// # Arguments
+    /// * `browse_type` - Type of items to browse (leaf, branch, or flat)
+    /// * `filter_criteria` - Pattern for filtering items
+    /// * `datatype_filter` - VT_* type to filter by (0 for all)
+    /// * `access_rights_filter` - Required access rights
+    ///
+    /// # Returns
+    /// Enumerator for matching item IDs
     fn browse_opc_item_ids(
         &self,
         browse_type: tagOPCBROWSETYPE,
@@ -44,6 +70,13 @@ pub trait BrowseServerAddressSpaceTrait {
         }
     }
 
+    /// Gets fully qualified item ID from a leaf item.
+    ///
+    /// # Arguments
+    /// * `item_data_id` - Item name at current position
+    ///
+    /// # Returns
+    /// Fully qualified item ID string
     fn get_item_id(&self, item_data_id: &str) -> windows::core::Result<String> {
         let item_data_id = LocalPointer::from_str(item_data_id)?;
 
@@ -52,6 +85,13 @@ pub trait BrowseServerAddressSpaceTrait {
         RemotePointer::from(output).try_into()
     }
 
+    /// Browses available access paths for an item.
+    ///
+    /// # Arguments
+    /// * `item_id` - Fully qualified item ID
+    ///
+    /// # Returns
+    /// Enumerator for available access paths
     fn browse_access_paths(
         &self,
         item_id: &str,

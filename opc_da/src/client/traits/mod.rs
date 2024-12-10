@@ -1,3 +1,29 @@
+/// OPC DA client trait definitions.
+///
+/// This module contains all trait definitions for interacting with OPC DA servers.
+/// The traits are organized by functionality and OPC DA version compatibility:
+///
+/// Version independent traits:
+/// - CommonTrait: Basic server configuration and error handling
+/// - ConnectionPointContainerTrait: Event connection management
+/// - DataObjectTrait: COM data transfer functionality
+///
+/// OPC DA 1.0 traits:
+/// - AsyncIoTrait: Basic asynchronous operations
+/// - SyncIoTrait: Basic synchronous operations
+///
+/// OPC DA 2.0 traits:
+/// - AsyncIo2Trait: Enhanced asynchronous operations
+/// - SyncIo2Trait: Enhanced synchronous operations
+/// - BrowseServerAddressSpaceTrait: Address space navigation
+///
+/// OPC DA 3.0 traits:
+/// - AsyncIo3Trait: Advanced asynchronous operations
+/// - BrowseTrait: Enhanced browsing capabilities
+/// - ItemDeadbandMgtTrait: Item deadband management
+/// - ItemIoTrait: Direct item access
+/// - ItemSamplingMgtTrait: Sampling rate control
+/// - GroupStateMgt2Trait: Extended group management
 mod async_io;
 mod async_io2;
 mod async_io3;

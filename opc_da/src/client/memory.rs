@@ -36,12 +36,20 @@ impl<T: Sized> RemoteArray<T> {
         &mut self.pointer
     }
 
+    /// Returns a slice to the underlying array.  
+    ///
+    /// # Safety  
+    /// The caller must ensure that the pointer is valid for reads  
+    /// and points to an array of `len` elements.  
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         if self.pointer.is_null() || self.len == 0 {
             return &[];
         }
-        unsafe { core::slice::from_raw_parts(self.pointer, self.len as _) }
+
+        let len = usize::try_from(self.len).unwrap_or(0);
+
+        unsafe { core::slice::from_raw_parts(self.pointer, len) }
     }
 
     #[inline(always)]

@@ -1,9 +1,28 @@
 use crate::client::memory::{LocalPointer, RemoteArray};
 use opc_da_bindings::{tagOPCITEMVQT, IOPCItemIO};
 
+/// Direct item I/O functionality (OPC DA 3.0).
+///
+/// Provides methods for direct read/write operations on items without requiring
+/// group creation. This trait offers a simplified interface for basic data access.
 pub trait ItemIoTrait {
     fn interface(&self) -> windows::core::Result<&IOPCItemIO>;
 
+    /// Reads values directly from items with age constraints.
+    ///
+    /// # Arguments
+    /// * `item_ids` - Array of fully qualified item IDs to read
+    /// * `max_age` - Maximum age constraints for each item in milliseconds
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of item values (VARIANT)
+    /// - Array of quality values
+    /// - Array of timestamps
+    /// - Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays are empty or have different lengths
     #[allow(clippy::type_complexity)]
     fn read(
         &self,
@@ -47,6 +66,17 @@ pub trait ItemIoTrait {
         Ok((values, qualities, timestamps, errors))
     }
 
+    /// Writes values with quality and timestamp information.
+    ///
+    /// # Arguments
+    /// * `item_ids` - Array of fully qualified item IDs to write
+    /// * `item_vqts` - Array of value-quality-timestamp structures
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays are empty or have different lengths
     fn write_vqt(
         &self,
         item_ids: &[String],

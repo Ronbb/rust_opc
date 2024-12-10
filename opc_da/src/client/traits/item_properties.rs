@@ -2,9 +2,27 @@ use crate::client::memory::{LocalPointer, RemoteArray};
 use opc_da_bindings::IOPCItemProperties;
 use std::str::FromStr;
 
+/// Item properties management functionality.
+///
+/// Provides methods to query and retrieve item property information from
+/// the OPC server. Properties include metadata such as engineering units,
+/// descriptions, and other vendor-specific attributes.
 pub trait ItemPropertiesTrait {
     fn interface(&self) -> windows::core::Result<&IOPCItemProperties>;
 
+    /// Queries available properties for a specific item.
+    ///
+    /// # Arguments
+    /// * `item_id` - Fully qualified item ID
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of property IDs
+    /// - Array of property descriptions
+    /// - Array of property data types (VT_*)
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if item_id is empty
     fn query_available_properties(
         &self,
         item_id: &str,
@@ -46,6 +64,19 @@ pub trait ItemPropertiesTrait {
         Ok((property_ids, descriptions, datatypes))
     }
 
+    /// Gets property values for a specific item.
+    ///
+    /// # Arguments
+    /// * `item_id` - Fully qualified item ID
+    /// * `property_ids` - Array of property IDs to retrieve
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of property values as VARIANTs
+    /// - Array of per-property error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if property_ids is empty
     fn get_item_properties(
         &self,
         item_id: &str,
@@ -79,6 +110,19 @@ pub trait ItemPropertiesTrait {
         Ok((values, errors))
     }
 
+    /// Looks up item IDs for properties that are themselves OPC items.
+    ///
+    /// # Arguments
+    /// * `item_id` - Base item ID to look up properties for
+    /// * `property_ids` - Array of property IDs to look up
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of property-specific item IDs
+    /// - Array of per-property error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if property_ids is empty
     fn lookup_item_ids(
         &self,
         item_id: &str,

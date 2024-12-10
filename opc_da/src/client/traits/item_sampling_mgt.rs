@@ -1,9 +1,26 @@
 use crate::client::memory::RemoteArray;
 use windows::Win32::Foundation::BOOL;
 
+/// Item sampling management functionality (OPC DA 3.0).
+///
+/// Provides methods to control sampling rates and buffering behavior
+/// for individual items in an OPC group.
 pub trait ItemSamplingMgtTrait {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemSamplingMgt>;
 
+    /// Sets sampling rates for specified items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    /// * `sampling_rates` - Array of requested sampling rates in milliseconds
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of actual sampling rates set by server
+    /// - Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays have different lengths
     fn set_item_sampling_rate(
         &self,
         server_handles: &[u32],
@@ -34,6 +51,15 @@ pub trait ItemSamplingMgtTrait {
         Ok((revised_rates, errors))
     }
 
+    /// Gets current sampling rates for specified items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of current sampling rates in milliseconds
+    /// - Array of per-item error codes
     fn get_item_sampling_rate(
         &self,
         server_handles: &[u32],
@@ -55,6 +81,13 @@ pub trait ItemSamplingMgtTrait {
         Ok((sampling_rates, errors))
     }
 
+    /// Removes custom sampling rates for specified items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    ///
+    /// # Returns
+    /// Array of per-item error codes
     fn clear_item_sampling_rate(
         &self,
         server_handles: &[u32],
@@ -74,6 +107,17 @@ pub trait ItemSamplingMgtTrait {
         Ok(errors)
     }
 
+    /// Enables or disables data buffering for specified items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    /// * `enable` - Array of boolean values to enable/disable buffering
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays have different lengths
     fn set_item_buffer_enable(
         &self,
         server_handles: &[u32],
@@ -103,6 +147,15 @@ pub trait ItemSamplingMgtTrait {
         Ok(errors)
     }
 
+    /// Gets current buffer enable states for specified items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of current buffer enable states
+    /// - Array of per-item error codes
     fn get_item_buffer_enable(
         &self,
         server_handles: &[u32],

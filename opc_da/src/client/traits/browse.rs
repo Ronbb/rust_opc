@@ -2,9 +2,25 @@ use crate::client::memory::{LocalPointer, RemoteArray, RemotePointer};
 use opc_da_bindings::{tagOPCBROWSEELEMENT, tagOPCBROWSEFILTER, tagOPCITEMPROPERTIES, IOPCBrowse};
 use std::str::FromStr;
 
+/// Server address space browsing functionality (OPC DA 3.0).
+///
+/// Provides methods to browse the hierarchical namespace of an OPC server
+/// and retrieve item properties.
 pub trait BrowseTrait {
     fn interface(&self) -> windows::core::Result<&IOPCBrowse>;
 
+    /// Gets properties for specified items from the server.
+    ///
+    /// # Arguments
+    /// * `item_ids` - Array of item identifiers to get properties for
+    /// * `return_property_values` - If true, return actual property values; if false, only property metadata
+    /// * `property_ids` - Specific property IDs to retrieve; empty array means all properties
+    ///
+    /// # Returns
+    /// Array of item properties containing property values and/or metadata
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if item_ids is empty
     fn get_properties(
         &self,
         item_ids: &[String],
@@ -36,6 +52,22 @@ pub trait BrowseTrait {
         Ok(results)
     }
 
+    /// Browses a single branch or leaf in the server's address space.
+    ///
+    /// # Arguments
+    /// * `item_id` - Starting point for browsing (empty string for root)
+    /// * `max_elements` - Maximum number of elements to return
+    /// * `browse_filter` - Filter specifying what types of elements to return
+    /// * `element_name_filter` - Filter string for element names (can contain wildcards)
+    /// * `vendor_filter` - Vendor-specific filter string
+    /// * `return_all_properties` - If true, return all available properties
+    /// * `return_property_values` - If true, return property values; if false, only property metadata
+    /// * `property_ids` - Specific property IDs to retrieve when return_all_properties is false
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Boolean indicating if more elements are available
+    /// - Array of browse elements containing names and properties
     #[allow(clippy::too_many_arguments)]
     fn browse(
         &self,

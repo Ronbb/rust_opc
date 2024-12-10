@@ -5,9 +5,21 @@ use crate::{
     def,
 };
 
+/// Group state management functionality.
+///
+/// Provides methods to get and set various group state parameters including:
+/// - Update rate
+/// - Active state
+/// - Time bias
+/// - Deadband
+/// - Locale ID
+/// - Group handles
 pub trait GroupStateMgtTrait {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCGroupStateMgt>;
 
+    /// Gets the current state of the group.
+    ///
+    /// Returns a GroupState structure containing all group parameters.
     fn get_state(&self) -> windows::core::Result<def::GroupState> {
         let mut state = def::GroupState::default();
 
@@ -33,6 +45,18 @@ pub trait GroupStateMgtTrait {
         Ok(state)
     }
 
+    /// Sets one or more group state parameters.
+    ///
+    /// # Arguments
+    /// * `update_rate` - Requested group update rate in milliseconds
+    /// * `active` - Group active state
+    /// * `time_bias` - Time bias from UTC in minutes
+    /// * `percent_deadband` - Percent deadband for analog items
+    /// * `locale_id` - Locale ID for status/error strings
+    /// * `client_group_handle` - Client-provided handle
+    ///
+    /// # Returns
+    /// The actual update rate set by the server
     fn set_state(
         &self,
         update_rate: Option<u32>,
@@ -65,12 +89,18 @@ pub trait GroupStateMgtTrait {
         Ok(revised_update_rate.into_inner().unwrap_or_default())
     }
 
+    /// Sets the name of the group.
     fn set_name(&self, name: &str) -> windows::core::Result<()> {
         let name = LocalPointer::from_str(name)?;
 
         unsafe { self.interface()?.SetName(name.as_pwstr()) }
     }
 
+    /// Creates a copy of the group with a new name.
+    ///
+    /// # Arguments
+    /// * `name` - Name for the new group
+    /// * `id` - Client-provided GUID for the new group
     fn clone_group(
         &self,
         name: &str,

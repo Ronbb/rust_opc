@@ -71,6 +71,7 @@ fn test_client() {
     let group = server
         .add_group("test", true, 0, 0, 0, 0, 0.0)
         .expect("Failed to add group");
+
     let name = LocalPointer::from_str(&name).expect("Failed to convert name");
     let (results, errors) = group
         .add_items(&[opc_da_bindings::tagOPCITEMDEF {
@@ -84,20 +85,17 @@ fn test_client() {
             wReserved: 0,
         }])
         .expect("Failed to add items");
-    if errors.len() != 1 {
-        panic!("Expected 1 error, got {}", errors.len());
-    }
 
-    let error = errors.as_slice().first().unwrap();
-    if error.is_err() {
-        panic!("Error, got {:?}", error);
-    }
+    assert_eq!(errors.len(), 1, "Expected exactly one error result");
+    let error = errors.as_slice().first().expect("Error array is empty");
+    assert!(error.is_ok(), "Unexpected error: {:?}", error);
 
-    if results.len() != 1 {
-        panic!("Expected 1 result, got {}", results.len());
-    }
-
-    let server_handle = results.as_slice().first().unwrap().hServer;
+    assert_eq!(results.len(), 1, "Expected exactly one result");
+    let server_handle = results
+        .as_slice()
+        .first()
+        .unwrap_or_else(|| panic!("Expected 1 result, got {}", results.len()))
+        .hServer;
 
     let (states, errors) =
         SyncIoTrait::read(&group, opc_da_bindings::OPC_DS_CACHE, &[server_handle])

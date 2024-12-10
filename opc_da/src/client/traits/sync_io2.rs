@@ -1,9 +1,28 @@
 use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
+/// Synchronous I/O functionality (OPC DA 3.0).
+///
+/// Provides enhanced synchronous read/write operations with support for
+/// quality, timestamp, and maximum age constraints.
 pub trait SyncIo2Trait {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCSyncIO2>;
 
+    /// Reads values with maximum age constraint.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    /// * `max_age` - Maximum age constraints for each item in milliseconds
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of item values
+    /// - Array of quality values
+    /// - Array of timestamps
+    /// - Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays are empty or have different lengths
     #[allow(clippy::type_complexity)]
     fn read_max_age(
         &self,
@@ -51,6 +70,17 @@ pub trait SyncIo2Trait {
         Ok((values, qualities, timestamps, errors))
     }
 
+    /// Writes values with quality and timestamp information.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    /// * `values` - Array of value-quality-timestamp structures
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays are empty or have different lengths
     fn write_vqt(
         &self,
         server_handles: &[u32],

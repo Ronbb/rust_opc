@@ -2,9 +2,26 @@ use windows::core::Interface as _;
 
 use crate::client::memory;
 
+/// Item management functionality.
+///
+/// Provides methods to manage OPC items within a group, including adding,
+/// removing, and modifying item properties such as active state, client
+/// handles, and data types.
 pub trait ItemMgtTrait {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCItemMgt>;
 
+    /// Adds items to the group.
+    ///
+    /// # Arguments
+    /// * `items` - Array of item definitions containing item IDs and requested properties
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of item results with server handles and canonical data type
+    /// - Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if items array is empty
     fn add_items(
         &self,
         items: &[opc_da_bindings::tagOPCITEMDEF],
@@ -35,6 +52,16 @@ pub trait ItemMgtTrait {
         Ok((results, errors))
     }
 
+    /// Validates item definitions without adding them to the group.
+    ///
+    /// # Arguments
+    /// * `items` - Array of item definitions to validate
+    /// * `blob_update` - Whether to validate blob update capability
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of item results with access rights and canonical data type
+    /// - Array of per-item error codes
     fn validate_items(
         &self,
         items: &[opc_da_bindings::tagOPCITEMDEF],
@@ -67,6 +94,16 @@ pub trait ItemMgtTrait {
         Ok((results, errors))
     }
 
+    /// Removes items from the group.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server handles for items to remove
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if server_handles is empty
     fn remove_items(
         &self,
         server_handles: &[u32],
@@ -89,6 +126,17 @@ pub trait ItemMgtTrait {
         Ok(errors)
     }
 
+    /// Sets the active state of items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server handles
+    /// * `active` - True to activate items, false to deactivate
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if server_handles is empty
     fn set_active_state(
         &self,
         server_handles: &[u32],
@@ -116,6 +164,17 @@ pub trait ItemMgtTrait {
         Ok(errors)
     }
 
+    /// Sets client handles for items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server handles
+    /// * `client_handles` - Array of new client handles
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays are empty or have different lengths
     fn set_client_handles(
         &self,
         server_handles: &[u32],
@@ -150,6 +209,17 @@ pub trait ItemMgtTrait {
         Ok(errors)
     }
 
+    /// Sets requested data types for items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server handles
+    /// * `requested_datatypes` - Array of VT_* data types
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays are empty or have different lengths
     fn set_datatypes(
         &self,
         server_handles: &[u32],
@@ -184,6 +254,13 @@ pub trait ItemMgtTrait {
         Ok(errors)
     }
 
+    /// Creates an enumerator for item management.
+    ///
+    /// # Arguments
+    /// * `id` - Interface ID specifying the type of enumerator
+    ///
+    /// # Returns
+    /// Enumerator interface for iterating through items
     fn create_enumerator(
         &self,
         id: &windows::core::GUID,

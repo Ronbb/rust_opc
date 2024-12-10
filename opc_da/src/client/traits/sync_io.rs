@@ -1,9 +1,26 @@
 use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
 
+/// Synchronous I/O functionality (OPC DA 1.0).
+///
+/// Provides methods for basic synchronous read/write operations
+/// with direct server communication.
 pub trait SyncIoTrait {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCSyncIO>;
 
+    /// Reads values synchronously from items.
+    ///
+    /// # Arguments
+    /// * `source` - Whether to read from cache or device
+    /// * `server_handles` - Array of server item handles
+    ///
+    /// # Returns
+    /// Tuple containing:
+    /// - Array of item states (value, quality, timestamp)
+    /// - Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if server_handles is empty
     fn read(
         &self,
         source: opc_da_bindings::tagOPCDATASOURCE,
@@ -37,6 +54,17 @@ pub trait SyncIoTrait {
         Ok((item_values, errors))
     }
 
+    /// Writes values synchronously to items.
+    ///
+    /// # Arguments
+    /// * `server_handles` - Array of server item handles
+    /// * `values` - Array of values to write
+    ///
+    /// # Returns
+    /// Array of per-item error codes
+    ///
+    /// # Errors
+    /// Returns E_INVALIDARG if arrays are empty or have different lengths
     fn write(
         &self,
         server_handles: &[u32],

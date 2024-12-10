@@ -1,3 +1,8 @@
+//! OPC DA 1.0 server and group implementations.
+//!
+//! This module implements the original OPC DA 1.0 interfaces for servers and groups,
+//! providing basic functionality for legacy systems.
+
 use windows::core::Interface as _;
 
 use super::traits::{
@@ -5,6 +10,19 @@ use super::traits::{
     PublicGroupStateMgtTrait, ServerPublicGroupsTrait, ServerTrait, SyncIoTrait,
 };
 
+/// An OPC DA 1.0 server implementation.
+///
+/// Provides access to OPC DA 1.0 server interfaces including:
+/// - IOPCServer for basic server operations
+/// - IOPCServerPublicGroups for public group management
+/// - IOPCBrowseServerAddressSpace for browsing the address space
+///
+/// # Example
+/// ```no_run
+/// use opc_da::client::v1::Server;
+/// // Create server from IUnknown interface
+/// let server: Server = unknown.try_into()?;
+/// ```
 pub struct Server {
     pub(crate) server: opc_da_bindings::IOPCServer,
     pub(crate) server_public_groups: Option<opc_da_bindings::IOPCServerPublicGroups>,
@@ -55,6 +73,15 @@ impl BrowseServerAddressSpaceTrait for Server {
     }
 }
 
+/// An OPC DA 1.0 group implementation.
+///
+/// Provides access to OPC DA 1.0 group interfaces including:
+/// - IOPCItemMgt for item management
+/// - IOPCGroupStateMgt for group state management
+/// - IOPCPublicGroupStateMgt for public group operations
+/// - IOPCSyncIO for synchronous operations
+/// - IOPCAsyncIO for asynchronous operations
+/// - IDataObject for data transfer
 pub struct Group {
     pub(crate) item_mgt: opc_da_bindings::IOPCItemMgt,
     pub(crate) group_state_mgt: opc_da_bindings::IOPCGroupStateMgt,
