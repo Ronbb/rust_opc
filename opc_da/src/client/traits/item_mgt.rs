@@ -165,7 +165,7 @@ pub trait ItemMgtTrait {
         if server_handles.is_empty() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                "items cannot be empty",
+                "server_handles cannot be empty",
             ));
         }
 

@@ -1,6 +1,9 @@
 use std::str::FromStr;
 
-use crate::{client::memory::LocalPointer, def};
+use crate::{
+    client::{memory::LocalPointer, RemotePointer},
+    def,
+};
 
 pub trait GroupStateMgtTrait {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCGroupStateMgt>;
@@ -9,13 +12,13 @@ pub trait GroupStateMgtTrait {
         let mut state = def::GroupState::default();
 
         let mut active = windows::Win32::Foundation::BOOL::default();
-        let mut name = windows::core::PWSTR::null();
+        let mut name = RemotePointer::new();
 
         unsafe {
             self.interface()?.GetState(
                 &mut state.update_rate,
                 &mut active,
-                &mut name,
+                name.as_mut_pwstr_ptr(),
                 &mut state.time_bias,
                 &mut state.percent_deadband,
                 &mut state.locale_id,
@@ -25,7 +28,7 @@ pub trait GroupStateMgtTrait {
         }?;
 
         state.active = active.as_bool();
-        state.name = unsafe { name.to_string() }?;
+        state.name = name.try_into()?;
 
         Ok(state)
     }

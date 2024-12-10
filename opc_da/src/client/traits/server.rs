@@ -8,6 +8,23 @@ where
 {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer>;
 
+    /// Adds a new group to the OPC server.  
+    ///
+    /// # Safety  
+    /// This method is unsafe because it calls into COM interfaces.  
+    /// The caller must ensure that the COM server is properly initialized.  
+    ///
+    /// # Arguments  
+    /// * `name` - The name of the group  
+    /// * `active` - Whether the group should be active  
+    /// * `client_handle` - The client handle for the group
+    /// * `update_rate` - The update rate for the group
+    /// * `locale_id` - The locale id for the group
+    /// * `time_bias` - The time bias for the group
+    /// * `percent_deadband` - The percent deadband for the group
+    ///
+    /// # Returns
+    /// The newly created group
     #[allow(clippy::too_many_arguments)]
     fn add_group(
         &self,

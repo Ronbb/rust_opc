@@ -15,11 +15,13 @@ pub trait ItemDeadbandMgtTrait {
             ));
         }
 
-        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
+        let len = server_handles.len().try_into()?;
+
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.SetItemDeadband(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 dead_bands.as_ptr(),
                 errors.as_mut_ptr(),
@@ -33,30 +35,34 @@ pub trait ItemDeadbandMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<(RemoteArray<f32>, RemoteArray<windows::core::HRESULT>)> {
-        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
-        let mut deadbands = RemoteArray::new(server_handles.len().try_into()?);
+        let len = server_handles.len().try_into()?;
+
+        let mut errors = RemoteArray::new(len);
+        let mut dead_bands = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.GetItemDeadband(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
-                deadbands.as_mut_ptr(),
+                dead_bands.as_mut_ptr(),
                 errors.as_mut_ptr(),
             )?;
         }
 
-        Ok((deadbands, errors))
+        Ok((dead_bands, errors))
     }
 
     fn clear_item_deadband(
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
-        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
+        let len = server_handles.len().try_into()?;
+
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.ClearItemDeadband(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 errors.as_mut_ptr(),
             )?;

@@ -54,7 +54,7 @@ pub trait BrowseTrait {
         let mut continuation_point = RemotePointer::<u16>::new();
         let mut more_elements = false.into();
         let mut count = 0;
-        let mut elements = RemoteArray::new(0);
+        let mut elements = RemoteArray::empty();
 
         unsafe {
             self.interface()?.Browse(

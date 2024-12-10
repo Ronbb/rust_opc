@@ -13,6 +13,13 @@ pub trait ItemPropertiesTrait {
         RemoteArray<windows::core::PWSTR>, // descriptions
         RemoteArray<u16>,                  // datatypes
     )> {
+        if item_id.is_empty() {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "item_id is empty",
+            ));
+        }
+
         let item_id = LocalPointer::from_str(item_id)?;
 
         let mut count = 0;

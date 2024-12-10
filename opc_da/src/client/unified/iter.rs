@@ -1,3 +1,5 @@
+use crate::client::RemotePointer;
+
 /// Iterator over COM GUIDs from IEnumGUID.  
 ///
 /// # Safety  
@@ -45,6 +47,7 @@ impl Iterator for GuidIterator {
         }
 
         self.count -= 1;
+        assert!(self.count < self.cache.len() as u32);
         Some(Ok(self.cache[self.count as usize]))
     }
 }
@@ -91,10 +94,7 @@ impl Iterator for StringIterator {
         }
 
         self.count -= 1;
-        Some(unsafe {
-            self.cache[self.count as usize]
-                .to_string()
-                .map_err(Into::into)
-        })
+
+        Some(RemotePointer::from(self.cache[self.count as usize]).try_into())
     }
 }

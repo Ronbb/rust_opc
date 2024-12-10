@@ -1,8 +1,8 @@
+use windows::core::{BSTR, VARIANT};
 use windows::Win32::{
     Foundation::{FILETIME, VARIANT_BOOL, VARIANT_TRUE},
     System::Variant::VARENUM,
 };
-use windows::core::{BSTR, VARIANT};
 
 use super::base::{AccessRight, Quality, SystemTime, Variant};
 
@@ -13,7 +13,6 @@ impl Variant {
     pub fn get_data_type(&self) -> u16 {
         match self {
             Variant::Empty => windows::Win32::System::Variant::VT_EMPTY,
-            Variant::Null => windows::Win32::System::Variant::VT_NULL,
             Variant::Bool(_) => windows::Win32::System::Variant::VT_BOOL,
             Variant::String(_) => windows::Win32::System::Variant::VT_BSTR,
             Variant::I8(_) => windows::Win32::System::Variant::VT_I1,
@@ -54,19 +53,6 @@ impl From<Variant> for VARIANT {
     fn from(val: Variant) -> Self {
         match val.clone() {
             Variant::Empty => VARIANT::new(),
-            Variant::Null => unsafe {
-                VARIANT::from_raw(windows::core::imp::VARIANT {
-                    Anonymous: windows::core::imp::VARIANT_0 {
-                        Anonymous: windows::core::imp::VARIANT_0_0 {
-                            vt: windows::Win32::System::Variant::VT_NULL.0,
-                            wReserved1: 0,
-                            wReserved2: 0,
-                            wReserved3: 0,
-                            Anonymous: windows::core::imp::VARIANT_0_0_0 { llVal: 0 },
-                        },
-                    },
-                })
-            },
             Variant::Bool(value) => VARIANT::from(value),
             Variant::String(value) => VARIANT::from(BSTR::from(value)),
             Variant::I8(value) => VARIANT::from(value),
@@ -96,7 +82,6 @@ impl From<VARIANT> for Variant {
             let value = value.as_raw().Anonymous.Anonymous;
             match VARENUM(value.vt) {
                 windows::Win32::System::Variant::VT_EMPTY => Variant::Empty,
-                windows::Win32::System::Variant::VT_NULL => Variant::Null,
                 windows::Win32::System::Variant::VT_BOOL => {
                     Variant::Bool(VARIANT_BOOL(value.Anonymous.boolVal) == VARIANT_TRUE)
                 }

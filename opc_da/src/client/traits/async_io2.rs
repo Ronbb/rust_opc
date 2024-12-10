@@ -9,12 +9,14 @@ pub trait AsyncIo2Trait {
         server_handles: &[u32],
         transaction_id: u32,
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
+        let len = server_handles.len().try_into()?;
+
         let mut cancel_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.Read(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 transaction_id,
                 &mut cancel_id,
@@ -31,12 +33,14 @@ pub trait AsyncIo2Trait {
         values: &[VARIANT],
         transaction_id: u32,
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
+        let len = server_handles.len().try_into()?;
+
         let mut cancel_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.Write(
-                server_handles.len().try_into()?,
+                len,
                 server_handles.as_ptr(),
                 values.as_ptr(),
                 transaction_id,

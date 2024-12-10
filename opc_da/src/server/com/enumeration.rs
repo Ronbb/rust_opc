@@ -87,15 +87,19 @@ impl<T: Clone> Clone for Enumerator<T> {
 pub struct StringEnumerator(Enumerator<Vec<u16>>);
 
 #[windows::core::implement(IEnumUnknown)]
+#[repr(transparent)]
 pub struct UnknownEnumerator(Enumerator<windows::core::IUnknown>);
 
 #[windows::core::implement(IEnumConnectionPoints)]
+#[repr(transparent)]
 pub struct ConnectionPointsEnumerator(Enumerator<IConnectionPoint>);
 
 #[windows::core::implement(IEnumConnections)]
+#[repr(transparent)]
 pub struct ConnectionsEnumerator(Enumerator<CONNECTDATA>);
 
 #[windows::core::implement(opc_da_bindings::IEnumOPCItemAttributes)]
+#[repr(transparent)]
 pub struct ItemAttributesEnumerator(Enumerator<opc_da_bindings::tagOPCITEMATTRIBUTES>);
 
 impl StringEnumerator {

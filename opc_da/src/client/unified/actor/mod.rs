@@ -2,7 +2,6 @@ mod client;
 mod server;
 
 pub use client::*;
-pub use server::*;
 
 fn convert_error(err: actix::MailboxError) -> windows::core::Error {
     windows::core::Error::new(

@@ -1,6 +1,9 @@
 use actix::prelude::*;
 
-use crate::{client::unified::Client, convert_error, def};
+use crate::{
+    client::{unified::Client, RemotePointer},
+    convert_error, def,
+};
 
 impl Actor for Client {
     type Context = Context<Self>;
@@ -53,7 +56,9 @@ impl Handler<GetServerGuids> for Client {
                         })
                     }?;
 
-                    Ok((guid, unsafe { name.to_string() }?))
+                    let name = RemotePointer::from(name);
+
+                    Ok((guid, name.try_into()?))
                 }
                 Err(e) => Err(e),
             })

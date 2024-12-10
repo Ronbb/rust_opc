@@ -16,12 +16,14 @@ pub trait AsyncIo3Trait {
             ));
         }
 
+        let len = server_handles.len().try_into()?;
+
         let mut cancel_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.ReadMaxAge(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 max_age.as_ptr(),
                 transaction_id,
@@ -46,12 +48,14 @@ pub trait AsyncIo3Trait {
             ));
         }
 
+        let len = server_handles.len().try_into()?;
+
         let mut cancel_id = 0;
-        let mut errors = RemoteArray::new(server_handles.len().try_into()?);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.WriteVQT(
-                server_handles.len() as u32,
+                len,
                 server_handles.as_ptr(),
                 values.as_ptr(),
                 transaction_id,

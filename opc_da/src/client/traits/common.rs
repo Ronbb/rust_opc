@@ -16,7 +16,7 @@ pub trait CommonTrait {
     }
 
     fn query_available_locale_ids(&self) -> windows::core::Result<RemoteArray<u32>> {
-        let mut locale_ids = RemoteArray::emptry();
+        let mut locale_ids = RemoteArray::empty();
 
         unsafe {
             self.interface()?

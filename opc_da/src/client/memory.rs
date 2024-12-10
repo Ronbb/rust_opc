@@ -18,7 +18,7 @@ impl<T: Sized> RemoteArray<T> {
     }
 
     #[inline(always)]
-    pub fn emptry() -> Self {
+    pub fn empty() -> Self {
         Self {
             pointer: std::ptr::null_mut(),
             len: 0,
