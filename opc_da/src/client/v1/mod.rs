@@ -27,6 +27,10 @@ impl ServerTrait<Group> for Server {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer> {
         Ok(&self.server)
     }
+
+    fn create_group(&self, unknown: windows::core::IUnknown) -> windows::core::Result<Group> {
+        unknown.try_into()
+    }
 }
 
 impl ServerPublicGroupsTrait for Server {

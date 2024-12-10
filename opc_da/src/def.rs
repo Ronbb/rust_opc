@@ -1,62 +1,46 @@
-use windows::core::Interface as _;
+use crate::client::{LocalPointer, RemoteArray};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum ServerVersion {
-    Version10,
-    Version20,
-    Version30,
+pub(crate) trait IntoBridge {
+    type Bridge;
+
+    fn into_bridge(self) -> Self::Bridge;
 }
 
-impl ServerVersion {
-    const ALL: [ServerVersion; 3] = [
-        ServerVersion::Version10,
-        ServerVersion::Version20,
-        ServerVersion::Version30,
-    ];
+pub(crate) trait ToNative {
+    type Native;
 
-    pub fn to_guid(&self) -> windows::core::GUID {
-        match self {
-            ServerVersion::Version10 => opc_da_bindings::CATID_OPCDAServer10::IID,
-            ServerVersion::Version20 => opc_da_bindings::CATID_OPCDAServer20::IID,
-            ServerVersion::Version30 => opc_da_bindings::CATID_OPCDAServer30::IID,
-        }
+    fn to_native(&mut self) -> windows::core::Result<Self::Native>;
+}
+
+pub(crate) trait TryFromNative {
+    type Native;
+
+    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self>
+    where
+        Self: Sized;
+}
+
+impl<B: IntoBridge> IntoBridge for Vec<B> {
+    type Bridge = Vec<B::Bridge>;
+
+    fn into_bridge(self) -> Self::Bridge {
+        self.into_iter().map(IntoBridge::into_bridge).collect()
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct ServerFilter {
-    pub(super) available_versions: std::collections::HashSet<ServerVersion>,
-    pub(super) requires_versions: std::collections::HashSet<ServerVersion>,
-}
+impl<B: IntoBridge + Clone> IntoBridge for &[B] {
+    type Bridge = Vec<B::Bridge>;
 
-impl Default for ServerFilter {
-    fn default() -> Self {
-        Self {
-            available_versions: ServerVersion::ALL.into_iter().collect(),
-            requires_versions: ServerVersion::ALL.into_iter().collect(),
-        }
+    fn into_bridge(self) -> Self::Bridge {
+        self.iter().cloned().map(IntoBridge::into_bridge).collect()
     }
 }
 
-impl ServerFilter {
-    pub fn with_version(mut self, version: ServerVersion) -> Self {
-        self.available_versions = std::iter::once(version).collect();
-        self.requires_versions.retain(|v| *v == version);
+impl<N: ToNative> ToNative for Vec<N> {
+    type Native = Vec<N::Native>;
 
-        self
-    }
-
-    pub fn with_versions<I: IntoIterator<Item = ServerVersion>>(mut self, versions: I) -> Self {
-        self.available_versions = versions.into_iter().collect();
-        self.requires_versions
-            .retain(|v| self.available_versions.contains(v));
-
-        self
-    }
-
-    pub fn with_all_versions(mut self) -> Self {
-        self.available_versions = ServerVersion::ALL.into_iter().collect();
-        self
+    fn to_native(&mut self) -> windows::core::Result<Self::Native> {
+        self.iter_mut().map(ToNative::to_native).collect()
     }
 }
 
@@ -70,4 +54,81 @@ pub struct GroupState {
     pub locale_id: u32,
     pub client_group_handle: u32,
     pub server_group_handle: u32,
+}
+
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct ItemDef {
+    pub access_path: String,
+    pub item_id: String,
+    pub active: bool,
+    pub item_client_handle: u32,
+    pub requested_data_type: u16,
+    pub blob: Vec<u8>,
+}
+
+pub mod bridge {
+    use crate::client::LocalPointer;
+
+    pub struct ItemDef {
+        pub access_path: LocalPointer<Vec<u16>>,
+        pub item_id: LocalPointer<Vec<u16>>,
+        pub active: bool,
+        pub item_client_handle: u32,
+        pub requested_data_type: u16,
+        pub blob: LocalPointer<Vec<u8>>,
+    }
+}
+
+impl IntoBridge for ItemDef {
+    type Bridge = bridge::ItemDef;
+
+    fn into_bridge(self) -> Self::Bridge {
+        Self::Bridge {
+            access_path: LocalPointer::from(&self.access_path),
+            item_id: LocalPointer::from(&self.item_id),
+            active: self.active,
+            item_client_handle: self.item_client_handle,
+            requested_data_type: self.requested_data_type,
+            blob: LocalPointer::new(Some(self.blob)),
+        }
+    }
+}
+
+impl ToNative for bridge::ItemDef {
+    type Native = opc_da_bindings::tagOPCITEMDEF;
+
+    fn to_native(&mut self) -> windows::core::Result<Self::Native> {
+        Ok(Self::Native {
+            szAccessPath: self.access_path.as_pwstr(),
+            szItemID: self.item_id.as_pwstr(),
+            bActive: self.active.into(),
+            hClient: self.item_client_handle,
+            vtRequestedDataType: self.requested_data_type,
+            dwBlobSize: self.blob.len().try_into()?,
+            pBlob: self.blob.as_mut_array_ptr(),
+            wReserved: 0,
+        })
+    }
+}
+
+pub struct ItemResult {
+    pub item_server_handle: u32,
+    pub canonical_data_type: u16,
+    pub access_rights: u32,
+    pub blob_size: u32,
+    pub blob: RemoteArray<u8>,
+}
+
+impl TryFromNative for ItemResult {
+    type Native = opc_da_bindings::tagOPCITEMRESULT;
+
+    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+        Ok(Self {
+            item_server_handle: native.hServer,
+            canonical_data_type: native.vtCanonicalDataType,
+            access_rights: native.dwAccessRights,
+            blob_size: native.dwBlobSize,
+            blob: RemoteArray::from_raw(native.pBlob, native.dwBlobSize),
+        })
+    }
 }

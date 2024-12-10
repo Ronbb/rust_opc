@@ -1,17 +1,15 @@
 use std::str::FromStr;
 
-use unified::StringIterator;
-
-use crate::def::ServerFilter;
+use unified::{Guard, Server, StringIterator};
 
 use super::*;
 
 #[test]
 fn test_client() {
-    let client = unified::Client::new().expect("Failed to create client");
+    let client = Guard::new(unified::Client::V2).expect("Failed to create guard");
 
     let servers = client
-        .get_servers(ServerFilter::default().with_all_versions())
+        .get_servers()
         .expect("Failed to get servers")
         .collect::<Vec<_>>();
 
@@ -30,6 +28,11 @@ fn test_client() {
     let server = client
         .create_server(server_id)
         .expect("Failed to create server");
+
+    let server = match server {
+        Server::V2(server) => server,
+        _ => panic!("Expected V2 server"),
+    };
 
     let branch = StringIterator::new(
         server

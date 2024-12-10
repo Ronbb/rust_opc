@@ -2,11 +2,10 @@ use windows::core::Interface as _;
 
 use crate::client::LocalPointer;
 
-pub trait ServerTrait<Group>
-where
-    Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>,
-{
+pub trait ServerTrait<Group> {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer>;
+
+    fn create_group(&self, unknown: windows::core::IUnknown) -> windows::core::Result<Group>;
 
     /// Adds a new group to the OPC server.  
     ///
@@ -62,7 +61,7 @@ where
                     windows::Win32::Foundation::E_POINTER,
                     "Failed to add group, returned null",
                 )),
-                Some(group) => group.try_into(),
+                Some(group) => self.create_group(group),
             }
         }
     }

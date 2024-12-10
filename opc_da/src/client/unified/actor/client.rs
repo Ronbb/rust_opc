@@ -1,23 +1,26 @@
 use actix::prelude::*;
 
 use crate::{
-    client::{unified::Client, RemotePointer},
-    convert_error, def,
+    client::{
+        unified::{Client, GuidIterator},
+        RemotePointer,
+    },
+    mb_error,
 };
 
 impl Actor for Client {
     type Context = Context<Self>;
+}
 
-    fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.set_mailbox_capacity(128);
-    }
+impl Actor for GuidIterator {
+    type Context = Context<Self>;
 }
 
 pub struct ClientActor(Addr<Client>);
 
 impl ClientActor {
-    pub fn new() -> windows::core::Result<Self> {
-        Ok(Self(Client::new()?.start()))
+    pub fn new(client: Client) -> windows::core::Result<Self> {
+        Ok(Self(client.start()))
     }
 }
 
@@ -32,22 +35,19 @@ impl std::ops::Deref for ClientActor {
 
 #[derive(Message)]
 #[rtype(result = "windows::core::Result<Vec<(windows::core::GUID, String)>>")]
-struct GetServerGuids(pub def::ServerFilter);
+struct GetServerGuids;
 
 impl ClientActor {
-    pub async fn get_servers(
-        &self,
-        filter: def::ServerFilter,
-    ) -> windows::core::Result<Vec<(windows::core::GUID, String)>> {
-        convert_error!(self.send(GetServerGuids(filter)).await)
+    pub async fn get_servers(&self) -> windows::core::Result<Vec<(windows::core::GUID, String)>> {
+        mb_error!(self.send(GetServerGuids).await)
     }
 }
 
 impl Handler<GetServerGuids> for Client {
     type Result = windows::core::Result<Vec<(windows::core::GUID, String)>>;
 
-    fn handle(&mut self, message: GetServerGuids, _: &mut Self::Context) -> Self::Result {
-        self.get_servers(message.0)?
+    fn handle(&mut self, _: GetServerGuids, _: &mut Self::Context) -> Self::Result {
+        self.get_servers()?
             .map(|r| match r {
                 Ok(guid) => {
                     let name = unsafe {

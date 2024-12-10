@@ -3,6 +3,7 @@ use std::str::FromStr;
 use windows::core::PWSTR;
 use windows::Win32::System::Com::CoTaskMemFree;
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct RemoteArray<T: Sized> {
     pointer: *mut T,
     len: u32,
@@ -15,6 +16,11 @@ impl<T: Sized> RemoteArray<T> {
             pointer: std::ptr::null_mut(),
             len,
         }
+    }
+
+    #[inline(always)]
+    pub fn from_raw(pointer: *mut T, len: u32) -> Self {
+        Self { pointer, len }
     }
 
     #[inline(always)]
@@ -56,6 +62,13 @@ impl<T: Sized> RemoteArray<T> {
     #[inline(always)]
     pub fn set_len(&mut self, len: u32) {
         self.len = len;
+    }
+}
+
+impl<T: Sized> Default for RemoteArray<T> {
+    #[inline(always)]
+    fn default() -> Self {
+        Self::empty()
     }
 }
 
@@ -142,19 +155,26 @@ impl<T: Sized> Drop for RemotePointer<T> {
 }
 
 pub struct LocalPointer<T: Sized> {
-    inner: Option<T>,
+    inner: Option<Box<T>>,
 }
 
 impl<T: Sized> LocalPointer<T> {
     #[inline(always)]
     pub fn new(value: Option<T>) -> Self {
-        Self { inner: value }
+        Self {
+            inner: value.map(|v| Box::new(v)),
+        }
+    }
+
+    #[inline(always)]
+    pub fn from_box(value: Box<T>) -> Self {
+        Self { inner: Some(value) }
     }
 
     #[inline(always)]
     pub fn as_ptr(&self) -> *const T {
         match &self.inner {
-            Some(value) => value as *const T,
+            Some(value) => value.as_ref() as *const T,
             None => std::ptr::null_mut(),
         }
     }
@@ -162,14 +182,19 @@ impl<T: Sized> LocalPointer<T> {
     #[inline(always)]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         match &mut self.inner {
-            Some(value) => value as *mut T,
+            Some(value) => value.as_mut() as *mut T,
             None => std::ptr::null_mut(),
         }
     }
 
     #[inline(always)]
     pub fn into_inner(self) -> Option<T> {
-        self.inner
+        self.inner.map(|v| *v)
+    }
+
+    #[inline(always)]
+    pub fn inner(&self) -> Option<&T> {
+        self.inner.as_ref().map(|v| v.as_ref())
     }
 }
 
@@ -189,6 +214,13 @@ impl From<&str> for LocalPointer<Vec<u16>> {
     }
 }
 
+impl From<&String> for LocalPointer<Vec<u16>> {
+    #[inline(always)]
+    fn from(s: &String) -> Self {
+        Self::new(Some(s.encode_utf16().chain(Some(0)).collect()))
+    }
+}
+
 impl From<&[String]> for LocalPointer<Vec<Vec<u16>>> {
     #[inline(always)]
     fn from(values: &[String]) -> Self {
@@ -198,6 +230,40 @@ impl From<&[String]> for LocalPointer<Vec<Vec<u16>>> {
                 .map(|s| s.encode_utf16().chain(Some(0)).collect())
                 .collect(),
         ))
+    }
+}
+
+impl<T> LocalPointer<Vec<T>> {
+    #[inline(always)]
+    pub fn len(&self) -> usize {
+        match &self.inner {
+            Some(values) => values.len(),
+            None => 0,
+        }
+    }
+
+    #[inline(always)]
+    pub fn is_empty(&self) -> bool {
+        match &self.inner {
+            Some(values) => values.is_empty(),
+            None => true,
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_array_ptr(&self) -> *const T {
+        match &self.inner {
+            Some(values) => values.as_ptr(),
+            None => std::ptr::null(),
+        }
+    }
+
+    #[inline(always)]
+    pub fn as_mut_array_ptr(&mut self) -> *mut T {
+        match &mut self.inner {
+            Some(values) => values.as_mut_ptr(),
+            None => std::ptr::null_mut(),
+        }
     }
 }
 

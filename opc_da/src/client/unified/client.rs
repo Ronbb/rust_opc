@@ -1,60 +1,25 @@
 use windows::core::Interface;
-
-use crate::def;
+use windows_core::IUnknown;
 
 use super::{GuidIterator, Server};
 
 #[derive(Debug)]
-pub struct Client {
-    /// Marker to ensure `Client` is not `Send` and not `Sync`.
-    _marker: std::marker::PhantomData<*const ()>,
+pub enum Client {
+    V1,
+    V2,
+    V3,
 }
 
 impl Client {
-    pub fn new() -> windows::core::Result<Self> {
-        Self::initialize().ok()?;
-        Ok(Self {
-            _marker: std::marker::PhantomData,
-        })
-    }
-}
-
-impl Drop for Client {
-    fn drop(&mut self) {
-        unsafe { Self::uninitialize() };
-    }
-}
-
-impl Client {
-    /// Ensures COM is initialized for the current thread.
-    ///
-    /// # Returns
-    /// Returns the HRESULT of the COM initialization.
-    ///
-    /// # Thread Safety
-    /// COM initialization is performed with COINIT_MULTITHREADED flag.
-    ///
-    /// # Note
-    /// Callers should check the returned HRESULT for initialization failures.
-    pub(crate) fn initialize() -> windows::core::HRESULT {
-        unsafe {
-            windows::Win32::System::Com::CoInitializeEx(
-                None,
-                windows::Win32::System::Com::COINIT_MULTITHREADED,
-            )
+    pub fn get_version_id(&self) -> windows::core::GUID {
+        match self {
+            Client::V1 => opc_da_bindings::CATID_OPCDAServer10::IID,
+            Client::V2 => opc_da_bindings::CATID_OPCDAServer20::IID,
+            Client::V3 => opc_da_bindings::CATID_OPCDAServer30::IID,
         }
     }
 
-    /// Uninitializes COM for the current thread.
-    ///
-    /// # Safety
-    /// This method should be called when the thread is shutting down
-    /// and no more COM calls will be made.
-    pub(crate) unsafe fn uninitialize() {
-        windows::Win32::System::Com::CoUninitialize();
-    }
-
-    pub fn get_servers(&self, filter: def::ServerFilter) -> windows::core::Result<GuidIterator> {
+    pub fn get_servers(&self) -> windows::core::Result<GuidIterator> {
         let id = unsafe {
             windows::Win32::System::Com::CLSIDFromProgID(windows::core::w!("OPC.ServerList.1"))?
         };
@@ -69,20 +34,11 @@ impl Client {
             )?
         };
 
+        let versions = [self.get_version_id()];
+
         let iter = unsafe {
             servers
-                .EnumClassesOfCategories(
-                    &filter
-                        .available_versions
-                        .iter()
-                        .map(|v| v.to_guid())
-                        .collect::<Vec<_>>(),
-                    &filter
-                        .requires_versions
-                        .iter()
-                        .map(|v| v.to_guid())
-                        .collect::<Vec<_>>(),
-                )
+                .EnumClassesOfCategories(&versions, &versions)
                 .map_err(|e| {
                     windows::core::Error::new(e.code(), "Failed to enumerate server classes")
                 })?
@@ -100,6 +56,12 @@ impl Client {
             )?
         };
 
-        server.cast::<windows::core::IUnknown>()?.try_into()
+        let server: IUnknown = server.cast()?;
+
+        match self {
+            Client::V1 => Ok(Server::V1(server.try_into()?)),
+            Client::V2 => Ok(Server::V2(server.try_into()?)),
+            Client::V3 => Ok(Server::V3(server.try_into()?)),
+        }
     }
 }

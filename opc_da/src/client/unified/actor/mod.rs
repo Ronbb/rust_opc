@@ -1,9 +1,14 @@
 mod client;
+mod runtime;
 mod server;
 
-pub use client::*;
+#[cfg(test)]
+mod tests;
 
-fn convert_error(err: actix::MailboxError) -> windows::core::Error {
+pub use client::*;
+pub use runtime::*;
+
+fn mb_error(err: actix::MailboxError) -> windows::core::Error {
     windows::core::Error::new(
         windows::Win32::Foundation::E_FAIL,
         format!("Failed to send message to client actor: {:?}", err),
@@ -11,8 +16,8 @@ fn convert_error(err: actix::MailboxError) -> windows::core::Error {
 }
 
 #[macro_export]
-macro_rules! convert_error {
+macro_rules! mb_error {
     ($err:expr) => {
-        $err.map_err($crate::client::unified::actor::convert_error)?
+        $err.map_err($crate::client::unified::actor::mb_error)?
     };
 }
