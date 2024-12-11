@@ -59,14 +59,14 @@ pub trait ServerTrait<Group> {
                 &opc_da_bindings::IOPCItemMgt::IID,
                 &mut group,
             )?;
+        }
 
-            match group {
-                None => Err(windows::core::Error::new(
-                    windows::Win32::Foundation::E_POINTER,
-                    "Failed to add group, returned null",
-                )),
-                Some(group) => self.create_group(group),
-            }
+        match group {
+            None => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_POINTER,
+                "Failed to add group, returned null",
+            )),
+            Some(group) => self.create_group(group),
         }
     }
 

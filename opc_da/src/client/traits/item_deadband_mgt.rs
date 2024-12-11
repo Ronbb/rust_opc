@@ -31,6 +31,14 @@ pub trait ItemDeadbandMgtTrait {
             ));
         }
 
+        // Validate deadband values (0.0 to 100.0)
+        if deadbands.iter().any(|&v| !(0.0..=100.0).contains(&v)) {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "deadband values must be between 0.0 and 100.0",
+            ));
+        }
+
         let len = server_handles.len().try_into()?;
 
         let mut errors = RemoteArray::new(len);

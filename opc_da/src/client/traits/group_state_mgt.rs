@@ -22,22 +22,23 @@ pub trait GroupStateMgtTrait {
     /// Returns a GroupState structure containing all group parameters.
     fn get_state(&self) -> windows::core::Result<def::GroupState> {
         let mut state = def::GroupState::default();
-
         let mut active = windows::Win32::Foundation::BOOL::default();
-        let mut name = RemotePointer::new();
-
-        unsafe {
-            self.interface()?.GetState(
-                &mut state.update_rate,
-                &mut active,
-                name.as_mut_pwstr_ptr(),
-                &mut state.time_bias,
-                &mut state.percent_deadband,
-                &mut state.locale_id,
-                &mut state.client_group_handle,
-                &mut state.server_group_handle,
-            )
-        }?;
+        let name = {
+            let mut name = RemotePointer::new();
+            unsafe {
+                self.interface()?.GetState(
+                    &mut state.update_rate,
+                    &mut active,
+                    name.as_mut_pwstr_ptr(),
+                    &mut state.time_bias,
+                    &mut state.percent_deadband,
+                    &mut state.locale_id,
+                    &mut state.client_group_handle,
+                    &mut state.server_group_handle,
+                )?;
+            }
+            name
+        };
 
         state.active = active.as_bool();
         state.name = name.try_into()?;

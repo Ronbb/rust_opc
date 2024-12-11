@@ -24,6 +24,16 @@ pub trait ConnectionPointContainerTrait {
     /// use windows::core::GUID;
     /// let cp = container.find_connection_point(&GUID_CALLBACK_INTERFACE);
     /// ```
+    ///
+    /// # Safety  
+    /// Caller must ensure:  
+    /// - COM is properly initialized  
+    /// - The underlying COM object is valid  
+    ///
+    /// # Errors  
+    /// Returns an error if:  
+    /// - The COM operation fails  
+    /// - The connection point is not found
     fn find_connection_point(&self, id: &GUID) -> windows::core::Result<IConnectionPoint> {
         unsafe { self.interface()?.FindConnectionPoint(id) }
     }
@@ -32,6 +42,16 @@ pub trait ConnectionPointContainerTrait {
     ///
     /// # Returns
     /// Enumerator for iterating through available connection points
+    ///
+    /// # Safety  
+    /// Caller must ensure:  
+    /// - COM is properly initialized  
+    /// - The underlying COM object is valid  
+    ///
+    /// # Errors  
+    /// Returns an error if:  
+    /// - The COM operation fails  
+    /// - No connection points are available  
     fn enum_connection_points(
         &self,
     ) -> windows::core::Result<windows::Win32::System::Com::IEnumConnectionPoints> {
