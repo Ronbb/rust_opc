@@ -1,15 +1,15 @@
 use windows::Win32::{Foundation::E_POINTER, System::Com::CoTaskMemAlloc};
 
 pub trait IntoRef<Ref> {
-    fn into_ref(self) -> windows_core::Result<Ref>;
+    fn into_ref(self) -> windows::core::Result<Ref>;
 }
 
 pub trait IntoArrayRef<Ref> {
-    fn into_array_ref(self, count: u32) -> windows_core::Result<Ref>;
+    fn into_array_ref(self, count: u32) -> windows::core::Result<Ref>;
 }
 
 pub trait IntoComArrayRef<Ref> {
-    fn into_com_array_ref(self, count: u32) -> windows_core::Result<Ref>;
+    fn into_com_array_ref(self, count: u32) -> windows::core::Result<Ref>;
 }
 
 pub trait FreeRaw {
@@ -31,9 +31,9 @@ macro_rules! safe_call {
 
 impl<'a, P> IntoRef<&'a P> for *const P {
     #[inline(always)]
-    fn into_ref(self) -> windows_core::Result<&'a P> {
+    fn into_ref(self) -> windows::core::Result<&'a P> {
         if self.is_null() {
-            Err(windows_core::Error::from_hresult(E_POINTER))
+            Err(windows::core::Error::from_hresult(E_POINTER))
         } else {
             Ok(unsafe { &*self })
         }
@@ -42,9 +42,9 @@ impl<'a, P> IntoRef<&'a P> for *const P {
 
 impl<'a, P> IntoRef<&'a mut P> for *mut P {
     #[inline(always)]
-    fn into_ref(self) -> windows_core::Result<&'a mut P> {
+    fn into_ref(self) -> windows::core::Result<&'a mut P> {
         if self.is_null() {
-            Err(windows_core::Error::from_hresult(E_POINTER))
+            Err(windows::core::Error::from_hresult(E_POINTER))
         } else {
             Ok(unsafe { &mut *self })
         }
@@ -53,9 +53,9 @@ impl<'a, P> IntoRef<&'a mut P> for *mut P {
 
 impl<'a, P> IntoArrayRef<&'a mut [P]> for *mut P {
     #[inline(always)]
-    fn into_array_ref(self, count: u32) -> windows_core::Result<&'a mut [P]> {
+    fn into_array_ref(self, count: u32) -> windows::core::Result<&'a mut [P]> {
         if self.is_null() {
-            Err(windows_core::Error::from_hresult(E_POINTER))
+            Err(windows::core::Error::from_hresult(E_POINTER))
         } else {
             unsafe { Ok(std::slice::from_raw_parts_mut(self, count as usize)) }
         }
@@ -77,9 +77,9 @@ impl<P> FreeRaw for *mut *mut P {
 
 impl<'a, P> IntoComArrayRef<&'a [P]> for *const P {
     #[inline(always)]
-    fn into_com_array_ref(self, count: u32) -> windows_core::Result<&'a [P]> {
+    fn into_com_array_ref(self, count: u32) -> windows::core::Result<&'a [P]> {
         if self.is_null() {
-            Err(windows_core::Error::from_hresult(E_POINTER))
+            Err(windows::core::Error::from_hresult(E_POINTER))
         } else {
             Ok(unsafe { core::slice::from_raw_parts(self, count as usize) })
         }
@@ -88,16 +88,16 @@ impl<'a, P> IntoComArrayRef<&'a [P]> for *const P {
 
 impl<'a, P> IntoComArrayRef<&'a mut [P]> for *mut *mut P {
     #[inline(always)]
-    fn into_com_array_ref(self, count: u32) -> windows_core::Result<&'a mut [P]> {
+    fn into_com_array_ref(self, count: u32) -> windows::core::Result<&'a mut [P]> {
         if self.is_null() {
-            Err(windows_core::Error::from_hresult(E_POINTER))
+            Err(windows::core::Error::from_hresult(E_POINTER))
         } else {
             unsafe {
                 let new_pointer =
                     CoTaskMemAlloc(std::mem::size_of::<P>() * count as usize) as *mut P;
 
                 if new_pointer.is_null() {
-                    return Err(windows_core::Error::from_hresult(E_POINTER));
+                    return Err(windows::core::Error::from_hresult(E_POINTER));
                 } else {
                     *self = new_pointer;
                 }
@@ -110,7 +110,7 @@ impl<'a, P> IntoComArrayRef<&'a mut [P]> for *mut *mut P {
 
 impl<'a, P1, P2> IntoComArrayRef<Vec<(&'a P1, &'a P2)>> for (*const P1, *const P2) {
     #[inline(always)]
-    fn into_com_array_ref(self, count: u32) -> windows_core::Result<Vec<(&'a P1, &'a P2)>> {
+    fn into_com_array_ref(self, count: u32) -> windows::core::Result<Vec<(&'a P1, &'a P2)>> {
         let (p0, p1) = self;
 
         Ok(p0
@@ -123,7 +123,7 @@ impl<'a, P1, P2> IntoComArrayRef<Vec<(&'a P1, &'a P2)>> for (*const P1, *const P
 
 impl<'a, P1, P2> IntoComArrayRef<Vec<(&'a P1, &'a mut P2)>> for (*const P1, *mut *mut P2) {
     #[inline(always)]
-    fn into_com_array_ref(self, count: u32) -> windows_core::Result<Vec<(&'a P1, &'a mut P2)>> {
+    fn into_com_array_ref(self, count: u32) -> windows::core::Result<Vec<(&'a P1, &'a mut P2)>> {
         let (p0, p1) = self;
 
         Ok(p0
@@ -136,7 +136,7 @@ impl<'a, P1, P2> IntoComArrayRef<Vec<(&'a P1, &'a mut P2)>> for (*const P1, *mut
 
 impl<'a, P1, P2> IntoComArrayRef<Vec<(&'a mut P1, &'a mut P2)>> for (*mut *mut P1, *mut *mut P2) {
     #[inline(always)]
-    fn into_com_array_ref(self, count: u32) -> windows_core::Result<Vec<(&'a mut P1, &'a mut P2)>> {
+    fn into_com_array_ref(self, count: u32) -> windows::core::Result<Vec<(&'a mut P1, &'a mut P2)>> {
         let (p0, p1) = self;
 
         Ok(p0
@@ -154,7 +154,7 @@ impl<'a, C1, M1, M2> IntoComArrayRef<Vec<(&'a C1, (&'a mut M1, &'a mut M2))>>
     fn into_com_array_ref(
         self,
         count: u32,
-    ) -> windows_core::Result<Vec<(&'a C1, (&'a mut M1, &'a mut M2))>> {
+    ) -> windows::core::Result<Vec<(&'a C1, (&'a mut M1, &'a mut M2))>> {
         let (c, m) = self;
 
         Ok(c.into_com_array_ref(count)?
@@ -171,7 +171,7 @@ impl<'a, C1, C2, M1> IntoComArrayRef<Vec<((&'a C1, &'a C2), &'a mut M1)>>
     fn into_com_array_ref(
         self,
         count: u32,
-    ) -> windows_core::Result<Vec<((&'a C1, &'a C2), &'a mut M1)>> {
+    ) -> windows::core::Result<Vec<((&'a C1, &'a C2), &'a mut M1)>> {
         let (c, m) = self;
 
         Ok(c.into_com_array_ref(count)?
@@ -188,7 +188,7 @@ impl<'a, C1, C2, M1, M2> IntoComArrayRef<Vec<((&'a C1, &'a C2), (&'a mut M1, &'a
     fn into_com_array_ref(
         self,
         count: u32,
-    ) -> windows_core::Result<Vec<((&'a C1, &'a C2), (&'a mut M1, &'a mut M2))>> {
+    ) -> windows::core::Result<Vec<((&'a C1, &'a C2), (&'a mut M1, &'a mut M2))>> {
         let (c, m) = self;
 
         Ok(c.into_com_array_ref(count)?
