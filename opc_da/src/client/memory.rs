@@ -105,6 +105,11 @@ impl<T: Sized> RemotePointer<T> {
     }
 
     #[inline(always)]
+    pub fn from_raw(pointer: *mut T) -> Self {
+        Self { inner: pointer }
+    }
+
+    #[inline(always)]
     pub fn as_mut_ptr(&mut self) -> *mut *mut T {
         &mut self.inner
     }

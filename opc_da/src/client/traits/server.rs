@@ -1,6 +1,6 @@
 use windows::core::Interface as _;
 
-use crate::client::LocalPointer;
+use crate::client::{LocalPointer, RemotePointer};
 
 /// OPC Server management functionality.
 ///
@@ -75,15 +75,11 @@ pub trait ServerTrait<Group> {
     /// # Returns
     /// Server status structure containing vendor info, time, state,
     /// and group counts
-    fn get_status(&self) -> windows::core::Result<opc_da_bindings::tagOPCSERVERSTATUS> {
-        let status = unsafe { self.interface()?.GetStatus()?.as_ref() };
-        match status {
-            Some(status) => Ok(*status),
-            None => Err(windows::core::Error::new(
-                windows::Win32::Foundation::E_FAIL,
-                "Failed to get server status",
-            )),
-        }
+    fn get_status(
+        &self,
+    ) -> windows::core::Result<RemotePointer<opc_da_bindings::tagOPCSERVERSTATUS>> {
+        let status = unsafe { self.interface()?.GetStatus()? };
+        Ok(RemotePointer::from_raw(status))
     }
 
     /// Removes a group from the server.
