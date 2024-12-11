@@ -13,7 +13,7 @@ pub trait ServerTrait {
     ///
     /// # Returns
     /// An error if the locale ID is not supported
-    fn set_locale_id(&self, locale_id: u32) -> windows_core::Result<()>;
+    fn set_locale_id(&self, locale_id: u32) -> windows::core::Result<()>;
 
     /// Returns the current locale ID.
     ///
@@ -21,7 +21,7 @@ pub trait ServerTrait {
     ///
     /// # Returns
     /// The current locale ID
-    fn get_locale_id(&self) -> windows_core::Result<u32>;
+    fn get_locale_id(&self) -> windows::core::Result<u32>;
 
     /// Returns the list of available locale IDs.
     ///
@@ -29,7 +29,7 @@ pub trait ServerTrait {
     ///
     /// # Returns
     /// The list of available locale IDs
-    fn query_available_locale_ids(&self) -> windows_core::Result<Vec<u32>>;
+    fn query_available_locale_ids(&self) -> windows::core::Result<Vec<u32>>;
 
     /// Returns the error string for the given error code.
     ///
@@ -40,7 +40,7 @@ pub trait ServerTrait {
     ///
     /// # Returns
     /// The error string for the given error code
-    fn get_error_string(&self, error: i32) -> windows_core::Result<String>;
+    fn get_error_string(&self, error: i32) -> windows::core::Result<String>;
 
     /// Sets the name of the client application.  
     ///  
@@ -51,7 +51,7 @@ pub trait ServerTrait {
     ///  
     /// # Returns  
     /// An error if the operation fails
-    fn set_client_name(&self, name: String) -> windows_core::Result<()>;
+    fn set_client_name(&self, name: String) -> windows::core::Result<()>;
 
     /// Returns the name of the client application.
     ///
@@ -62,7 +62,7 @@ pub trait ServerTrait {
     /// A result containing a vector of connection points
     fn enum_connection_points(
         &self,
-    ) -> windows_core::Result<Vec<windows::Win32::System::Com::IConnectionPoint>>;
+    ) -> windows::core::Result<Vec<windows::Win32::System::Com::IConnectionPoint>>;
 
     /// Returns the connection point for the given reference interface ID.
     ///
@@ -75,8 +75,8 @@ pub trait ServerTrait {
     /// The connection point
     fn find_connection_point(
         &self,
-        reference_interface_id: *const windows_core::GUID,
-    ) -> windows_core::Result<windows::Win32::System::Com::IConnectionPoint>;
+        reference_interface_id: *const windows::core::GUID,
+    ) -> windows::core::Result<windows::Win32::System::Com::IConnectionPoint>;
 
     /// Returns the list of available properties for the given item ID.
     ///
@@ -90,7 +90,7 @@ pub trait ServerTrait {
     fn query_available_properties(
         &self,
         item_id: String,
-    ) -> windows_core::Result<Vec<AvailableProperty>>;
+    ) -> windows::core::Result<Vec<AvailableProperty>>;
 
     /// Returns the properties for the given item ID.
     ///
@@ -106,7 +106,7 @@ pub trait ServerTrait {
         &self,
         item_id: String,
         property_ids: Vec<u32>,
-    ) -> windows_core::Result<Vec<ItemPropertyData>>;
+    ) -> windows::core::Result<Vec<ItemPropertyData>>;
 
     /// Lookup the item IDs for the given item ID and property IDs.
     ///
@@ -122,7 +122,7 @@ pub trait ServerTrait {
         &self,
         item_id: String,
         property_ids: Vec<u32>,
-    ) -> windows_core::Result<Vec<NewItem>>;
+    ) -> windows::core::Result<Vec<NewItem>>;
 
     /// Returns the properties for the given item IDs.
     ///
@@ -140,7 +140,7 @@ pub trait ServerTrait {
         item_ids: Vec<String>,
         return_property_values: bool,
         property_ids: Vec<u32>,
-    ) -> windows_core::Result<Vec<ItemProperties>>;
+    ) -> windows::core::Result<Vec<ItemProperties>>;
 
     /// Browse the server for items.
     ///
@@ -171,7 +171,7 @@ pub trait ServerTrait {
         return_all_properties: bool,
         return_property_values: bool,
         property_ids: Vec<u32>,
-    ) -> windows_core::Result<BrowseResult>;
+    ) -> windows::core::Result<BrowseResult>;
 
     /// Get the public group by name.
     ///
@@ -187,14 +187,14 @@ pub trait ServerTrait {
         &self,
         name: String,
         reference_interface_id: u128,
-    ) -> windows_core::Result<windows_core::IUnknown>;
+    ) -> windows::core::Result<windows::core::IUnknown>;
 
-    fn remove_public_group(&self, server_group: u32, force: bool) -> windows_core::Result<()>;
+    fn remove_public_group(&self, server_group: u32, force: bool) -> windows::core::Result<()>;
 
-    fn query_organization(&self) -> windows_core::Result<NamespaceType>;
+    fn query_organization(&self) -> windows::core::Result<NamespaceType>;
 
     fn change_browse_position(&self, browse_direction: BrowseDirection)
-        -> windows_core::Result<()>;
+        -> windows::core::Result<()>;
 
     fn browse_opc_item_ids(
         &self,
@@ -202,18 +202,18 @@ pub trait ServerTrait {
         filter_criteria: String,
         variant_data_type_filter: u16,
         access_rights_filter: u32,
-    ) -> windows_core::Result<windows::Win32::System::Com::IEnumString>;
+    ) -> windows::core::Result<windows::Win32::System::Com::IEnumString>;
 
-    fn get_item_id(&self, item_data_id: String) -> windows_core::Result<String>;
+    fn get_item_id(&self, item_data_id: String) -> windows::core::Result<String>;
 
-    fn browse_access_paths(&self, item_id: String) -> windows_core::Result<Vec<String>>;
+    fn browse_access_paths(&self, item_id: String) -> windows::core::Result<Vec<String>>;
 
-    fn read(&self, items: Vec<ItemWithMaxAge>) -> windows_core::Result<Vec<VqtWithError>>;
+    fn read(&self, items: Vec<ItemWithMaxAge>) -> windows::core::Result<Vec<VqtWithError>>;
 
     fn write_vqt(
         &self,
         items: Vec<ItemOptionalVqt>,
-    ) -> windows_core::Result<Vec<windows_core::HRESULT>>;
+    ) -> windows::core::Result<Vec<windows::core::HRESULT>>;
 
     #[allow(clippy::too_many_arguments)]
     fn add_group(
@@ -226,23 +226,23 @@ pub trait ServerTrait {
         percent_deadband: Option<f32>,
         locale_id: u32,
         reference_interface_id: Option<u128>,
-    ) -> windows_core::Result<GroupInfo>;
+    ) -> windows::core::Result<GroupInfo>;
 
-    fn get_error_string_locale(&self, error: i32, locale: u32) -> windows_core::Result<String>;
+    fn get_error_string_locale(&self, error: i32, locale: u32) -> windows::core::Result<String>;
 
     fn get_group_by_name(
         &self,
         name: String,
         reference_interface_id: Option<u128>,
-    ) -> windows_core::Result<windows_core::IUnknown>;
+    ) -> windows::core::Result<windows::core::IUnknown>;
 
-    fn get_status(&self) -> windows_core::Result<ServerStatus>;
+    fn get_status(&self) -> windows::core::Result<ServerStatus>;
 
-    fn remove_group(&self, server_group: u32, force: bool) -> windows_core::Result<()>;
+    fn remove_group(&self, server_group: u32, force: bool) -> windows::core::Result<()>;
 
     fn create_group_enumerator(
         &self,
         scope: EnumScope,
         reference_interface_id: Option<u128>,
-    ) -> windows_core::Result<windows_core::IUnknown>;
+    ) -> windows::core::Result<windows::core::IUnknown>;
 }

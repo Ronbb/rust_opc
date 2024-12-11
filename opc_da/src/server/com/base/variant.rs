@@ -2,7 +2,6 @@
 pub enum Variant {
     #[default]
     Empty,
-    Null,
     Bool(bool),
     String(String),
     I8(i8),

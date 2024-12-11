@@ -6,18 +6,18 @@ use windows::Win32::System::Com::{
 
 use super::enumeration::ConnectionsEnumerator;
 
-#[windows_core::implement(IConnectionPoint)]
+#[windows::core::implement(IConnectionPoint)]
 pub struct ConnectionPoint {
     container: IConnectionPointContainer,
-    interface_id: windows_core::GUID,
+    interface_id: windows::core::GUID,
     next_cookie: core::sync::atomic::AtomicU32,
-    connections: tokio::sync::RwLock<BTreeMap<u32, windows_core::IUnknown>>,
+    connections: tokio::sync::RwLock<BTreeMap<u32, windows::core::IUnknown>>,
 }
 
 impl ConnectionPoint {
     pub fn new(
         container: IConnectionPointContainer,
-        interface_id: windows_core::GUID,
+        interface_id: windows::core::GUID,
     ) -> ConnectionPoint {
         ConnectionPoint {
             container,
@@ -29,15 +29,15 @@ impl ConnectionPoint {
 }
 
 impl IConnectionPoint_Impl for ConnectionPoint_Impl {
-    fn GetConnectionInterface(&self) -> windows_core::Result<windows_core::GUID> {
+    fn GetConnectionInterface(&self) -> windows::core::Result<windows::core::GUID> {
         Ok(self.interface_id)
     }
 
-    fn GetConnectionPointContainer(&self) -> windows_core::Result<IConnectionPointContainer> {
+    fn GetConnectionPointContainer(&self) -> windows::core::Result<IConnectionPointContainer> {
         Ok(self.container.clone())
     }
 
-    fn Advise(&self, sink: Option<&windows_core::IUnknown>) -> windows_core::Result<u32> {
+    fn Advise(&self, sink: Option<&windows::core::IUnknown>) -> windows::core::Result<u32> {
         let cookie = self
             .next_cookie
             .fetch_add(1, core::sync::atomic::Ordering::SeqCst);
@@ -47,14 +47,14 @@ impl IConnectionPoint_Impl for ConnectionPoint_Impl {
         Ok(cookie)
     }
 
-    fn Unadvise(&self, cookie: u32) -> windows_core::Result<()> {
+    fn Unadvise(&self, cookie: u32) -> windows::core::Result<()> {
         self.connections.blocking_write().remove(&cookie);
         Ok(())
     }
 
-    fn EnumConnections(&self) -> windows_core::Result<IEnumConnections> {
+    fn EnumConnections(&self) -> windows::core::Result<IEnumConnections> {
         Ok(
-            windows_core::ComObjectInner::into_object(ConnectionsEnumerator::new(
+            windows::core::ComObjectInner::into_object(ConnectionsEnumerator::new(
                 self.connections
                     .blocking_read()
                     .iter()

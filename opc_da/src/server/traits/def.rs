@@ -1,4 +1,4 @@
-use crate::com::{
+use crate::server::com::{
     base::{SystemTime, Variant},
     utils::{PointerWriter, TryWriteArray, TryWriteTo},
 };
@@ -12,16 +12,16 @@ pub struct AvailableProperty {
 pub struct ItemPropertyData {
     pub property_id: u32,
     pub data: Variant,
-    pub error: windows_core::HRESULT,
+    pub error: windows::core::HRESULT,
 }
 
 pub struct NewItem {
     pub new_item_id: String,
-    pub error: windows_core::HRESULT,
+    pub error: windows::core::HRESULT,
 }
 
 pub struct ItemProperties {
-    pub error_id: windows_core::HRESULT,
+    pub error_id: windows::core::HRESULT,
     pub item_properties: Vec<ItemProperty>,
 }
 
@@ -31,7 +31,7 @@ pub struct ItemProperty {
     pub item_id: String,
     pub description: String,
     pub value: Variant,
-    pub error_id: windows_core::HRESULT,
+    pub error_id: windows::core::HRESULT,
 }
 
 pub enum BrowseFilter {
@@ -91,7 +91,7 @@ pub struct VqtWithError {
     pub value: Variant,
     pub quality: u16,
     pub timestamp: SystemTime,
-    pub error: windows_core::HRESULT,
+    pub error: windows::core::HRESULT,
 }
 
 pub struct ItemOptionalVqt {
@@ -102,7 +102,7 @@ pub struct ItemOptionalVqt {
 pub struct GroupInfo {
     pub server_group: u32,
     pub revised_update_rate: u32,
-    pub unknown: windows_core::IUnknown,
+    pub unknown: windows::core::IUnknown,
 }
 
 pub struct ServerStatus {
@@ -152,7 +152,7 @@ pub struct ItemResult {}
 pub struct ItemState {}
 
 impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: ItemProperties) -> Result<Self, Self::Error> {
         let result = opc_da_bindings::tagOPCITEMPROPERTIES {
@@ -169,7 +169,7 @@ impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
                 .map(|item_property| match item_property.try_into() {
                     Ok(item_property) => item_property,
                     Err(error) => opc_da_bindings::tagOPCITEMPROPERTY {
-                        hrErrorID: (error as windows_core::Error).code(),
+                        hrErrorID: (error as windows::core::Error).code(),
                         ..Default::default()
                     },
                 })
@@ -182,7 +182,7 @@ impl TryFrom<ItemProperties> for opc_da_bindings::tagOPCITEMPROPERTIES {
 }
 
 impl TryFrom<ItemProperty> for opc_da_bindings::tagOPCITEMPROPERTY {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: ItemProperty) -> Result<Self, Self::Error> {
         Ok(opc_da_bindings::tagOPCITEMPROPERTY {
@@ -209,14 +209,14 @@ impl From<BrowseFilter> for opc_da_bindings::tagOPCBROWSEFILTER {
 }
 
 impl TryFrom<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: opc_da_bindings::tagOPCBROWSEFILTER) -> Result<Self, Self::Error> {
         match value {
             opc_da_bindings::OPC_BROWSE_FILTER_ALL => Ok(BrowseFilter::All),
             opc_da_bindings::OPC_BROWSE_FILTER_BRANCHES => Ok(BrowseFilter::Branches),
             opc_da_bindings::OPC_BROWSE_FILTER_ITEMS => Ok(BrowseFilter::Items),
-            _ => Err(windows_core::Error::new(
+            _ => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid BrowseFilter",
             )),
@@ -225,7 +225,7 @@ impl TryFrom<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
 }
 
 impl TryFrom<BrowseElement> for opc_da_bindings::tagOPCBROWSEELEMENT {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: BrowseElement) -> Result<Self, Self::Error> {
         Ok(opc_da_bindings::tagOPCBROWSEELEMENT {
@@ -248,13 +248,13 @@ impl From<NamespaceType> for opc_da_bindings::tagOPCNAMESPACETYPE {
 }
 
 impl TryFrom<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: opc_da_bindings::tagOPCNAMESPACETYPE) -> Result<Self, Self::Error> {
         match value {
             opc_da_bindings::OPC_NS_FLAT => Ok(NamespaceType::Flat),
             opc_da_bindings::OPC_NS_HIERARCHIAL => Ok(NamespaceType::Hierarchical),
-            _ => Err(windows_core::Error::new(
+            _ => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid NamespaceType",
             )),
@@ -263,7 +263,7 @@ impl TryFrom<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
 }
 
 impl TryFrom<(opc_da_bindings::tagOPCBROWSEDIRECTION, String)> for BrowseDirection {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(
         value: (opc_da_bindings::tagOPCBROWSEDIRECTION, String),
@@ -272,7 +272,7 @@ impl TryFrom<(opc_da_bindings::tagOPCBROWSEDIRECTION, String)> for BrowseDirecti
             (opc_da_bindings::OPC_BROWSE_UP, _) => Ok(BrowseDirection::Up),
             (opc_da_bindings::OPC_BROWSE_DOWN, _) => Ok(BrowseDirection::Down),
             (opc_da_bindings::OPC_BROWSE_TO, name) => Ok(BrowseDirection::To(name)),
-            _ => Err(windows_core::Error::new(
+            _ => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid BrowseDirection",
             )),
@@ -291,14 +291,14 @@ impl From<BrowseDirection> for (opc_da_bindings::tagOPCBROWSEDIRECTION, String) 
 }
 
 impl TryFrom<opc_da_bindings::tagOPCBROWSETYPE> for BrowseType {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: opc_da_bindings::tagOPCBROWSETYPE) -> Result<Self, Self::Error> {
         match value {
             opc_da_bindings::OPC_BRANCH => Ok(BrowseType::Branch),
             opc_da_bindings::OPC_LEAF => Ok(BrowseType::Leaf),
             opc_da_bindings::OPC_FLAT => Ok(BrowseType::Flat),
-            _ => Err(windows_core::Error::new(
+            _ => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid BrowseFilter",
             )),
@@ -317,7 +317,7 @@ impl From<BrowseType> for opc_da_bindings::tagOPCBROWSETYPE {
 }
 
 impl TryFrom<opc_da_bindings::tagOPCITEMVQT> for ItemVqt {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: opc_da_bindings::tagOPCITEMVQT) -> Result<Self, Self::Error> {
         Ok(ItemVqt {
@@ -337,7 +337,7 @@ impl TryFrom<opc_da_bindings::tagOPCITEMVQT> for ItemVqt {
 }
 
 impl TryFrom<ServerStatus> for opc_da_bindings::tagOPCSERVERSTATUS {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: ServerStatus) -> Result<Self, Self::Error> {
         Ok(Self {
@@ -370,7 +370,7 @@ impl From<ServerState> for opc_da_bindings::tagOPCSERVERSTATE {
 }
 
 impl TryFrom<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
-    type Error = windows_core::Error;
+    type Error = windows::core::Error;
 
     fn try_from(value: opc_da_bindings::tagOPCENUMSCOPE) -> Result<Self, Self::Error> {
         match value {
@@ -380,7 +380,7 @@ impl TryFrom<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
             opc_da_bindings::OPC_ENUM_PUBLIC => Ok(EnumScope::Public),
             opc_da_bindings::OPC_ENUM_PRIVATE => Ok(EnumScope::Private),
             opc_da_bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
-            _ => Err(windows_core::Error::new(
+            _ => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
                 "Invalid EnumScope",
             )),
