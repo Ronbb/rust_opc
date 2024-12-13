@@ -6,7 +6,7 @@ use super::*;
 
 #[test]
 fn test_client() {
-    let client = Guard::new(unified::Client::V2).expect("Failed to create guard");
+    let client = Guard::new(unified::Client::v2()).expect("Failed to create guard");
 
     let servers = client
         .get_servers()
