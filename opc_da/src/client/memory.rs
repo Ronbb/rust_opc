@@ -70,6 +70,7 @@ impl<T: Sized> RemoteArray<T> {
 
         let len = usize::try_from(self.len).unwrap_or(0);
 
+        // Pointer and length are guaranteed to be valid
         unsafe { core::slice::from_raw_parts(self.pointer, len) }
     }
 
@@ -94,8 +95,11 @@ impl<T: Sized> RemoteArray<T> {
     }
 
     /// Sets the length of the array.
+    ///
+    /// # Safety
+    /// The caller must ensure that the new length is valid for the underlying array.
     #[inline(always)]
-    pub fn set_len(&mut self, len: u32) {
+    pub(crate) fn set_len(&mut self, len: u32) {
         self.len = len;
     }
 }
@@ -142,7 +146,7 @@ impl<T: Sized> RemotePointer<T> {
     ///
     /// Useful for COM functions that output data via a pointer to a pointer.
     #[inline(always)]
-    pub fn from_raw(pointer: *mut T) -> Self {
+    pub(crate) fn from_raw(pointer: *mut T) -> Self {
         Self { inner: pointer }
     }
 
@@ -152,8 +156,12 @@ impl<T: Sized> RemotePointer<T> {
     }
 
     /// Returns an `Option` referencing the inner value if it is not null.
+    ///
+    /// # Safety
+    /// The caller must ensure that the inner pointer is valid for reads.
     #[inline(always)]
     pub fn as_option(&self) -> Option<&T> {
+        // Pointer is guaranteed to be valid
         unsafe { self.inner.as_ref() }
     }
 }
@@ -189,6 +197,7 @@ impl TryFrom<RemotePointer<u16>> for String {
             return Err(windows::Win32::Foundation::E_POINTER.into());
         }
 
+        // Has checked for null pointer
         Ok(unsafe { PWSTR(value.inner).to_string() }?)
     }
 }
