@@ -90,6 +90,9 @@ impl ItemIoTrait for Server {
     }
 }
 
+/// Iterator over OPC DA 3.0 groups.
+pub type GroupIterator = super::GroupIterator<Group>;
+
 /// An OPC DA 3.0 group implementation.
 ///
 /// Provides access to OPC DA 3.0 group interfaces including:

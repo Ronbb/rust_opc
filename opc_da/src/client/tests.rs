@@ -1,6 +1,6 @@
 use std::str::FromStr;
 
-use unified::{Guard, Server, StringIterator};
+use unified::{Guard, Server};
 
 use super::*;
 
@@ -68,8 +68,20 @@ fn test_client() {
 
     println!("Item name: {:?}", name);
 
+    let mut group_server_handle = 0u32;
+    let mut revised_percent_deadband = 0u32;
     let group = server
-        .add_group("test", true, 0, 0, 0, 0, 0.0)
+        .add_group(
+            "test",
+            true,
+            0,
+            0,
+            0,
+            0,
+            0.0,
+            &mut revised_percent_deadband,
+            &mut group_server_handle,
+        )
         .expect("Failed to add group");
 
     let name = LocalPointer::from_str(&name).expect("Failed to convert name");

@@ -7,13 +7,16 @@
 //! - A unified client interface in the `unified` module
 //! - Common traits and memory management utilities
 
+mod iterator;
 mod memory;
 mod traits;
+
 pub mod unified;
 pub mod v1;
 pub mod v2;
 pub mod v3;
 
+pub use iterator::*;
 pub use memory::*;
 pub use traits::*;
 

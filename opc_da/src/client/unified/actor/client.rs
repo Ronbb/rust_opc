@@ -1,10 +1,7 @@
 use actix::prelude::*;
 
 use crate::{
-    client::{
-        unified::{Client, GuidIterator},
-        RemotePointer,
-    },
+    client::{unified::Client, GuidIterator, RemotePointer},
     mb_error,
 };
 

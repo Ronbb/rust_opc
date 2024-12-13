@@ -1,6 +1,6 @@
 use windows::core::Interface as _;
 
-use crate::client::{LocalPointer, RemotePointer};
+use crate::client::{GroupIterator, LocalPointer, RemotePointer};
 
 /// OPC Server management functionality.
 ///
@@ -35,12 +35,12 @@ pub trait ServerTrait<Group: TryFrom<windows::core::IUnknown, Error = windows::c
         locale_id: u32,
         time_bias: i32,
         percent_deadband: f32,
+        revised_percent_deadband: &mut u32,
+        server_handle: &mut u32,
     ) -> windows::core::Result<Group> {
         let mut group = None;
-        let mut group_server_handle = 0u32;
         let group_name = LocalPointer::from(name);
         let group_name = group_name.as_pcwstr();
-        let mut revised_percent_deadband = 0;
 
         unsafe {
             self.interface()?.AddGroup(
@@ -51,8 +51,8 @@ pub trait ServerTrait<Group: TryFrom<windows::core::IUnknown, Error = windows::c
                 &time_bias,
                 &percent_deadband,
                 locale_id,
-                &mut group_server_handle,
-                &mut revised_percent_deadband,
+                server_handle,
+                revised_percent_deadband,
                 &opc_da_bindings::IOPCItemMgt::IID,
                 &mut group,
             )?;
@@ -102,12 +102,12 @@ pub trait ServerTrait<Group: TryFrom<windows::core::IUnknown, Error = windows::c
     fn create_group_enumerator(
         &self,
         scope: opc_da_bindings::tagOPCENUMSCOPE,
-    ) -> windows::core::Result<windows::Win32::System::Com::IEnumUnknown> {
+    ) -> windows::core::Result<GroupIterator<Group>> {
         let enumerator = unsafe {
             self.interface()?
                 .CreateGroupEnumerator(scope, &windows::Win32::System::Com::IEnumUnknown::IID)?
         };
 
-        enumerator.cast()
+        Ok(GroupIterator::new(enumerator.cast()?))
     }
 }

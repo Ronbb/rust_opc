@@ -1,4 +1,6 @@
-use crate::client::{LocalPointer, RemoteArray};
+use windows_core::PWSTR;
+
+use crate::client::{LocalPointer, RemoteArray, RemotePointer};
 
 pub(crate) trait IntoBridge {
     type Bridge;
@@ -44,6 +46,72 @@ impl<N: ToNative> ToNative for Vec<N> {
     }
 }
 
+impl TryFromNative for std::time::SystemTime {
+    type Native = windows::Win32::Foundation::FILETIME;
+
+    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+        let ft = ((native.dwHighDateTime as u64) << 32) | (native.dwLowDateTime as u64);
+        let duration_since_1601 = std::time::Duration::from_nanos(ft * 100);
+
+        let windows_to_unix_epoch_diff = std::time::Duration::from_secs(11_644_473_600);
+        let duration_since_unix_epoch = duration_since_1601
+            .checked_sub(windows_to_unix_epoch_diff)
+            .ok_or_else(|| {
+                windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "FILETIME is before UNIX_EPOCH",
+                )
+            })?;
+
+        Ok(std::time::UNIX_EPOCH + duration_since_unix_epoch)
+    }
+}
+
+macro_rules! from {
+    ($native:expr) => {
+        TryFromNative::try_from_native($native)?
+    };
+}
+
+impl ToNative for std::time::SystemTime {
+    type Native = windows::Win32::Foundation::FILETIME;
+
+    fn to_native(&mut self) -> windows::core::Result<Self::Native> {
+        let duration_since_unix_epoch =
+            self.duration_since(std::time::UNIX_EPOCH).map_err(|_| {
+                windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "SystemTime is before UNIX_EPOCH",
+                )
+            })?;
+
+        let duration_since_windows_epoch =
+            duration_since_unix_epoch + std::time::Duration::from_secs(11_644_473_600);
+
+        let ft = duration_since_windows_epoch.as_nanos() / 100;
+
+        Ok(Self::Native {
+            dwLowDateTime: ft as u32,
+            dwHighDateTime: (ft >> 32) as u32,
+        })
+    }
+}
+
+impl TryFromNative for String {
+    type Native = PWSTR;
+
+    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+        RemotePointer::from(*native).try_into()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Version {
+    V1,
+    V2,
+    V3,
+}
+
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct GroupState {
     pub update_rate: u32,
@@ -52,8 +120,43 @@ pub struct GroupState {
     pub time_bias: i32,
     pub percent_deadband: f32,
     pub locale_id: u32,
-    pub client_group_handle: u32,
-    pub server_group_handle: u32,
+    pub client_handle: u32,
+    pub server_handle: u32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ServerStatus {
+    pub start_time: std::time::SystemTime,
+    pub current_time: std::time::SystemTime,
+    pub last_update_time: std::time::SystemTime,
+    pub server_state: i32,
+    pub group_count: u32,
+    pub band_width: u32,
+    pub major_version: u16,
+    pub minor_version: u16,
+    pub build_number: u16,
+    pub reserved: u16,
+    pub vendor_info: String,
+}
+
+impl TryFromNative for ServerStatus {
+    type Native = opc_da_bindings::tagOPCSERVERSTATUS;
+
+    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+        Ok(Self {
+            start_time: from!(&native.ftStartTime),
+            current_time: from!(&native.ftCurrentTime),
+            last_update_time: from!(&native.ftLastUpdateTime),
+            server_state: native.dwServerState.0,
+            group_count: native.dwGroupCount,
+            band_width: native.dwBandWidth,
+            major_version: native.wMajorVersion,
+            minor_version: native.wMinorVersion,
+            build_number: native.wBuildNumber,
+            reserved: native.wReserved,
+            vendor_info: from!(&native.szVendorInfo),
+        })
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq)]

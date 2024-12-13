@@ -98,3 +98,56 @@ impl Iterator for StringIterator {
         Some(RemotePointer::from(self.cache[self.count as usize]).try_into())
     }
 }
+
+pub struct GroupIterator<Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>> {
+    iter: windows::Win32::System::Com::IEnumUnknown,
+    cache: [Option<windows::core::IUnknown>; 16],
+    count: u32,
+    finished: bool,
+    _mark: std::marker::PhantomData<Group>,
+}
+
+impl<Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>> GroupIterator<Group> {
+    pub fn new(iter: windows::Win32::System::Com::IEnumUnknown) -> Self {
+        Self {
+            iter,
+            cache: [const { None }; 16],
+            count: 0,
+            finished: false,
+            _mark: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>> Iterator
+    for GroupIterator<Group>
+{
+    type Item = windows::core::Result<Group>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.count == 0 {
+            let groups = &mut self.cache;
+            let count = &mut self.count;
+
+            let code = unsafe { self.iter.Next(groups, Some(count)) };
+            if code.is_ok() {
+                if *count == 0 {
+                    self.finished = true;
+                    return None;
+                }
+            } else {
+                self.finished = true;
+                return Some(Err(windows::core::Error::new(
+                    code,
+                    "Failed to get next group",
+                )));
+            }
+        }
+
+        self.count -= 1;
+        assert!(self.count < self.cache.len() as u32);
+        self.cache[self.count as usize]
+            .take()
+            .map(TryInto::try_into)
+    }
+}
