@@ -1,3 +1,8 @@
+mod async_io;
+mod async_io2;
+mod async_io3;
+mod browse;
+mod browse_server_address_space;
 /// OPC DA client trait definitions.
 ///
 /// This module contains all trait definitions for interacting with OPC DA servers.
@@ -24,11 +29,7 @@
 /// - ItemIoTrait: Direct item access
 /// - ItemSamplingMgtTrait: Sampling rate control
 /// - GroupStateMgt2Trait: Extended group management
-mod async_io;
-mod async_io2;
-mod async_io3;
-mod browse;
-mod browse_server_address_space;
+mod client;
 mod common;
 mod connection_point_container;
 mod data_object;
@@ -50,6 +51,7 @@ pub use async_io2::*;
 pub use async_io3::*;
 pub use browse::*;
 pub use browse_server_address_space::*;
+pub use client::*;
 pub use common::*;
 pub use connection_point_container::*;
 pub use data_object::*;

@@ -5,17 +5,27 @@
 
 use windows::core::Interface as _;
 
-use super::traits::{
-    AsyncIoTrait, BrowseServerAddressSpaceTrait, DataObjectTrait, GroupStateMgtTrait, ItemMgtTrait,
-    PublicGroupStateMgtTrait, ServerPublicGroupsTrait, ServerTrait, SyncIoTrait,
+use super::{
+    traits::{
+        AsyncIoTrait, BrowseServerAddressSpaceTrait, DataObjectTrait, GroupStateMgtTrait,
+        ItemMgtTrait, PublicGroupStateMgtTrait, ServerPublicGroupsTrait, ServerTrait, SyncIoTrait,
+    },
+    ClientTrait,
 };
+
+/// Client for OPC DA 1.0 servers.
+pub struct Client;
+
+impl ClientTrait<Server> for Client {
+    const CATALOG_ID: windows::core::GUID = opc_da_bindings::CATID_OPCDAServer10::IID;
+}
 
 /// An OPC DA 1.0 server implementation.
 ///
 /// Provides access to OPC DA 1.0 server interfaces including:
-/// - IOPCServer for basic server operations
-/// - IOPCServerPublicGroups for public group management
-/// - IOPCBrowseServerAddressSpace for browsing the address space
+/// - `IOPCServer` for basic server operations
+/// - `IOPCServerPublicGroups` for public group management
+/// - `IOPCBrowseServerAddressSpace` for browsing the address space
 ///
 /// # Example
 /// ```no_run
@@ -45,10 +55,6 @@ impl ServerTrait<Group> for Server {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer> {
         Ok(&self.server)
     }
-
-    fn create_group(&self, unknown: windows::core::IUnknown) -> windows::core::Result<Group> {
-        unknown.try_into()
-    }
 }
 
 impl ServerPublicGroupsTrait for Server {
@@ -76,12 +82,12 @@ impl BrowseServerAddressSpaceTrait for Server {
 /// An OPC DA 1.0 group implementation.
 ///
 /// Provides access to OPC DA 1.0 group interfaces including:
-/// - IOPCItemMgt for item management
-/// - IOPCGroupStateMgt for group state management
-/// - IOPCPublicGroupStateMgt for public group operations
-/// - IOPCSyncIO for synchronous operations
-/// - IOPCAsyncIO for asynchronous operations
-/// - IDataObject for data transfer
+/// - `IOPCItemMgt` for item management
+/// - `IOPCGroupStateMgt` for group state management
+/// - `IOPCPublicGroupStateMgt` for public group operations
+/// - `IOPCSyncIO` for synchronous operations
+/// - `IOPCAsyncIO` for asynchronous operations
+/// - `IDataObject` for data transfer
 pub struct Group {
     pub(crate) item_mgt: opc_da_bindings::IOPCItemMgt,
     pub(crate) group_state_mgt: opc_da_bindings::IOPCGroupStateMgt,
