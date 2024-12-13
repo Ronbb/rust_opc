@@ -5,21 +5,31 @@
 
 use windows::core::Interface as _;
 
-use super::traits::{
-    AsyncIo2Trait, AsyncIoTrait, BrowseServerAddressSpaceTrait, CommonTrait,
-    ConnectionPointContainerTrait, DataObjectTrait, GroupStateMgtTrait, ItemMgtTrait,
-    ItemPropertiesTrait, PublicGroupStateMgtTrait, ServerPublicGroupsTrait, ServerTrait,
-    SyncIoTrait,
+use super::{
+    traits::{
+        AsyncIo2Trait, AsyncIoTrait, BrowseServerAddressSpaceTrait, CommonTrait,
+        ConnectionPointContainerTrait, DataObjectTrait, GroupStateMgtTrait, ItemMgtTrait,
+        ItemPropertiesTrait, PublicGroupStateMgtTrait, ServerPublicGroupsTrait, ServerTrait,
+        SyncIoTrait,
+    },
+    ClientTrait,
 };
+
+/// Client for OPC DA 2.0 servers.
+pub struct Client;
+
+impl ClientTrait<Server> for Client {
+    const CATALOG_ID: windows::core::GUID = opc_da_bindings::CATID_OPCDAServer20::IID;
+}
 
 /// An OPC DA 2.0 server implementation.
 ///
 /// Provides access to OPC DA 2.0 server interfaces including:
-/// - IOPCServer for basic server operations
-/// - IOPCCommon for server status and locale management
-/// - IOPCItemProperties for browsing item properties
-/// - IOPCServerPublicGroups for public group management
-/// - IOPCBrowseServerAddressSpace for browsing the address space
+/// - `IOPCServer` for basic server operations
+/// - `IOPCCommon` for server status and locale management
+/// - `IOPCItemProperties` for browsing item properties
+/// - `IOPCServerPublicGroups` for public group management
+/// - `IOPCBrowseServerAddressSpace` for browsing the address space
 ///
 /// # Example
 /// ```no_run
@@ -54,10 +64,6 @@ impl TryFrom<windows::core::IUnknown> for Server {
 impl ServerTrait<Group> for Server {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer> {
         Ok(&self.server)
-    }
-
-    fn create_group(&self, unknown: windows::core::IUnknown) -> windows::core::Result<Group> {
-        unknown.try_into()
     }
 }
 
@@ -106,12 +112,12 @@ impl BrowseServerAddressSpaceTrait for Server {
 /// An OPC DA 2.0 group implementation.
 ///
 /// Provides access to OPC DA 2.0 group interfaces including:
-/// - IOPCItemMgt for item management
-/// - IOPCGroupStateMgt for group state management
-/// - IOPCPublicGroupStateMgt for public group operations
-/// - IOPCSyncIO for synchronous operations
-/// - IOPCAsyncIO/2 for asynchronous operations
-/// - IDataObject for data transfer
+/// - `IOPCItemMgt` for item management
+/// - `IOPCGroupStateMgt` for group state management
+/// - `IOPCPublicGroupStateMgt` for public group operations
+/// - `IOPCSyncIO` for synchronous operations
+/// - `IOPCAsyncIO` and `IOPCAsyncIO2` for asynchronous operations
+/// - `IDataObject` for data transfer
 pub struct Group {
     pub(crate) item_mgt: opc_da_bindings::IOPCItemMgt,
     pub(crate) group_state_mgt: opc_da_bindings::IOPCGroupStateMgt,

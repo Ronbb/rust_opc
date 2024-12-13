@@ -5,19 +5,29 @@
 
 use windows::core::Interface as _;
 
-use super::traits::{
-    AsyncIo2Trait, AsyncIo3Trait, BrowseTrait, CommonTrait, ConnectionPointContainerTrait,
-    GroupStateMgt2Trait, GroupStateMgtTrait, ItemDeadbandMgtTrait, ItemIoTrait, ItemMgtTrait,
-    ItemSamplingMgtTrait, ServerTrait, SyncIo2Trait, SyncIoTrait,
+use super::{
+    traits::{
+        AsyncIo2Trait, AsyncIo3Trait, BrowseTrait, CommonTrait, ConnectionPointContainerTrait,
+        GroupStateMgt2Trait, GroupStateMgtTrait, ItemDeadbandMgtTrait, ItemIoTrait, ItemMgtTrait,
+        ItemSamplingMgtTrait, ServerTrait, SyncIo2Trait, SyncIoTrait,
+    },
+    ClientTrait,
 };
+
+/// Client for OPC DA 3.0 servers.
+pub struct Client;
+
+impl ClientTrait<Server> for Client {
+    const CATALOG_ID: windows::core::GUID = opc_da_bindings::CATID_OPCDAServer30::IID;
+}
 
 /// An OPC DA 3.0 server implementation.
 ///
 /// Provides access to OPC DA 3.0 server interfaces including:
-/// - IOPCServer for basic server operations
-/// - IOPCCommon for server status and locale management
-/// - IOPCBrowse for browsing the server address space
-/// - IOPCItemIO for direct item read/write operations
+/// - `IOPCServer` for basic server operations
+/// - `IOPCCommon` for server status and locale management
+/// - `IOPCBrowse` for browsing the server address space
+/// - `IOPCItemIO` for direct item read/write operations
 ///
 /// # Example
 /// ```no_run
@@ -51,10 +61,6 @@ impl ServerTrait<Group> for Server {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer> {
         Ok(&self.server)
     }
-
-    fn create_group(&self, unknown: windows::core::IUnknown) -> windows::core::Result<Group> {
-        unknown.try_into()
-    }
 }
 
 impl CommonTrait for Server {
@@ -86,12 +92,12 @@ impl ItemIoTrait for Server {
 /// An OPC DA 3.0 group implementation.
 ///
 /// Provides access to OPC DA 3.0 group interfaces including:
-/// - IOPCItemMgt for item management
-/// - IOPCGroupStateMgt/2 for group state management
-/// - IOPCSyncIO/2 for synchronous operations
-/// - IOPCAsyncIO2/3 for asynchronous operations
-/// - IOPCItemSamplingMgt for item sampling control
-/// - IOPCItemDeadbandMgt for deadband management
+/// - `IOPCItemMgt` for item management
+/// - `IOPCGroupStateMgt` and `IOPCGroupStateMgt2` for group state management
+/// - `IOPCSyncIO` and `IOPCSyncIO2` for synchronous operations
+/// - `IOPCAsyncIO2` and `IOPCAsyncIO3` for asynchronous operations
+/// - `IOPCItemSamplingMgt` for item sampling control
+/// - `IOPCItemDeadbandMgt` for deadband management
 #[derive(Debug)]
 pub struct Group {
     pub(crate) item_mgt: opc_da_bindings::IOPCItemMgt,

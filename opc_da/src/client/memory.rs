@@ -1,8 +1,20 @@
-use std::str::FromStr;
+//! Memory management utilities for the OPC DA client.
+//!
+//! This module provides safe wrappers around COM memory allocations and arrays.
+//!
+//! It includes three main types:
+//! - `RemoteArray<T>` for managing arrays allocated by COM.
+//! - `RemotePointer<T>` for managing single values allocated by COM.
+//! - `LocalPointer<T>` for managing local memory that needs to be passed to COM functions.
 
+use std::str::FromStr;
 use windows::core::PWSTR;
 use windows::Win32::System::Com::CoTaskMemFree;
 
+/// A safe wrapper around arrays allocated by COM.
+///
+/// This struct ensures proper cleanup of COM-allocated memory when dropped.
+/// It provides safe access to the underlying array through slices.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoteArray<T: Sized> {
     pointer: *mut T,
@@ -10,6 +22,8 @@ pub struct RemoteArray<T: Sized> {
 }
 
 impl<T: Sized> RemoteArray<T> {
+    /// Creates a new `RemoteArray` with the specified length.
+    /// The underlying pointer is initialized to null.
     #[inline(always)]
     pub fn new(len: u32) -> Self {
         Self {
@@ -18,11 +32,16 @@ impl<T: Sized> RemoteArray<T> {
         }
     }
 
+    /// Creates a `RemoteArray` from a raw pointer and length.
+    ///
+    /// # Safety
+    /// The caller must ensure that the pointer is valid and points to a COM-allocated array.
     #[inline(always)]
     pub fn from_raw(pointer: *mut T, len: u32) -> Self {
         Self { pointer, len }
     }
 
+    /// Creates an empty `RemoteArray`.
     #[inline(always)]
     pub fn empty() -> Self {
         Self {
@@ -31,16 +50,18 @@ impl<T: Sized> RemoteArray<T> {
         }
     }
 
+    /// Returns a mutable pointer to the array pointer.
+    ///
+    /// This is useful when calling COM functions that output an array via a pointer to a pointer.
     #[inline(always)]
     pub fn as_mut_ptr(&mut self) -> *mut *mut T {
         &mut self.pointer
     }
 
-    /// Returns a slice to the underlying array.  
+    /// Returns a slice to the underlying array.
     ///
-    /// # Safety  
-    /// The caller must ensure that the pointer is valid for reads  
-    /// and points to an array of `len` elements.  
+    /// # Safety
+    /// The caller must ensure that the `pointer` is valid for reads and points to an array of `len` elements.
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
         if self.pointer.is_null() || self.len == 0 {
@@ -52,21 +73,27 @@ impl<T: Sized> RemoteArray<T> {
         unsafe { core::slice::from_raw_parts(self.pointer, len) }
     }
 
+    /// Returns the length of the array.
     #[inline(always)]
     pub fn len(&self) -> u32 {
         self.len
     }
 
+    /// Checks if the array is empty.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
+    /// Returns a mutable pointer to the length.
+    ///
+    /// This is useful when calling COM functions that output the length via a pointer.
     #[inline(always)]
     pub fn as_mut_len_ptr(&mut self) -> *mut u32 {
         &mut self.len
     }
 
+    /// Sets the length of the array.
     #[inline(always)]
     pub fn set_len(&mut self, len: u32) {
         self.len = len;
@@ -74,6 +101,7 @@ impl<T: Sized> RemoteArray<T> {
 }
 
 impl<T: Sized> Default for RemoteArray<T> {
+    /// Creates an empty `RemoteArray` by default.
     #[inline(always)]
     fn default() -> Self {
         Self::empty()
@@ -81,6 +109,7 @@ impl<T: Sized> Default for RemoteArray<T> {
 }
 
 impl<T: Sized> Drop for RemoteArray<T> {
+    /// Drops the `RemoteArray`, freeing the COM-allocated memory.
     #[inline(always)]
     fn drop(&mut self) {
         if !self.pointer.is_null() {
@@ -91,12 +120,17 @@ impl<T: Sized> Drop for RemoteArray<T> {
     }
 }
 
+/// A safe wrapper around a pointer allocated by COM.
+///
+/// This struct ensures proper cleanup of COM-allocated memory when dropped.
+/// It provides methods to access the underlying pointer.
 #[repr(transparent)]
 pub struct RemotePointer<T: Sized> {
     inner: *mut T,
 }
 
 impl<T: Sized> RemotePointer<T> {
+    /// Creates a new `RemotePointer` initialized to null.
     #[inline(always)]
     pub fn new() -> Self {
         Self {
@@ -104,6 +138,9 @@ impl<T: Sized> RemotePointer<T> {
         }
     }
 
+    /// Returns a mutable pointer to the inner pointer.
+    ///
+    /// Useful for COM functions that output data via a pointer to a pointer.
     #[inline(always)]
     pub fn from_raw(pointer: *mut T) -> Self {
         Self { inner: pointer }
@@ -114,6 +151,7 @@ impl<T: Sized> RemotePointer<T> {
         &mut self.inner
     }
 
+    /// Returns an `Option` referencing the inner value if it is not null.
     #[inline(always)]
     pub fn as_option(&self) -> Option<&T> {
         unsafe { self.inner.as_ref() }
@@ -121,6 +159,7 @@ impl<T: Sized> RemotePointer<T> {
 }
 
 impl<T: Sized> Default for RemotePointer<T> {
+    /// Creates a new `RemotePointer` initialized to null by default.
     #[inline(always)]
     fn default() -> Self {
         Self::new()
@@ -128,6 +167,7 @@ impl<T: Sized> Default for RemotePointer<T> {
 }
 
 impl From<PWSTR> for RemotePointer<u16> {
+    /// Converts a `PWSTR` to a `RemotePointer<u16>`.
     #[inline(always)]
     fn from(value: PWSTR) -> Self {
         Self {
@@ -139,6 +179,10 @@ impl From<PWSTR> for RemotePointer<u16> {
 impl TryFrom<RemotePointer<u16>> for String {
     type Error = windows::core::Error;
 
+    /// Attempts to convert a `RemotePointer<u16>` to a `String`.
+    ///
+    /// # Errors
+    /// Returns an error if the pointer is null or if the string conversion fails.
     #[inline(always)]
     fn try_from(value: RemotePointer<u16>) -> Result<Self, Self::Error> {
         if value.inner.is_null() {
@@ -150,6 +194,7 @@ impl TryFrom<RemotePointer<u16>> for String {
 }
 
 impl RemotePointer<u16> {
+    /// Returns a mutable pointer to a `PWSTR`.
     #[inline(always)]
     pub fn as_mut_pwstr_ptr(&mut self) -> *mut PWSTR {
         &mut self.inner as *mut *mut u16 as *mut PWSTR
@@ -157,6 +202,7 @@ impl RemotePointer<u16> {
 }
 
 impl<T: Sized> Drop for RemotePointer<T> {
+    /// Drops the `RemotePointer`, freeing the COM-allocated memory.
     #[inline(always)]
     fn drop(&mut self) {
         if !self.inner.is_null() {
@@ -167,11 +213,15 @@ impl<T: Sized> Drop for RemotePointer<T> {
     }
 }
 
+/// A safe wrapper around locally allocated memory needing to be passed to COM functions.
+///
+/// This struct is useful for preparing data to be read by COM functions.
 pub struct LocalPointer<T: Sized> {
     inner: Option<Box<T>>,
 }
 
 impl<T: Sized> LocalPointer<T> {
+    /// Creates a new `LocalPointer` from an optional value.
     #[inline(always)]
     pub fn new(value: Option<T>) -> Self {
         Self {
@@ -179,11 +229,13 @@ impl<T: Sized> LocalPointer<T> {
         }
     }
 
+    /// Creates a `LocalPointer` from a boxed value.
     #[inline(always)]
     pub fn from_box(value: Box<T>) -> Self {
         Self { inner: Some(value) }
     }
 
+    /// Returns a constant pointer to the inner value.
     #[inline(always)]
     pub fn as_ptr(&self) -> *const T {
         match &self.inner {
@@ -192,6 +244,7 @@ impl<T: Sized> LocalPointer<T> {
         }
     }
 
+    /// Returns a mutable pointer to the inner value.
     #[inline(always)]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         match &mut self.inner {
@@ -200,20 +253,25 @@ impl<T: Sized> LocalPointer<T> {
         }
     }
 
+    /// Consumes the `LocalPointer`, returning the inner value if it exists.
     #[inline(always)]
     pub fn into_inner(self) -> Option<T> {
         self.inner.map(|v| *v)
     }
 
+    /// Returns a reference to the inner value if it exists.
     #[inline(always)]
     pub fn inner(&self) -> Option<&T> {
         self.inner.as_ref().map(|v| v.as_ref())
     }
 }
 
+// Implementations for string handling
+
 impl FromStr for LocalPointer<Vec<u16>> {
     type Err = windows::core::HRESULT;
 
+    /// Converts a string slice to a `LocalPointer` containing a UTF-16 encoded null-terminated string.
     #[inline(always)]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Ok(Self::from(s))
@@ -221,6 +279,7 @@ impl FromStr for LocalPointer<Vec<u16>> {
 }
 
 impl From<&str> for LocalPointer<Vec<u16>> {
+    /// Converts a string slice to a `LocalPointer` containing a UTF-16 encoded null-terminated string.
     #[inline(always)]
     fn from(s: &str) -> Self {
         Self::new(Some(s.encode_utf16().chain(Some(0)).collect()))
@@ -228,6 +287,7 @@ impl From<&str> for LocalPointer<Vec<u16>> {
 }
 
 impl From<&String> for LocalPointer<Vec<u16>> {
+    /// Converts a `String` reference to a `LocalPointer` containing a UTF-16 encoded null-terminated string.
     #[inline(always)]
     fn from(s: &String) -> Self {
         Self::new(Some(s.encode_utf16().chain(Some(0)).collect()))
@@ -235,6 +295,7 @@ impl From<&String> for LocalPointer<Vec<u16>> {
 }
 
 impl From<&[String]> for LocalPointer<Vec<Vec<u16>>> {
+    /// Converts a slice of `String`s to a `LocalPointer` containing vectors of UTF-16 encoded null-terminated strings.
     #[inline(always)]
     fn from(values: &[String]) -> Self {
         Self::new(Some(
@@ -247,6 +308,7 @@ impl From<&[String]> for LocalPointer<Vec<Vec<u16>>> {
 }
 
 impl<T> LocalPointer<Vec<T>> {
+    /// Returns the length of the inner vector.
     #[inline(always)]
     pub fn len(&self) -> usize {
         match &self.inner {
@@ -255,6 +317,7 @@ impl<T> LocalPointer<Vec<T>> {
         }
     }
 
+    /// Checks if the inner vector is empty.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
         match &self.inner {
@@ -263,6 +326,7 @@ impl<T> LocalPointer<Vec<T>> {
         }
     }
 
+    /// Returns a constant pointer to the inner array.
     #[inline(always)]
     pub fn as_array_ptr(&self) -> *const T {
         match &self.inner {
@@ -271,6 +335,7 @@ impl<T> LocalPointer<Vec<T>> {
         }
     }
 
+    /// Returns a mutable pointer to the inner array.
     #[inline(always)]
     pub fn as_mut_array_ptr(&mut self) -> *mut T {
         match &mut self.inner {
@@ -281,6 +346,7 @@ impl<T> LocalPointer<Vec<T>> {
 }
 
 impl LocalPointer<Vec<Vec<u16>>> {
+    /// Converts the inner vector of UTF-16 strings to a vector of `PWSTR`.
     #[inline(always)]
     pub fn as_pwstr_array(&self) -> Vec<windows::core::PWSTR> {
         match &self.inner {
@@ -292,6 +358,7 @@ impl LocalPointer<Vec<Vec<u16>>> {
         }
     }
 
+    /// Converts the inner vector of UTF-16 strings to a vector of `PCWSTR`.
     #[inline(always)]
     pub fn as_pcwstr_array(&self) -> Vec<windows::core::PCWSTR> {
         match &self.inner {
@@ -305,6 +372,7 @@ impl LocalPointer<Vec<Vec<u16>>> {
 }
 
 impl LocalPointer<Vec<u16>> {
+    /// Converts the inner UTF-16 string to a `PWSTR`.
     #[inline(always)]
     pub fn as_pwstr(&self) -> windows::core::PWSTR {
         match &self.inner {
@@ -313,6 +381,7 @@ impl LocalPointer<Vec<u16>> {
         }
     }
 
+    /// Converts the inner UTF-16 string to a `PCWSTR`.
     #[inline(always)]
     pub fn as_pcwstr(&self) -> windows::core::PCWSTR {
         match &self.inner {

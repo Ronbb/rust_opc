@@ -6,11 +6,8 @@ use crate::client::{LocalPointer, RemotePointer};
 ///
 /// Provides methods to create and manage groups within an OPC server,
 /// as well as monitor server status and enumerate existing groups.
-pub trait ServerTrait<Group> {
+pub trait ServerTrait<Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>> {
     fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCServer>;
-
-    /// Creates a group wrapper from a COM interface.
-    fn create_group(&self, unknown: windows::core::IUnknown) -> windows::core::Result<Group>;
 
     /// Adds a new group to the OPC server.
     ///
@@ -66,7 +63,7 @@ pub trait ServerTrait<Group> {
                 windows::Win32::Foundation::E_POINTER,
                 "Failed to add group, returned null",
             )),
-            Some(group) => self.create_group(group),
+            Some(group) => group.cast::<windows::core::IUnknown>()?.try_into(),
         }
     }
 
