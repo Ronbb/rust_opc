@@ -1,6 +1,6 @@
-use crate::client::{v1, v2, v3, ClientTrait as _};
+use crate::client::{v1, v2, v3, ClientTrait as _, GuidIterator};
 
-use super::{GuidIterator, Server};
+use super::Server;
 
 #[derive(Debug)]
 pub enum Client {
@@ -36,5 +36,23 @@ impl Client {
             Client::V2(client) => Ok(Server::V2(client.create_server(class_id)?)),
             Client::V3(client) => Ok(Server::V3(client.create_server(class_id)?)),
         }
+    }
+}
+
+impl From<v1::Client> for Client {
+    fn from(client: v1::Client) -> Self {
+        Self::V1(client)
+    }
+}
+
+impl From<v2::Client> for Client {
+    fn from(client: v2::Client) -> Self {
+        Self::V2(client)
+    }
+}
+
+impl From<v3::Client> for Client {
+    fn from(client: v3::Client) -> Self {
+        Self::V3(client)
     }
 }

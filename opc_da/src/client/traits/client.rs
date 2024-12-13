@@ -1,6 +1,6 @@
 use windows_core::Interface as _;
 
-use crate::client::unified::GuidIterator;
+use crate::client::GuidIterator;
 
 /// Trait defining client functionality for OPC Data Access servers.
 pub trait ClientTrait<Server: TryFrom<windows::core::IUnknown, Error = windows::core::Error>> {

@@ -33,8 +33,8 @@ pub trait GroupStateMgtTrait {
                     &mut state.time_bias,
                     &mut state.percent_deadband,
                     &mut state.locale_id,
-                    &mut state.client_group_handle,
-                    &mut state.server_group_handle,
+                    &mut state.client_handle,
+                    &mut state.server_handle,
                 )?;
             }
             name

@@ -110,6 +110,9 @@ impl BrowseServerAddressSpaceTrait for Server {
     }
 }
 
+/// Iterator over OPC DA 2.0 groups.
+pub type GroupIterator = super::GroupIterator<Group>;
+
 /// An OPC DA 2.0 group implementation.
 ///
 /// Provides access to OPC DA 2.0 group interfaces including:

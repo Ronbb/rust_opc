@@ -160,9 +160,17 @@ impl<T: Sized> RemotePointer<T> {
     /// # Safety
     /// The caller must ensure that the inner pointer is valid for reads.
     #[inline(always)]
-    pub fn as_option(&self) -> Option<&T> {
+    pub fn as_ref(&self) -> Option<&T> {
         // Pointer is guaranteed to be valid
         unsafe { self.inner.as_ref() }
+    }
+
+    #[inline(always)]
+    pub fn as_result(&self) -> windows::core::Result<&T> {
+        // Pointer is guaranteed to be valid
+        unsafe { self.inner.as_ref() }.ok_or_else(|| {
+            windows::core::Error::new(windows::Win32::Foundation::E_POINTER, "Pointer is null")
+        })
     }
 }
 

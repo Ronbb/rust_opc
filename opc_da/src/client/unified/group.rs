@@ -39,3 +39,21 @@ impl Group {
             .collect())
     }
 }
+
+impl From<v1::Group> for Group {
+    fn from(group: v1::Group) -> Self {
+        Self::V1(group)
+    }
+}
+
+impl From<v2::Group> for Group {
+    fn from(group: v2::Group) -> Self {
+        Self::V2(group)
+    }
+}
+
+impl From<v3::Group> for Group {
+    fn from(group: v3::Group) -> Self {
+        Self::V3(group)
+    }
+}
