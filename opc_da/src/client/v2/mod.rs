@@ -16,6 +16,7 @@ use super::{
 };
 
 /// Client for OPC DA 2.0 servers.
+#[derive(Debug)]
 pub struct Client;
 
 impl ClientTrait<Server> for Client {

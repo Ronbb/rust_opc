@@ -1,67 +1,40 @@
-use windows::core::Interface;
-use windows_core::IUnknown;
+use crate::client::{v1, v2, v3, ClientTrait as _};
 
 use super::{GuidIterator, Server};
 
 #[derive(Debug)]
 pub enum Client {
-    V1,
-    V2,
-    V3,
+    V1(v1::Client),
+    V2(v2::Client),
+    V3(v3::Client),
 }
 
 impl Client {
-    pub fn get_version_id(&self) -> windows::core::GUID {
-        match self {
-            Client::V1 => opc_da_bindings::CATID_OPCDAServer10::IID,
-            Client::V2 => opc_da_bindings::CATID_OPCDAServer20::IID,
-            Client::V3 => opc_da_bindings::CATID_OPCDAServer30::IID,
-        }
+    pub fn v1() -> Self {
+        Self::V1(v1::Client)
+    }
+
+    pub fn v2() -> Self {
+        Self::V2(v2::Client)
+    }
+
+    pub fn v3() -> Self {
+        Self::V3(v3::Client)
     }
 
     pub fn get_servers(&self) -> windows::core::Result<GuidIterator> {
-        let id = unsafe {
-            windows::Win32::System::Com::CLSIDFromProgID(windows::core::w!("OPC.ServerList.1"))?
-        };
-
-        let servers: opc_da_bindings::IOPCServerList = unsafe {
-            // TODO: Use CoCreateInstanceEx
-            windows::Win32::System::Com::CoCreateInstance(
-                &id,
-                None,
-                // TODO: Convert from filters
-                windows::Win32::System::Com::CLSCTX_ALL,
-            )?
-        };
-
-        let versions = [self.get_version_id()];
-
-        let iter = unsafe {
-            servers
-                .EnumClassesOfCategories(&versions, &versions)
-                .map_err(|e| {
-                    windows::core::Error::new(e.code(), "Failed to enumerate server classes")
-                })?
-        };
-
-        Ok(GuidIterator::new(iter))
+        match self {
+            Client::V1(client) => client.get_servers(),
+            Client::V2(client) => client.get_servers(),
+            Client::V3(client) => client.get_servers(),
+        }
     }
 
-    pub fn create_server(&self, clsid: windows::core::GUID) -> windows::core::Result<Server> {
-        let server: opc_da_bindings::IOPCServer = unsafe {
-            windows::Win32::System::Com::CoCreateInstance(
-                &clsid,
-                None,
-                windows::Win32::System::Com::CLSCTX_ALL,
-            )?
-        };
-
-        let server: IUnknown = server.cast()?;
-
+    pub fn create_server(&self, class_id: windows::core::GUID) -> windows::core::Result<Server> {
         match self {
-            Client::V1 => Ok(Server::V1(server.try_into()?)),
-            Client::V2 => Ok(Server::V2(server.try_into()?)),
-            Client::V3 => Ok(Server::V3(server.try_into()?)),
+            Client::V1(client) => Ok(Server::V1(client.create_server(class_id)?)),
+            Client::V2(client) => Ok(Server::V2(client.create_server(class_id)?)),
+            Client::V3(client) => Ok(Server::V3(client.create_server(class_id)?)),
         }
     }
 }
