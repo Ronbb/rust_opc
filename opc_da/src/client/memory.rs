@@ -99,7 +99,7 @@ impl<T: Sized> RemoteArray<T> {
     /// # Safety
     /// The caller must ensure that the new length is valid for the underlying array.
     #[inline(always)]
-    pub(crate) fn set_len(&mut self, len: u32) {
+    pub(crate) unsafe fn set_len(&mut self, len: u32) {
         self.len = len;
     }
 }

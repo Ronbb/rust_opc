@@ -56,9 +56,11 @@ pub trait ItemPropertiesTrait {
         }
 
         if count > 0 {
-            property_ids.set_len(count);
-            descriptions.set_len(count);
-            datatypes.set_len(count);
+            unsafe {
+                property_ids.set_len(count);
+                descriptions.set_len(count);
+                datatypes.set_len(count);
+            }
         }
 
         Ok((property_ids, descriptions, datatypes))
