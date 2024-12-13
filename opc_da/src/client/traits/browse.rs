@@ -106,7 +106,7 @@ pub trait BrowseTrait {
         }
 
         if count > 0 {
-            elements.set_len(count);
+            unsafe { elements.set_len(count) };
         }
 
         Ok((more_elements.into(), elements))
