@@ -291,7 +291,10 @@ impl TryFromNative for ServerState {
             opc_da_bindings::OPC_STATUS_SUSPENDED => Ok(ServerState::Suspended),
             opc_da_bindings::OPC_STATUS_TEST => Ok(ServerState::Test),
             opc_da_bindings::OPC_STATUS_COMM_FAULT => Ok(ServerState::CommunicationFault),
-            _ => unreachable!(),
+            unknown => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                format!("Unknown server state: {:?}", unknown),
+            )),
         }
     }
 }
@@ -332,9 +335,9 @@ impl TryFromNative for EnumScope {
             opc_da_bindings::OPC_ENUM_PUBLIC => Ok(EnumScope::Public),
             opc_da_bindings::OPC_ENUM_PRIVATE => Ok(EnumScope::Private),
             opc_da_bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
-            _ => Err(windows::core::Error::new(
+            unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                "Invalid EnumScope",
+                format!("Unknown enum scope: {:?}", unknown),
             )),
         }
     }
