@@ -1,6 +1,6 @@
 use crate::{
     client::{v1, v2, v3, ServerTrait as _},
-    def::{self, TryFromNative},
+    def::{self, ToNative as _, TryFromNative as _},
 };
 
 use super::Group;
@@ -70,17 +70,16 @@ impl Server {
         }
     }
 
-    pub fn create_group_enumerator(&self, scope: i32) -> windows::core::Result<GroupIterator> {
+    pub fn create_group_enumerator(
+        &self,
+        scope: def::EnumScope,
+    ) -> windows::core::Result<GroupIterator> {
+        let scope = scope.to_native();
+
         let iterator = match self {
-            Self::V1(server) => GroupIterator::V1(
-                server.create_group_enumerator(opc_da_bindings::tagOPCENUMSCOPE(scope))?,
-            ),
-            Self::V2(server) => GroupIterator::V2(
-                server.create_group_enumerator(opc_da_bindings::tagOPCENUMSCOPE(scope))?,
-            ),
-            Self::V3(server) => GroupIterator::V3(
-                server.create_group_enumerator(opc_da_bindings::tagOPCENUMSCOPE(scope))?,
-            ),
+            Self::V1(server) => GroupIterator::V1(server.create_group_enumerator(scope)?),
+            Self::V2(server) => GroupIterator::V2(server.create_group_enumerator(scope)?),
+            Self::V3(server) => GroupIterator::V3(server.create_group_enumerator(scope)?),
         };
 
         Ok(iterator)

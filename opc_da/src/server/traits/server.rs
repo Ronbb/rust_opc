@@ -1,3 +1,5 @@
+use crate::def;
+
 use super::def::*;
 
 /// Server trait
@@ -193,8 +195,10 @@ pub trait ServerTrait {
 
     fn query_organization(&self) -> windows::core::Result<NamespaceType>;
 
-    fn change_browse_position(&self, browse_direction: BrowseDirection)
-        -> windows::core::Result<()>;
+    fn change_browse_position(
+        &self,
+        browse_direction: BrowseDirection,
+    ) -> windows::core::Result<()>;
 
     fn browse_opc_item_ids(
         &self,
@@ -236,13 +240,13 @@ pub trait ServerTrait {
         reference_interface_id: Option<u128>,
     ) -> windows::core::Result<windows::core::IUnknown>;
 
-    fn get_status(&self) -> windows::core::Result<ServerStatus>;
+    fn get_status(&self) -> windows::core::Result<def::ServerStatus>;
 
     fn remove_group(&self, server_group: u32, force: bool) -> windows::core::Result<()>;
 
     fn create_group_enumerator(
         &self,
-        scope: EnumScope,
+        scope: def::EnumScope,
         reference_interface_id: Option<u128>,
     ) -> windows::core::Result<windows::core::IUnknown>;
 }

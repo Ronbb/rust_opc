@@ -1,4 +1,7 @@
-use crate::server::traits::{ItemOptionalVqt, ItemWithMaxAge, ServerTrait};
+use crate::{
+    def::{TryFromNative, TryToNative},
+    server::traits::{ItemOptionalVqt, ItemWithMaxAge, ServerTrait},
+};
 
 use super::{
     enumeration::{ConnectionPointsEnumerator, StringEnumerator},
@@ -110,7 +113,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServer_Impl for Server_Impl<
         reference_interface_id: *const windows::core::GUID,
     ) -> windows::core::Result<windows::core::IUnknown> {
         self.create_group_enumerator(
-            scope.try_into()?,
+            TryFromNative::try_from_native(&scope)?,
             unsafe { reference_interface_id.as_ref() }.map(|id| id.to_u128()),
         )
     }
@@ -509,8 +512,8 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCItemIO_Impl for Server_Impl<
         PointerWriter::try_write_array_pointer(
             &result
                 .iter()
-                .map(|vqt| vqt.timestamp.clone().into())
-                .collect::<Vec<_>>(),
+                .map(|vqt| vqt.timestamp.try_to_native())
+                .collect::<windows::core::Result<Vec<_>>>()?,
             timestamps,
         )?;
 

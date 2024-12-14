@@ -1,10 +1,10 @@
 use windows::core::{BSTR, VARIANT};
 use windows::Win32::{
-    Foundation::{FILETIME, VARIANT_BOOL, VARIANT_TRUE},
+    Foundation::{VARIANT_BOOL, VARIANT_TRUE},
     System::Variant::VARENUM,
 };
 
-use super::base::{AccessRight, Quality, SystemTime, Variant};
+use super::base::{AccessRight, Quality, Variant};
 
 use opc_da_bindings;
 
@@ -107,24 +107,5 @@ impl From<VARIANT> for Variant {
 impl From<windows::core::imp::VARIANT> for Variant {
     fn from(value: windows::core::imp::VARIANT) -> Self {
         unsafe { Variant::from(VARIANT::from_raw(value)) }
-    }
-}
-
-impl From<SystemTime> for FILETIME {
-    fn from(val: SystemTime) -> Self {
-        let duration = val.0.duration_since(std::time::UNIX_EPOCH).unwrap();
-        let intervals = duration.as_secs() * 10_000_000 + duration.subsec_nanos() as u64 / 100;
-        FILETIME {
-            dwLowDateTime: intervals as u32,
-            dwHighDateTime: (intervals >> 32) as u32,
-        }
-    }
-}
-
-impl From<FILETIME> for SystemTime {
-    fn from(value: FILETIME) -> Self {
-        let intervals = (value.dwLowDateTime as u64) | ((value.dwHighDateTime as u64) << 32);
-        let duration = core::time::Duration::from_nanos(intervals * 100);
-        SystemTime(std::time::UNIX_EPOCH + duration)
     }
 }
