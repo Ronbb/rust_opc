@@ -1,6 +1,6 @@
 use crate::{
     client::{v1, v2, v3, ItemMgtTrait},
-    def::{IntoBridge as _, ItemDef, ItemResult, ToNative as _, TryFromNative as _},
+    def::{IntoBridge as _, ItemDef, ItemResult, TryFromNative as _, TryToNative as _},
 };
 
 pub enum Group {
@@ -23,8 +23,8 @@ impl Group {
         &self,
         items: Vec<ItemDef>,
     ) -> windows::core::Result<Vec<windows::core::Result<ItemResult>>> {
-        let mut bridge = items.into_bridge();
-        let (results, errors) = self.item_mgt().add_items(&bridge.to_native()?)?;
+        let bridge = items.into_bridge();
+        let (results, errors) = self.item_mgt().add_items(&bridge.try_to_native()?)?;
         Ok(results
             .as_slice()
             .iter()

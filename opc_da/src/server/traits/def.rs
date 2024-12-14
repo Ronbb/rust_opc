@@ -1,6 +1,9 @@
-use crate::server::com::{
-    base::{SystemTime, Variant},
-    utils::{PointerWriter, TryWriteArray, TryWriteTo},
+use crate::{
+    def::{self, ToNative, TryFromNative, TryToNative},
+    server::com::{
+        base::Variant,
+        utils::{PointerWriter, TryWriteArray, TryWriteTo},
+    },
 };
 
 pub struct AvailableProperty {
@@ -78,19 +81,19 @@ pub struct ItemWithMaxAge {
 pub struct Vqt {
     pub value: Variant,
     pub quality: u16,
-    pub timestamp: SystemTime,
+    pub timestamp: std::time::SystemTime,
 }
 
 pub struct ItemVqt {
     pub value: Variant,
     pub quality: Option<u16>,
-    pub timestamp: Option<SystemTime>,
+    pub timestamp: Option<std::time::SystemTime>,
 }
 
 pub struct VqtWithError {
     pub value: Variant,
     pub quality: u16,
-    pub timestamp: SystemTime,
+    pub timestamp: std::time::SystemTime,
     pub error: windows::core::HRESULT,
 }
 
@@ -103,37 +106,6 @@ pub struct GroupInfo {
     pub server_group: u32,
     pub revised_update_rate: u32,
     pub unknown: windows::core::IUnknown,
-}
-
-pub struct ServerStatus {
-    pub start_time: SystemTime,
-    pub current_time: SystemTime,
-    pub last_update_time: SystemTime,
-    pub server_state: ServerState,
-    pub group_count: u32,
-    pub band_width: u32,
-    pub major_version: u16,
-    pub minor_version: u16,
-    pub build_number: u16,
-    pub vendor_info: String,
-}
-
-pub enum ServerState {
-    Running,
-    Failed,
-    NoConfig,
-    Suspended,
-    Test,
-    CommunicationFault,
-}
-
-pub enum EnumScope {
-    PrivateConnections,
-    PublicConnections,
-    AllConnections,
-    Public,
-    Private,
-    All,
 }
 
 pub struct FormatEtc {}
@@ -328,7 +300,7 @@ impl TryFrom<opc_da_bindings::tagOPCITEMVQT> for ItemVqt {
                 None
             },
             timestamp: if value.bTimeStampSpecified.as_bool() {
-                Some(value.ftTimeStamp.into())
+                Some(TryFromNative::try_from_native(&value.ftTimeStamp)?)
             } else {
                 None
             },
@@ -336,15 +308,15 @@ impl TryFrom<opc_da_bindings::tagOPCITEMVQT> for ItemVqt {
     }
 }
 
-impl TryFrom<ServerStatus> for opc_da_bindings::tagOPCSERVERSTATUS {
+impl TryFrom<def::ServerStatus> for opc_da_bindings::tagOPCSERVERSTATUS {
     type Error = windows::core::Error;
 
-    fn try_from(value: ServerStatus) -> Result<Self, Self::Error> {
+    fn try_from(value: def::ServerStatus) -> Result<Self, Self::Error> {
         Ok(Self {
-            ftStartTime: value.start_time.into(),
-            ftCurrentTime: value.current_time.into(),
-            ftLastUpdateTime: value.last_update_time.into(),
-            dwServerState: value.server_state.into(),
+            ftStartTime: TryToNative::try_to_native(&value.start_time)?,
+            ftCurrentTime: TryToNative::try_to_native(&value.current_time)?,
+            ftLastUpdateTime: TryToNative::try_to_native(&value.last_update_time)?,
+            dwServerState: value.server_state.to_native(),
             dwGroupCount: value.group_count,
             dwBandWidth: value.band_width,
             wMajorVersion: value.major_version,
@@ -353,37 +325,5 @@ impl TryFrom<ServerStatus> for opc_da_bindings::tagOPCSERVERSTATUS {
             szVendorInfo: PointerWriter::try_write_to(&value.vendor_info)?,
             wReserved: 0,
         })
-    }
-}
-
-impl From<ServerState> for opc_da_bindings::tagOPCSERVERSTATE {
-    fn from(value: ServerState) -> Self {
-        match value {
-            ServerState::Running => opc_da_bindings::OPC_STATUS_RUNNING,
-            ServerState::Failed => opc_da_bindings::OPC_STATUS_FAILED,
-            ServerState::NoConfig => opc_da_bindings::OPC_STATUS_NOCONFIG,
-            ServerState::Suspended => opc_da_bindings::OPC_STATUS_SUSPENDED,
-            ServerState::Test => opc_da_bindings::OPC_STATUS_TEST,
-            ServerState::CommunicationFault => opc_da_bindings::OPC_STATUS_COMM_FAULT,
-        }
-    }
-}
-
-impl TryFrom<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
-    type Error = windows::core::Error;
-
-    fn try_from(value: opc_da_bindings::tagOPCENUMSCOPE) -> Result<Self, Self::Error> {
-        match value {
-            opc_da_bindings::OPC_ENUM_PRIVATE_CONNECTIONS => Ok(EnumScope::PrivateConnections),
-            opc_da_bindings::OPC_ENUM_PUBLIC_CONNECTIONS => Ok(EnumScope::PublicConnections),
-            opc_da_bindings::OPC_ENUM_ALL_CONNECTIONS => Ok(EnumScope::AllConnections),
-            opc_da_bindings::OPC_ENUM_PUBLIC => Ok(EnumScope::Public),
-            opc_da_bindings::OPC_ENUM_PRIVATE => Ok(EnumScope::Private),
-            opc_da_bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
-            _ => Err(windows::core::Error::new(
-                windows::Win32::Foundation::E_INVALIDARG,
-                "Invalid EnumScope",
-            )),
-        }
     }
 }

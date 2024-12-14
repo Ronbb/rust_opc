@@ -54,7 +54,7 @@ pub trait GroupStateMgtTrait {
     /// * `time_bias` - Time bias from UTC in minutes
     /// * `percent_deadband` - Percent deadband for analog items
     /// * `locale_id` - Locale ID for status/error strings
-    /// * `client_group_handle` - Client-provided handle
+    /// * `client_handle` - Client-provided handle
     ///
     /// # Returns
     /// The actual update rate set by the server
@@ -65,7 +65,7 @@ pub trait GroupStateMgtTrait {
         time_bias: Option<i32>,
         percent_deadband: Option<f32>,
         locale_id: Option<u32>,
-        client_group_handle: Option<u32>,
+        client_handle: Option<u32>,
     ) -> windows::core::Result<u32> {
         let requested_update_rate = LocalPointer::new(update_rate);
         let mut revised_update_rate = LocalPointer::new(Some(0));
@@ -73,7 +73,7 @@ pub trait GroupStateMgtTrait {
         let time_bias = LocalPointer::new(time_bias);
         let percent_deadband = LocalPointer::new(percent_deadband);
         let locale_id = LocalPointer::new(locale_id);
-        let client_group_handle = LocalPointer::new(client_group_handle);
+        let client_handle = LocalPointer::new(client_handle);
 
         unsafe {
             self.interface()?.SetState(
@@ -83,7 +83,7 @@ pub trait GroupStateMgtTrait {
                 time_bias.as_ptr(),
                 percent_deadband.as_ptr(),
                 locale_id.as_ptr(),
-                client_group_handle.as_ptr(),
+                client_handle.as_ptr(),
             )
         }?;
 
