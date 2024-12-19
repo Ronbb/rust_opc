@@ -1,6 +1,6 @@
 use windows::core::Interface as _;
 
-use crate::client::memory;
+use crate::client::{memory, ItemAttributeIterator};
 
 /// Item management functionality.
 ///
@@ -261,13 +261,13 @@ pub trait ItemMgtTrait {
     ///
     /// # Returns
     /// Enumerator interface for iterating through items
-    fn create_enumerator(&self) -> windows::core::Result<windows::Win32::System::Com::IEnumString> {
+    fn create_enumerator(&self) -> windows::core::Result<ItemAttributeIterator> {
         let enumerator = unsafe {
             self.interface()?
-                .CreateEnumerator(&windows::Win32::System::Com::IEnumString::IID)?
+                .CreateEnumerator(&opc_da_bindings::IEnumOPCItemAttributes::IID)?
         };
 
-        enumerator.cast()
+        Ok(ItemAttributeIterator::new(enumerator.cast()?))
     }
 }
 

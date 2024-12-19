@@ -74,16 +74,36 @@ impl<T: Sized> RemoteArray<T> {
         unsafe { core::slice::from_raw_parts(self.pointer, len) }
     }
 
+    /// Returns a mutable slice to the underlying array.
+    ///
+    /// # Safety
+    /// The caller must ensure that the `pointer` is valid for reads and writes and points to an array of `len` elements.
+    #[inline(always)]
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        if self.pointer.is_null() || self.len == 0 {
+            return &mut [];
+        }
+
+        let len = usize::try_from(self.len).unwrap_or(0);
+
+        // Pointer and length are guaranteed to be valid
+        unsafe { core::slice::from_raw_parts_mut(self.pointer, len) }
+    }
+
     /// Returns the length of the array.
     #[inline(always)]
     pub fn len(&self) -> u32 {
+        if self.pointer.is_null() {
+            return 0;
+        }
+
         self.len
     }
 
     /// Checks if the array is empty.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        self.len == 0
+        self.len == 0 || self.pointer.is_null()
     }
 
     /// Returns a mutable pointer to the length.
@@ -121,6 +141,18 @@ impl<T: Sized> Drop for RemoteArray<T> {
                 CoTaskMemFree(Some(self.pointer as _));
             }
         }
+    }
+}
+
+impl<T, E: Into<RemotePointer<T>> + Copy> From<RemoteArray<E>> for Vec<RemotePointer<T>> {
+    /// Converts a `RemoteArray` to a vector of `RemotePointer`.
+    #[inline(always)]
+    fn from(array: RemoteArray<E>) -> Self {
+        array
+            .as_slice()
+            .iter()
+            .map(|value| (*value).into())
+            .collect()
     }
 }
 
