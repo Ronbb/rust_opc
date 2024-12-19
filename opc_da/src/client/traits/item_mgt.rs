@@ -261,11 +261,11 @@ pub trait ItemMgtTrait {
     ///
     /// # Returns
     /// Enumerator interface for iterating through items
-    fn create_enumerator(
-        &self,
-        id: &windows::core::GUID,
-    ) -> windows::core::Result<windows::Win32::System::Com::IEnumUnknown> {
-        let enumerator = unsafe { self.interface()?.CreateEnumerator(id)? };
+    fn create_enumerator(&self) -> windows::core::Result<windows::Win32::System::Com::IEnumString> {
+        let enumerator = unsafe {
+            self.interface()?
+                .CreateEnumerator(&windows::Win32::System::Com::IEnumString::IID)?
+        };
 
         enumerator.cast()
     }
