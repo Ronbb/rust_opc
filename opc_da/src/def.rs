@@ -1,5 +1,3 @@
-use windows_core::PWSTR;
-
 use crate::client::{LocalPointer, RemoteArray, RemotePointer};
 
 pub(crate) trait IntoBridge<Bridge> {
@@ -74,6 +72,11 @@ impl TryFromNative<RemoteArray<windows::core::HRESULT>> for Vec<windows::core::R
     }
 }
 
+impl<Native, T: TryFromNative<Native>> TryFromNative<RemoteArray<Native>> for Vec<T> {
+    fn try_from_native(native: &RemoteArray<Native>) -> windows::core::Result<Self> {
+        native.as_slice().iter().map(T::try_from_native).collect()
+    }
+}
 impl<Native, T: TryFromNative<Native>>
     TryFromNative<(RemoteArray<Native>, RemoteArray<windows::core::HRESULT>)>
     for Vec<windows::core::Result<T>>
@@ -153,8 +156,8 @@ impl TryToNative<windows::Win32::Foundation::FILETIME> for std::time::SystemTime
     }
 }
 
-impl TryFromNative<PWSTR> for String {
-    fn try_from_native(native: &PWSTR) -> windows::core::Result<Self> {
+impl TryFromNative<windows::core::PWSTR> for String {
+    fn try_from_native(native: &windows::core::PWSTR) -> windows::core::Result<Self> {
         RemotePointer::from(*native).try_into()
     }
 }
@@ -365,5 +368,176 @@ impl ToNative<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
             EnumScope::Private => opc_da_bindings::OPC_ENUM_PRIVATE,
             EnumScope::All => opc_da_bindings::OPC_ENUM_ALL,
         }
+    }
+}
+
+pub struct ItemAttributes {
+    pub access_path: String,
+    pub item_id: String,
+    pub active: bool,
+    pub client_handle: u32,
+    pub server_handle: u32,
+    pub access_rights: u32,
+    pub blob: Vec<u8>,
+    pub requested_data_type: u16,
+    pub canonical_data_type: u16,
+    pub eu_type: EuType,
+    pub eu_info: windows_core::VARIANT,
+}
+
+impl TryFromNative<opc_da_bindings::tagOPCITEMATTRIBUTES> for ItemAttributes {
+    fn try_from_native(
+        native: &opc_da_bindings::tagOPCITEMATTRIBUTES,
+    ) -> windows::core::Result<Self> {
+        Ok(Self {
+            access_path: from!(&native.szAccessPath),
+            item_id: from!(&native.szItemID),
+            active: native.bActive.into(),
+            client_handle: native.hClient,
+            server_handle: native.hServer,
+            access_rights: native.dwAccessRights,
+            blob: RemoteArray::from_raw(native.pBlob, native.dwBlobSize)
+                .as_slice()
+                .to_vec(),
+            requested_data_type: native.vtRequestedDataType,
+            canonical_data_type: native.vtCanonicalDataType,
+            eu_type: from!(&native.dwEUType),
+            eu_info: (*native.vEUInfo).clone(),
+        })
+    }
+}
+
+pub enum EuType {
+    NoEnum,
+    Analog,
+    Enumerated,
+}
+
+impl TryFromNative<opc_da_bindings::tagOPCEUTYPE> for EuType {
+    fn try_from_native(native: &opc_da_bindings::tagOPCEUTYPE) -> windows::core::Result<Self> {
+        match *native {
+            opc_da_bindings::OPC_NOENUM => Ok(EuType::NoEnum),
+            opc_da_bindings::OPC_ANALOG => Ok(EuType::Analog),
+            opc_da_bindings::OPC_ENUMERATED => Ok(EuType::Enumerated),
+            unknown => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                format!("Unknown EU type: {:?}", unknown),
+            )),
+        }
+    }
+}
+
+pub struct ItemState {
+    pub client_handle: u32,
+    pub timestamp: std::time::SystemTime,
+    pub quality: u16,
+    pub data_value: windows::core::VARIANT,
+}
+
+impl TryFromNative<opc_da_bindings::tagOPCITEMSTATE> for ItemState {
+    fn try_from_native(native: &opc_da_bindings::tagOPCITEMSTATE) -> windows::core::Result<Self> {
+        Ok(Self {
+            client_handle: native.hClient,
+            timestamp: from!(&native.ftTimeStamp),
+            quality: native.wQuality,
+            data_value: (*native.vDataValue).clone(),
+        })
+    }
+}
+
+pub enum DataSourceTarget {
+    ForceCache,
+    ForceDevice,
+    WithMaxAge(u32),
+}
+
+impl DataSourceTarget {
+    pub fn max_age(&self) -> u32 {
+        match self {
+            DataSourceTarget::WithMaxAge(max_age) => *max_age,
+            DataSourceTarget::ForceCache => u32::MAX,
+            DataSourceTarget::ForceDevice => 0,
+        }
+    }
+}
+
+impl TryFromNative<opc_da_bindings::tagOPCDATASOURCE> for DataSourceTarget {
+    fn try_from_native(native: &opc_da_bindings::tagOPCDATASOURCE) -> windows::core::Result<Self> {
+        match *native {
+            opc_da_bindings::OPC_DS_CACHE => Ok(DataSourceTarget::ForceCache),
+            opc_da_bindings::OPC_DS_DEVICE => Ok(DataSourceTarget::ForceDevice),
+            unknown => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                format!("Unknown data source: {:?}", unknown),
+            )),
+        }
+    }
+}
+
+impl TryToNative<opc_da_bindings::tagOPCDATASOURCE> for DataSourceTarget {
+    fn try_to_native(&self) -> windows::core::Result<opc_da_bindings::tagOPCDATASOURCE> {
+        match self {
+            DataSourceTarget::ForceCache => Ok(opc_da_bindings::OPC_DS_CACHE),
+            DataSourceTarget::ForceDevice => Ok(opc_da_bindings::OPC_DS_DEVICE),
+            DataSourceTarget::WithMaxAge(_) => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "MaxAge data source requires a value",
+            )),
+        }
+    }
+}
+
+pub struct ItemValue {
+    pub value: windows::core::VARIANT,
+    pub quality: u16,
+    pub timestamp: std::time::SystemTime,
+}
+
+impl
+    TryFromNative<(
+        RemoteArray<windows::core::VARIANT>,
+        RemoteArray<u16>,
+        RemoteArray<windows::Win32::Foundation::FILETIME>,
+        RemoteArray<windows::core::HRESULT>,
+    )> for Vec<windows::core::Result<ItemValue>>
+{
+    fn try_from_native(
+        native: &(
+            RemoteArray<windows::core::VARIANT>,
+            RemoteArray<u16>,
+            RemoteArray<windows::Win32::Foundation::FILETIME>,
+            RemoteArray<windows::core::HRESULT>,
+        ),
+    ) -> windows::core::Result<Self> {
+        let (values, qualities, timestamps, errors) = native;
+
+        if values.len() != qualities.len()
+            || values.len() != timestamps.len()
+            || values.len() != errors.len()
+        {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "Arrays have different lengths",
+            ));
+        }
+
+        Ok(values
+            .as_slice()
+            .iter()
+            .zip(qualities.as_slice())
+            .zip(timestamps.as_slice())
+            .zip(errors.as_slice())
+            .map(|(((value, quality), timestamp), error)| {
+                if error.is_ok() {
+                    Ok(ItemValue {
+                        value: value.clone(),
+                        quality: *quality,
+                        timestamp: from!(timestamp),
+                    })
+                } else {
+                    Err((*error).into())
+                }
+            })
+            .collect())
     }
 }

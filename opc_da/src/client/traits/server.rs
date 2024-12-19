@@ -1,6 +1,6 @@
 use windows::core::Interface as _;
 
-use crate::client::{GroupIterator, LocalPointer, RemotePointer};
+use crate::client::{GroupIterator, LocalPointer, RemotePointer, StringIterator};
 
 /// OPC Server management functionality.
 ///
@@ -109,5 +109,24 @@ pub trait ServerTrait<Group: TryFrom<windows::core::IUnknown, Error = windows::c
         };
 
         Ok(GroupIterator::new(enumerator.cast()?))
+    }
+
+    /// Creates an enumerator for group names.
+    ///
+    /// # Arguments
+    /// * `scope` - Scope of group names to enumerate (public, private, or all)
+    ///
+    /// # Returns
+    /// Enumerator interface for iterating through group names
+    fn create_group_name_enumerator(
+        &self,
+        scope: opc_da_bindings::tagOPCENUMSCOPE,
+    ) -> windows::core::Result<StringIterator> {
+        let enumerator = unsafe {
+            self.interface()?
+                .CreateGroupEnumerator(scope, &windows::Win32::System::Com::IEnumString::IID)?
+        };
+
+        Ok(StringIterator::new(enumerator.cast()?))
     }
 }
