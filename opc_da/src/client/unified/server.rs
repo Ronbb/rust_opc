@@ -16,39 +16,45 @@ impl Server {
         let mut state = state;
 
         match self {
-            Self::V1(server) => Ok(Group::V1(server.add_group(
-                &state.name,
-                state.active,
-                state.client_handle,
-                state.update_rate,
-                state.locale_id,
-                state.time_bias,
-                state.percent_deadband,
-                &mut state.update_rate,
-                &mut state.server_handle,
-            )?)),
-            Self::V2(server) => Ok(Group::V2(server.add_group(
-                &state.name,
-                state.active,
-                state.client_handle,
-                state.update_rate,
-                state.locale_id,
-                state.time_bias,
-                state.percent_deadband,
-                &mut state.update_rate,
-                &mut state.server_handle,
-            )?)),
-            Self::V3(server) => Ok(Group::V3(server.add_group(
-                &state.name,
-                state.active,
-                state.client_handle,
-                state.update_rate,
-                state.locale_id,
-                state.time_bias,
-                state.percent_deadband,
-                &mut state.update_rate,
-                &mut state.server_handle,
-            )?)),
+            Self::V1(server) => Ok(server
+                .add_group(
+                    &state.name,
+                    state.active,
+                    state.client_handle,
+                    state.update_rate,
+                    state.locale_id,
+                    state.time_bias,
+                    state.percent_deadband,
+                    &mut state.update_rate,
+                    &mut state.server_handle,
+                )?
+                .into()),
+            Self::V2(server) => Ok(server
+                .add_group(
+                    &state.name,
+                    state.active,
+                    state.client_handle,
+                    state.update_rate,
+                    state.locale_id,
+                    state.time_bias,
+                    state.percent_deadband,
+                    &mut state.update_rate,
+                    &mut state.server_handle,
+                )?
+                .into()),
+            Self::V3(server) => Ok(server
+                .add_group(
+                    &state.name,
+                    state.active,
+                    state.client_handle,
+                    state.update_rate,
+                    state.locale_id,
+                    state.time_bias,
+                    state.percent_deadband,
+                    &mut state.update_rate,
+                    &mut state.server_handle,
+                )?
+                .into()),
         }
     }
 
