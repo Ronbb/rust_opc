@@ -2,84 +2,112 @@ use windows_core::PWSTR;
 
 use crate::client::{LocalPointer, RemoteArray, RemotePointer};
 
-pub(crate) trait IntoBridge {
-    type Bridge;
-
-    fn into_bridge(self) -> Self::Bridge;
+pub(crate) trait IntoBridge<Bridge> {
+    fn into_bridge(self) -> Bridge;
 }
 
-pub(crate) trait ToNative {
-    type Native;
-
-    fn to_native(&self) -> Self::Native;
+pub(crate) trait ToNative<Native> {
+    fn to_native(&self) -> Native;
 }
 
-pub(crate) trait FromNative {
-    type Native;
-
-    fn from_native(native: &Self::Native) -> Self
+pub(crate) trait FromNative<Native> {
+    fn from_native(native: &Native) -> Self
     where
         Self: Sized;
 }
 
-pub(crate) trait TryToNative {
-    type Native;
-
-    fn try_to_native(&self) -> windows::core::Result<Self::Native>;
+pub(crate) trait TryToNative<Native> {
+    fn try_to_native(&self) -> windows::core::Result<Native>;
 }
 
-pub(crate) trait TryFromNative {
-    type Native;
-
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self>
+pub(crate) trait TryFromNative<Native> {
+    fn try_from_native(native: &Native) -> windows::core::Result<Self>
     where
         Self: Sized;
 }
 
-impl<T: FromNative> TryFromNative for T {
-    type Native = T::Native;
+pub(crate) trait TryToLocal<Local> {
+    fn try_to_local(&self) -> windows::core::Result<Local>;
+}
 
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+impl<Native, T: TryFromNative<Native>> TryToLocal<T> for Native {
+    fn try_to_local(&self) -> windows::core::Result<T> {
+        T::try_from_native(self)
+    }
+}
+
+impl<Native, T: FromNative<Native>> TryFromNative<Native> for T {
+    fn try_from_native(native: &Native) -> windows::core::Result<Self> {
         Ok(Self::from_native(native))
     }
 }
 
-impl<T: ToNative> TryToNative for T {
-    type Native = T::Native;
-
-    fn try_to_native(&self) -> windows::core::Result<Self::Native> {
+impl<Native, T: ToNative<Native>> TryToNative<Native> for T {
+    fn try_to_native(&self) -> windows::core::Result<Native> {
         Ok(self.to_native())
     }
 }
 
-impl<B: IntoBridge> IntoBridge for Vec<B> {
-    type Bridge = Vec<B::Bridge>;
-
-    fn into_bridge(self) -> Self::Bridge {
+impl<Bridge, B: IntoBridge<Bridge>> IntoBridge<Vec<Bridge>> for Vec<B> {
+    fn into_bridge(self) -> Vec<Bridge> {
         self.into_iter().map(IntoBridge::into_bridge).collect()
     }
 }
 
-impl<B: IntoBridge + Clone> IntoBridge for &[B] {
-    type Bridge = Vec<B::Bridge>;
-
-    fn into_bridge(self) -> Self::Bridge {
+impl<Bridge, B: IntoBridge<Bridge> + Clone> IntoBridge<Vec<Bridge>> for &[B] {
+    fn into_bridge(self) -> Vec<Bridge> {
         self.iter().cloned().map(IntoBridge::into_bridge).collect()
     }
 }
 
-impl<N: TryToNative> TryToNative for Vec<N> {
-    type Native = Vec<N::Native>;
-
-    fn try_to_native(&self) -> windows::core::Result<Self::Native> {
+impl<Native, T: TryToNative<Native>> TryToNative<Vec<Native>> for Vec<T> {
+    fn try_to_native(&self) -> windows::core::Result<Vec<Native>> {
         self.iter().map(TryToNative::try_to_native).collect()
     }
 }
 
-impl TryFromNative for std::time::SystemTime {
-    type Native = windows::Win32::Foundation::FILETIME;
+impl TryFromNative<RemoteArray<windows::core::HRESULT>> for Vec<windows::core::Result<()>> {
+    fn try_from_native(
+        native: &RemoteArray<windows::core::HRESULT>,
+    ) -> windows::core::Result<Self> {
+        Ok(native.as_slice().iter().map(|v| (*v).ok()).collect())
+    }
+}
 
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+impl<Native, T: TryFromNative<Native>>
+    TryFromNative<(RemoteArray<Native>, RemoteArray<windows::core::HRESULT>)>
+    for Vec<windows::core::Result<T>>
+{
+    fn try_from_native(
+        native: &(RemoteArray<Native>, RemoteArray<windows::core::HRESULT>),
+    ) -> windows::core::Result<Self> {
+        let (results, errors) = native;
+        if results.len() != errors.len() {
+            return Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                "Results and errors arrays have different lengths",
+            ));
+        }
+
+        Ok(results
+            .as_slice()
+            .iter()
+            .zip(errors.as_slice())
+            .map(|(result, error)| {
+                if error.is_ok() {
+                    T::try_from_native(result)
+                } else {
+                    Err((*error).into())
+                }
+            })
+            .collect())
+    }
+}
+
+impl TryFromNative<windows::Win32::Foundation::FILETIME> for std::time::SystemTime {
+    fn try_from_native(
+        native: &windows::Win32::Foundation::FILETIME,
+    ) -> windows::core::Result<Self> {
         let ft = ((native.dwHighDateTime as u64) << 32) | (native.dwLowDateTime as u64);
         let duration_since_1601 = std::time::Duration::from_nanos(ft * 100);
 
@@ -103,10 +131,8 @@ macro_rules! from {
     };
 }
 
-impl TryToNative for std::time::SystemTime {
-    type Native = windows::Win32::Foundation::FILETIME;
-
-    fn try_to_native(&self) -> windows::core::Result<Self::Native> {
+impl TryToNative<windows::Win32::Foundation::FILETIME> for std::time::SystemTime {
+    fn try_to_native(&self) -> windows::core::Result<windows::Win32::Foundation::FILETIME> {
         let duration_since_unix_epoch =
             self.duration_since(std::time::UNIX_EPOCH).map_err(|_| {
                 windows::core::Error::new(
@@ -120,17 +146,15 @@ impl TryToNative for std::time::SystemTime {
 
         let ft = duration_since_windows_epoch.as_nanos() / 100;
 
-        Ok(Self::Native {
+        Ok(windows::Win32::Foundation::FILETIME {
             dwLowDateTime: ft as u32,
             dwHighDateTime: (ft >> 32) as u32,
         })
     }
 }
 
-impl TryFromNative for String {
-    type Native = PWSTR;
-
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+impl TryFromNative<PWSTR> for String {
+    fn try_from_native(native: &PWSTR) -> windows::core::Result<Self> {
         RemotePointer::from(*native).try_into()
     }
 }
@@ -168,10 +192,10 @@ pub struct ServerStatus {
     pub vendor_info: String,
 }
 
-impl TryFromNative for ServerStatus {
-    type Native = opc_da_bindings::tagOPCSERVERSTATUS;
-
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+impl TryFromNative<opc_da_bindings::tagOPCSERVERSTATUS> for ServerStatus {
+    fn try_from_native(
+        native: &opc_da_bindings::tagOPCSERVERSTATUS,
+    ) -> windows::core::Result<Self> {
         Ok(Self {
             start_time: from!(&native.ftStartTime),
             current_time: from!(&native.ftCurrentTime),
@@ -192,8 +216,8 @@ pub struct ItemDef {
     pub access_path: String,
     pub item_id: String,
     pub active: bool,
-    pub item_client_handle: u32,
-    pub requested_data_type: u16,
+    pub client_handle: u32,
+    pub data_type: u16,
     pub blob: Vec<u8>,
 }
 
@@ -210,26 +234,22 @@ pub mod bridge {
     }
 }
 
-impl IntoBridge for ItemDef {
-    type Bridge = bridge::ItemDef;
-
-    fn into_bridge(self) -> Self::Bridge {
-        Self::Bridge {
+impl IntoBridge<bridge::ItemDef> for ItemDef {
+    fn into_bridge(self) -> bridge::ItemDef {
+        bridge::ItemDef {
             access_path: LocalPointer::from(&self.access_path),
             item_id: LocalPointer::from(&self.item_id),
             active: self.active,
-            item_client_handle: self.item_client_handle,
-            requested_data_type: self.requested_data_type,
+            item_client_handle: self.client_handle,
+            requested_data_type: self.data_type,
             blob: LocalPointer::new(Some(self.blob)),
         }
     }
 }
 
-impl TryToNative for bridge::ItemDef {
-    type Native = opc_da_bindings::tagOPCITEMDEF;
-
-    fn try_to_native(&self) -> windows::core::Result<Self::Native> {
-        Ok(Self::Native {
+impl TryToNative<opc_da_bindings::tagOPCITEMDEF> for bridge::ItemDef {
+    fn try_to_native(&self) -> windows::core::Result<opc_da_bindings::tagOPCITEMDEF> {
+        Ok(opc_da_bindings::tagOPCITEMDEF {
             szAccessPath: self.access_path.as_pwstr(),
             szItemID: self.item_id.as_pwstr(),
             bActive: self.active.into(),
@@ -249,23 +269,21 @@ impl TryToNative for bridge::ItemDef {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ItemResult {
-    pub item_server_handle: u32,
-    pub canonical_data_type: u16,
+    pub server_handle: u32,
+    pub data_type: u16,
     pub access_rights: u32,
-    pub blob_size: u32,
-    pub blob: RemoteArray<u8>,
+    pub blob: Vec<u8>,
 }
 
-impl TryFromNative for ItemResult {
-    type Native = opc_da_bindings::tagOPCITEMRESULT;
-
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+impl TryFromNative<opc_da_bindings::tagOPCITEMRESULT> for ItemResult {
+    fn try_from_native(native: &opc_da_bindings::tagOPCITEMRESULT) -> windows::core::Result<Self> {
         Ok(Self {
-            item_server_handle: native.hServer,
-            canonical_data_type: native.vtCanonicalDataType,
+            server_handle: native.hServer,
+            data_type: native.vtCanonicalDataType,
             access_rights: native.dwAccessRights,
-            blob_size: native.dwBlobSize,
-            blob: RemoteArray::from_raw(native.pBlob, native.dwBlobSize),
+            blob: RemoteArray::from_raw(native.pBlob, native.dwBlobSize)
+                .as_slice()
+                .to_vec(),
         })
     }
 }
@@ -280,10 +298,8 @@ pub enum ServerState {
     CommunicationFault,
 }
 
-impl TryFromNative for ServerState {
-    type Native = opc_da_bindings::tagOPCSERVERSTATE;
-
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+impl TryFromNative<opc_da_bindings::tagOPCSERVERSTATE> for ServerState {
+    fn try_from_native(native: &opc_da_bindings::tagOPCSERVERSTATE) -> windows::core::Result<Self> {
         match *native {
             opc_da_bindings::OPC_STATUS_RUNNING => Ok(ServerState::Running),
             opc_da_bindings::OPC_STATUS_FAILED => Ok(ServerState::Failed),
@@ -299,10 +315,8 @@ impl TryFromNative for ServerState {
     }
 }
 
-impl ToNative for ServerState {
-    type Native = opc_da_bindings::tagOPCSERVERSTATE;
-
-    fn to_native(&self) -> Self::Native {
+impl ToNative<opc_da_bindings::tagOPCSERVERSTATE> for ServerState {
+    fn to_native(&self) -> opc_da_bindings::tagOPCSERVERSTATE {
         match self {
             ServerState::Running => opc_da_bindings::OPC_STATUS_RUNNING,
             ServerState::Failed => opc_da_bindings::OPC_STATUS_FAILED,
@@ -324,10 +338,8 @@ pub enum EnumScope {
     All,
 }
 
-impl TryFromNative for EnumScope {
-    type Native = opc_da_bindings::tagOPCENUMSCOPE;
-
-    fn try_from_native(native: &Self::Native) -> windows::core::Result<Self> {
+impl TryFromNative<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
+    fn try_from_native(native: &opc_da_bindings::tagOPCENUMSCOPE) -> windows::core::Result<Self> {
         match *native {
             opc_da_bindings::OPC_ENUM_PRIVATE_CONNECTIONS => Ok(EnumScope::PrivateConnections),
             opc_da_bindings::OPC_ENUM_PUBLIC_CONNECTIONS => Ok(EnumScope::PublicConnections),
@@ -343,10 +355,8 @@ impl TryFromNative for EnumScope {
     }
 }
 
-impl ToNative for EnumScope {
-    type Native = opc_da_bindings::tagOPCENUMSCOPE;
-
-    fn to_native(&self) -> Self::Native {
+impl ToNative<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
+    fn to_native(&self) -> opc_da_bindings::tagOPCENUMSCOPE {
         match self {
             EnumScope::PrivateConnections => opc_da_bindings::OPC_ENUM_PRIVATE_CONNECTIONS,
             EnumScope::PublicConnections => opc_da_bindings::OPC_ENUM_PUBLIC_CONNECTIONS,

@@ -1,5 +1,5 @@
 use crate::{
-    def::{TryFromNative, TryToNative},
+    def::{TryToLocal as _, TryToNative as _},
     server::traits::{ItemOptionalVqt, ItemWithMaxAge, ServerTrait},
 };
 
@@ -113,7 +113,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServer_Impl for Server_Impl<
         reference_interface_id: *const windows::core::GUID,
     ) -> windows::core::Result<windows::core::IUnknown> {
         self.create_group_enumerator(
-            TryFromNative::try_from_native(&scope)?,
+            scope.try_to_local()?,
             unsafe { reference_interface_id.as_ref() }.map(|id| id.to_u128()),
         )
     }
