@@ -1,5 +1,7 @@
 use crate::{
-    client::{v1, v2, v3, ServerTrait as _},
+    client::{
+        v1, v2, v3, BrowseServerAddressSpaceTrait as _, BrowseTrait, ServerTrait, StringIterator,
+    },
     def::{self, ToNative as _, TryFromNative as _},
 };
 
@@ -65,7 +67,7 @@ impl Server {
             Self::V3(server) => server.get_status(),
         }?;
 
-        def::ServerStatus::try_from_native(status.as_result()?)
+        def::ServerStatus::try_from_native(status.ok()?)
     }
 
     pub fn remove_group(&self, server_handle: u32, force: bool) -> windows::core::Result<()> {
@@ -89,6 +91,46 @@ impl Server {
         };
 
         Ok(iterator)
+    }
+
+    pub fn browse_items(
+        &self,
+        options: BrowseItemsOptions,
+    ) -> windows::core::Result<StringIterator> {
+        let iterator = match self {
+            Self::V1(server) => {
+                return Err(windows::core::Error::new(
+                    windows::Win32::Foundation::E_NOTIMPL,
+                    "Browsing item ids is not implemented in v1",
+                ))
+            }
+            Self::V2(server) => {
+                let browse_type = options.browse_type.to_native();
+                server.browse_opc_item_ids(
+                    browse_type,
+                    options.item_id,
+                    options.data_type_filter,
+                    options.access_rights_filter,
+                )?
+            }
+            Self::V3(server) => {
+                server.browse(
+                    options.item_id,
+                    options.continuation_point,
+                    options.max_elements,
+                    options.browse_filter.to_native(),
+                    options.element_name_filter,
+                    options.vendor_filter,
+                    options.return_all_properties,
+                    options.return_property_values,
+                    &options.property_ids,
+                )?;
+
+                todo!()
+            }
+        };
+
+        todo!()
     }
 }
 
@@ -114,4 +156,31 @@ pub enum GroupIterator {
     V1(v1::GroupIterator),
     V2(v2::GroupIterator),
     V3(v3::GroupIterator),
+}
+
+impl Iterator for GroupIterator {
+    type Item = windows::core::Result<Group>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::V1(iterator) => iterator.next().map(|group| group.map(Group::from)),
+            Self::V2(iterator) => iterator.next().map(|group| group.map(Group::from)),
+            Self::V3(iterator) => iterator.next().map(|group| group.map(Group::from)),
+        }
+    }
+}
+
+pub struct BrowseItemsOptions {
+    pub browse_type: def::BrowseType,
+    pub browse_filter: def::BrowseFilter,
+    pub item_id: Option<String>,
+    pub continuation_point: Option<String>,
+    pub data_type_filter: u16,
+    pub access_rights_filter: u32,
+    pub max_elements: u32,
+    pub element_name_filter: Option<String>,
+    pub vendor_filter: Option<String>,
+    pub return_all_properties: bool,
+    pub return_property_values: bool,
+    pub property_ids: Vec<u32>,
 }
