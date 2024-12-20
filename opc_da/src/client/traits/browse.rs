@@ -1,6 +1,5 @@
 use crate::client::memory::{LocalPointer, RemoteArray, RemotePointer};
 use opc_da_bindings::{tagOPCBROWSEELEMENT, tagOPCBROWSEFILTER, tagOPCITEMPROPERTIES, IOPCBrowse};
-use std::str::FromStr;
 
 /// Server address space browsing functionality (OPC DA 3.0).
 ///
@@ -69,21 +68,31 @@ pub trait BrowseTrait {
     /// - Boolean indicating if more elements are available
     /// - Array of browse elements containing names and properties
     #[allow(clippy::too_many_arguments)]
-    fn browse(
+    fn browse<S0, S1, S2, S3>(
         &self,
-        item_id: &str,
+        item_id: Option<S0>,
+        continuation_point: Option<S1>,
         max_elements: u32,
         browse_filter: tagOPCBROWSEFILTER,
-        element_name_filter: &str,
-        vendor_filter: &str,
+        element_name_filter: Option<S2>,
+        vendor_filter: Option<S3>,
         return_all_properties: bool,
         return_property_values: bool,
         property_ids: &[u32],
-    ) -> windows::core::Result<(bool, RemoteArray<tagOPCBROWSEELEMENT>)> {
-        let item_id = LocalPointer::from_str(item_id)?;
-        let element_name_filter = LocalPointer::from_str(element_name_filter)?;
-        let vendor_filter = LocalPointer::from_str(vendor_filter)?;
-        let mut continuation_point = RemotePointer::<u16>::new();
+    ) -> windows::core::Result<(bool, Option<String>, RemoteArray<tagOPCBROWSEELEMENT>)>
+    where
+        S0: AsRef<str>,
+        S1: AsRef<str>,
+        S2: AsRef<str>,
+        S3: AsRef<str>,
+    {
+        let item_id = LocalPointer::from_option(item_id);
+        let element_name_filter = LocalPointer::from_option(element_name_filter);
+        let vendor_filter = LocalPointer::from_option(vendor_filter);
+        let mut continuation_point = RemotePointer::from_option(match &continuation_point {
+            Some(point) => Some(point.as_ref()),
+            None => None,
+        });
         let mut more_elements = false.into();
         let mut count = 0;
         let mut elements = RemoteArray::empty();
@@ -109,6 +118,10 @@ pub trait BrowseTrait {
             unsafe { elements.set_len(count) };
         }
 
-        Ok((more_elements.into(), elements))
+        Ok((
+            more_elements.into(),
+            continuation_point.try_into()?,
+            elements,
+        ))
     }
 }

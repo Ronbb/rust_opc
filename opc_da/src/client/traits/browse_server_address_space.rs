@@ -51,20 +51,23 @@ pub trait BrowseServerAddressSpaceTrait {
     ///
     /// # Returns
     /// Enumerator for matching item IDs
-    fn browse_opc_item_ids(
+    fn browse_opc_item_ids<S0>(
         &self,
         browse_type: tagOPCBROWSETYPE,
-        filter_criteria: &str,
-        datatype_filter: u16,
+        filter_criteria: Option<S0>,
+        data_type_filter: u16,
         access_rights_filter: u32,
-    ) -> windows::core::Result<windows::Win32::System::Com::IEnumString> {
-        let filter_criteria = LocalPointer::from_str(filter_criteria)?;
+    ) -> windows::core::Result<windows::Win32::System::Com::IEnumString>
+    where
+        S0: AsRef<str>,
+    {
+        let filter_criteria = LocalPointer::from_option(filter_criteria);
 
         unsafe {
             self.interface()?.BrowseOPCItemIDs(
                 browse_type,
                 filter_criteria.as_pwstr(),
-                datatype_filter,
+                data_type_filter,
                 access_rights_filter,
             )
         }

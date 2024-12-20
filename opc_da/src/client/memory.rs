@@ -9,7 +9,7 @@
 
 use std::str::FromStr;
 use windows::core::PWSTR;
-use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 
 /// A safe wrapper around arrays allocated by COM.
 ///
@@ -37,8 +37,20 @@ impl<T: Sized> RemoteArray<T> {
     /// # Safety
     /// The caller must ensure that the pointer is valid and points to a COM-allocated array.
     #[inline(always)]
-    pub fn from_raw(pointer: *mut T, len: u32) -> Self {
+    pub fn from_mut_ptr(pointer: *mut T, len: u32) -> Self {
         Self { pointer, len }
+    }
+
+    /// Creates a `RemoteArray` from a constant pointer and length.
+    ///
+    /// # Safety
+    /// The caller must ensure that the pointer is valid and points to a COM-allocated array.
+    #[inline(always)]
+    pub fn from_ptr(pointer: *const T, len: u32) -> Self {
+        Self {
+            pointer: pointer as *mut T,
+            len,
+        }
     }
 
     /// Creates an empty `RemoteArray`.
@@ -168,7 +180,7 @@ pub struct RemotePointer<T: Sized> {
 impl<T: Sized> RemotePointer<T> {
     /// Creates a new `RemotePointer` initialized to null.
     #[inline(always)]
-    pub fn new() -> Self {
+    pub fn null() -> Self {
         Self {
             inner: std::ptr::null_mut(),
         }
@@ -180,6 +192,26 @@ impl<T: Sized> RemotePointer<T> {
     #[inline(always)]
     pub(crate) fn from_raw(pointer: *mut T) -> Self {
         Self { inner: pointer }
+    }
+
+    pub(crate) fn copy(value: &T) -> Self {
+        let pointer = unsafe { CoTaskMemAlloc(std::mem::size_of::<T>()) };
+        unsafe {
+            core::ptr::copy_nonoverlapping(value, pointer as _, 1);
+        }
+        Self {
+            inner: pointer as _,
+        }
+    }
+
+    pub(crate) fn copy_slice(value: &[T]) -> Self {
+        let pointer = unsafe { CoTaskMemAlloc(core::mem::size_of_val(value)) };
+        unsafe {
+            core::ptr::copy_nonoverlapping(value.as_ptr(), pointer as _, value.len());
+        }
+        Self {
+            inner: pointer as _,
+        }
     }
 
     #[inline(always)]
@@ -198,11 +230,19 @@ impl<T: Sized> RemotePointer<T> {
     }
 
     #[inline(always)]
-    pub fn as_result(&self) -> windows::core::Result<&T> {
+    pub fn ok(&self) -> windows::core::Result<&T> {
         // Pointer is guaranteed to be valid
         unsafe { self.inner.as_ref() }.ok_or_else(|| {
             windows::core::Error::new(windows::Win32::Foundation::E_POINTER, "Pointer is null")
         })
+    }
+
+    #[inline(always)]
+    pub fn from_option<R: Into<RemotePointer<T>>>(value: Option<R>) -> Self {
+        match value {
+            Some(value) => value.into(),
+            None => Self::null(),
+        }
     }
 }
 
@@ -210,7 +250,7 @@ impl<T: Sized> Default for RemotePointer<T> {
     /// Creates a new `RemotePointer` initialized to null by default.
     #[inline(always)]
     fn default() -> Self {
-        Self::new()
+        Self::null()
     }
 }
 
@@ -221,6 +261,14 @@ impl From<PWSTR> for RemotePointer<u16> {
         Self {
             inner: value.as_ptr(),
         }
+    }
+}
+
+impl From<&str> for RemotePointer<u16> {
+    /// Converts a string slice to a `RemotePointer<u16>`.
+    #[inline(always)]
+    fn from(value: &str) -> Self {
+        Self::copy_slice(&value.encode_utf16().chain(Some(0)).collect::<Vec<u16>>())
     }
 }
 
@@ -239,6 +287,24 @@ impl TryFrom<RemotePointer<u16>> for String {
 
         // Has checked for null pointer
         Ok(unsafe { PWSTR(value.inner).to_string() }?)
+    }
+}
+
+impl TryFrom<RemotePointer<u16>> for Option<String> {
+    type Error = windows::core::Error;
+
+    /// Attempts to convert a `RemotePointer<u16>` to an `Option<String>`.
+    ///
+    /// # Errors
+    /// Returns an error if the string conversion fails.
+    #[inline(always)]
+    fn try_from(value: RemotePointer<u16>) -> Result<Self, Self::Error> {
+        if value.inner.is_null() {
+            return Ok(None);
+        }
+
+        // Has checked for null pointer
+        Ok(Some(unsafe { PWSTR(value.inner).to_string() }?))
     }
 }
 
@@ -284,6 +350,14 @@ impl<T: Sized> LocalPointer<T> {
         Self { inner: Some(value) }
     }
 
+    #[inline(always)]
+    pub fn from_option<R: Into<LocalPointer<T>>>(value: Option<R>) -> Self {
+        match value {
+            Some(value) => value.into(),
+            None => Self::new(None),
+        }
+    }
+
     /// Returns a constant pointer to the inner value.
     #[inline(always)]
     pub fn as_ptr(&self) -> *const T {
@@ -327,19 +401,11 @@ impl FromStr for LocalPointer<Vec<u16>> {
     }
 }
 
-impl From<&str> for LocalPointer<Vec<u16>> {
+impl<S: AsRef<str>> From<S> for LocalPointer<Vec<u16>> {
     /// Converts a string slice to a `LocalPointer` containing a UTF-16 encoded null-terminated string.
     #[inline(always)]
-    fn from(s: &str) -> Self {
-        Self::new(Some(s.encode_utf16().chain(Some(0)).collect()))
-    }
-}
-
-impl From<&String> for LocalPointer<Vec<u16>> {
-    /// Converts a `String` reference to a `LocalPointer` containing a UTF-16 encoded null-terminated string.
-    #[inline(always)]
-    fn from(s: &String) -> Self {
-        Self::new(Some(s.encode_utf16().chain(Some(0)).collect()))
+    fn from(s: S) -> Self {
+        Self::new(Some(s.as_ref().encode_utf16().chain(Some(0)).collect()))
     }
 }
 

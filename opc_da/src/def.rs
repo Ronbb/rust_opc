@@ -284,7 +284,7 @@ impl TryFromNative<opc_da_bindings::tagOPCITEMRESULT> for ItemResult {
             server_handle: native.hServer,
             data_type: native.vtCanonicalDataType,
             access_rights: native.dwAccessRights,
-            blob: RemoteArray::from_raw(native.pBlob, native.dwBlobSize)
+            blob: RemoteArray::from_mut_ptr(native.pBlob, native.dwBlobSize)
                 .as_slice()
                 .to_vec(),
         })
@@ -396,7 +396,7 @@ impl TryFromNative<opc_da_bindings::tagOPCITEMATTRIBUTES> for ItemAttributes {
             client_handle: native.hClient,
             server_handle: native.hServer,
             access_rights: native.dwAccessRights,
-            blob: RemoteArray::from_raw(native.pBlob, native.dwBlobSize)
+            blob: RemoteArray::from_mut_ptr(native.pBlob, native.dwBlobSize)
                 .as_slice()
                 .to_vec(),
             requested_data_type: native.vtRequestedDataType,
@@ -539,5 +539,67 @@ impl
                 }
             })
             .collect())
+    }
+}
+
+pub enum BrowseType {
+    Branch,
+    Leaf,
+    Flat,
+}
+
+impl TryFromNative<opc_da_bindings::tagOPCBROWSETYPE> for BrowseType {
+    fn try_from_native(native: &opc_da_bindings::tagOPCBROWSETYPE) -> windows::core::Result<Self> {
+        match *native {
+            opc_da_bindings::OPC_BRANCH => Ok(BrowseType::Branch),
+            opc_da_bindings::OPC_LEAF => Ok(BrowseType::Leaf),
+            opc_da_bindings::OPC_FLAT => Ok(BrowseType::Flat),
+            unknown => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                format!("Unknown browse type: {:?}", unknown),
+            )),
+        }
+    }
+}
+
+impl ToNative<opc_da_bindings::tagOPCBROWSETYPE> for BrowseType {
+    fn to_native(&self) -> opc_da_bindings::tagOPCBROWSETYPE {
+        match self {
+            BrowseType::Branch => opc_da_bindings::OPC_BRANCH,
+            BrowseType::Leaf => opc_da_bindings::OPC_LEAF,
+            BrowseType::Flat => opc_da_bindings::OPC_FLAT,
+        }
+    }
+}
+
+pub enum BrowseFilter {
+    All,
+    Branches,
+    Items,
+}
+
+impl TryFromNative<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
+    fn try_from_native(
+        native: &opc_da_bindings::tagOPCBROWSEFILTER,
+    ) -> windows::core::Result<Self> {
+        match *native {
+            opc_da_bindings::OPC_BROWSE_FILTER_ALL => Ok(BrowseFilter::All),
+            opc_da_bindings::OPC_BROWSE_FILTER_BRANCHES => Ok(BrowseFilter::Branches),
+            opc_da_bindings::OPC_BROWSE_FILTER_ITEMS => Ok(BrowseFilter::Items),
+            unknown => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                format!("Unknown browse filter: {:?}", unknown),
+            )),
+        }
+    }
+}
+
+impl ToNative<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
+    fn to_native(&self) -> opc_da_bindings::tagOPCBROWSEFILTER {
+        match self {
+            BrowseFilter::All => opc_da_bindings::OPC_BROWSE_FILTER_ALL,
+            BrowseFilter::Branches => opc_da_bindings::OPC_BROWSE_FILTER_BRANCHES,
+            BrowseFilter::Items => opc_da_bindings::OPC_BROWSE_FILTER_ITEMS,
+        }
     }
 }

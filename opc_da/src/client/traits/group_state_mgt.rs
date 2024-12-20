@@ -24,7 +24,7 @@ pub trait GroupStateMgtTrait {
         let mut state = def::GroupState::default();
         let mut active = windows::Win32::Foundation::BOOL::default();
         let name = {
-            let mut name = RemotePointer::new();
+            let mut name = RemotePointer::null();
             unsafe {
                 self.interface()?.GetState(
                     &mut state.update_rate,
