@@ -603,3 +603,47 @@ impl ToNative<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
         }
     }
 }
+
+pub enum DataCallbackEvent {
+    DataChange(DataChangeEvent),
+    ReadComplete(ReadCompleteEvent),
+    WriteComplete(WriteCompleteEvent),
+    CancelComplete(CancelCompleteEvent),
+}
+
+pub struct DataChangeEvent {
+    pub transaction_id: u32,
+    pub group_handle: u32,
+    pub master_quality: windows_core::HRESULT,
+    pub master_error: windows_core::HRESULT,
+    pub client_items: RemoteArray<u32>,
+    pub values: RemoteArray<windows::core::VARIANT>,
+    pub qualities: RemoteArray<u16>,
+    pub timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
+    pub errors: RemoteArray<windows_core::HRESULT>,
+}
+
+pub struct ReadCompleteEvent {
+    pub transaction_id: u32,
+    pub group_handle: u32,
+    pub master_quality: windows_core::HRESULT,
+    pub master_error: windows_core::HRESULT,
+    pub client_items: RemoteArray<u32>,
+    pub values: RemoteArray<windows::core::VARIANT>,
+    pub qualities: RemoteArray<u16>,
+    pub timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
+    pub errors: RemoteArray<windows_core::HRESULT>,
+}
+
+pub struct WriteCompleteEvent {
+    pub transaction_id: u32,
+    pub group_handle: u32,
+    pub master_error: windows_core::HRESULT,
+    pub client_items: RemoteArray<u32>,
+    pub errors: RemoteArray<windows_core::HRESULT>,
+}
+
+pub struct CancelCompleteEvent {
+    pub transaction_id: u32,
+    pub group_handle: u32,
+}

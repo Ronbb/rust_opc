@@ -1,4 +1,4 @@
-use crate::def;
+use crate::def::{EnumScope, ServerStatus};
 
 use super::def::*;
 
@@ -240,13 +240,13 @@ pub trait ServerTrait {
         reference_interface_id: Option<u128>,
     ) -> windows::core::Result<windows::core::IUnknown>;
 
-    fn get_status(&self) -> windows::core::Result<def::ServerStatus>;
+    fn get_status(&self) -> windows::core::Result<ServerStatus>;
 
     fn remove_group(&self, server_group: u32, force: bool) -> windows::core::Result<()>;
 
     fn create_group_enumerator(
         &self,
-        scope: def::EnumScope,
+        scope: EnumScope,
         reference_interface_id: Option<u128>,
     ) -> windows::core::Result<windows::core::IUnknown>;
 }

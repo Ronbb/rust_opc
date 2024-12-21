@@ -89,10 +89,8 @@ pub trait BrowseTrait {
         let item_id = LocalPointer::from_option(item_id);
         let element_name_filter = LocalPointer::from_option(element_name_filter);
         let vendor_filter = LocalPointer::from_option(vendor_filter);
-        let mut continuation_point = RemotePointer::from_option(match &continuation_point {
-            Some(point) => Some(point.as_ref()),
-            None => None,
-        });
+        let mut continuation_point =
+            RemotePointer::from_option(continuation_point.as_ref().map(|v| v.as_ref()));
         let mut more_elements = false.into();
         let mut count = 0;
         let mut elements = RemoteArray::empty();

@@ -1,4 +1,7 @@
-use crate::client::RemoteArray;
+use crate::{
+    client::RemoteArray,
+    def::{CancelCompleteEvent, DataChangeEvent, ReadCompleteEvent, WriteCompleteEvent},
+};
 
 #[windows::core::implement(
     // implicit implement IUnknown
@@ -19,85 +22,16 @@ where
     }
 }
 
-pub enum DataCallbackEvent {
-    DataChange {
-        transaction_id: u32,
-        group_handle: u32,
-        master_quality: windows_core::HRESULT,
-        master_error: windows_core::HRESULT,
-        client_items: RemoteArray<u32>,
-        values: RemoteArray<windows::core::VARIANT>,
-        qualities: RemoteArray<u16>,
-        timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
-        errors: RemoteArray<windows_core::HRESULT>,
-    },
-    ReadComplete {
-        transaction_id: u32,
-        group_handle: u32,
-        master_quality: windows_core::HRESULT,
-        master_error: windows_core::HRESULT,
-        client_items: RemoteArray<u32>,
-        values: RemoteArray<windows::core::VARIANT>,
-        qualities: RemoteArray<u16>,
-        timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
-        errors: RemoteArray<windows_core::HRESULT>,
-    },
-    WriteComplete {
-        transaction_id: u32,
-        group_handle: u32,
-        master_error: windows_core::HRESULT,
-        client_items: RemoteArray<u32>,
-        errors: RemoteArray<windows_core::HRESULT>,
-    },
-    CancelComplete {
-        transaction_id: u32,
-        group_handle: u32,
-    },
-}
-
 pub trait DataCallbackTrait {
     #[allow(clippy::too_many_arguments)]
-    fn on_data_change(
-        &self,
-        transaction_id: u32,
-        group_handle: u32,
-        master_quality: windows_core::HRESULT,
-        master_error: windows_core::HRESULT,
-        client_items: RemoteArray<u32>,
-        values: RemoteArray<windows::core::VARIANT>,
-        qualities: RemoteArray<u16>,
-        timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
-        errors: RemoteArray<windows_core::HRESULT>,
-    ) -> windows_core::Result<()>;
+    fn on_data_change(&self, event: DataChangeEvent) -> windows_core::Result<()>;
 
     #[allow(clippy::too_many_arguments)]
-    fn on_read_complete(
-        &self,
-        transaction_id: u32,
-        group_handle: u32,
-        master_quality: windows_core::HRESULT,
-        master_error: windows_core::HRESULT,
-        client_items: RemoteArray<u32>,
-        values: RemoteArray<windows::core::VARIANT>,
-        qualities: RemoteArray<u16>,
-        timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
-        errors: RemoteArray<windows_core::HRESULT>,
-    ) -> windows_core::Result<()>;
+    fn on_read_complete(&self, event: ReadCompleteEvent) -> windows_core::Result<()>;
 
-    fn on_write_complete(
-        &self,
-        transaction_id: u32,
-        group_handle: u32,
-        master_error: windows_core::HRESULT,
-        client_items: RemoteArray<u32>,
-        errors: RemoteArray<windows_core::HRESULT>,
-    ) -> windows_core::Result<()>;
+    fn on_write_complete(&self, event: WriteCompleteEvent) -> windows_core::Result<()>;
 
-    fn on_cancel_complete(
-        &self,
-        transaction_id: u32,
-        group_handle: u32,
-    ) -> windows_core::Result<()>;
+    fn on_cancel_complete(&self, event: CancelCompleteEvent) -> windows_core::Result<()>;
 }
 
 impl<'a, T: DataCallbackTrait + 'a> opc_da_bindings::IOPCDataCallback_Impl
@@ -122,7 +56,7 @@ impl<'a, T: DataCallbackTrait + 'a> opc_da_bindings::IOPCDataCallback_Impl
         let timestamps = RemoteArray::from_ptr(timestamps, count);
         let errors = RemoteArray::from_ptr(errors, count);
 
-        self.on_data_change(
+        self.on_data_change(DataChangeEvent {
             transaction_id,
             group_handle,
             master_quality,
@@ -132,7 +66,7 @@ impl<'a, T: DataCallbackTrait + 'a> opc_da_bindings::IOPCDataCallback_Impl
             qualities,
             timestamps,
             errors,
-        )
+        })
     }
 
     fn OnReadComplete(
@@ -154,7 +88,7 @@ impl<'a, T: DataCallbackTrait + 'a> opc_da_bindings::IOPCDataCallback_Impl
         let timestamps = RemoteArray::from_ptr(timestamps, count);
         let errors = RemoteArray::from_ptr(errors, count);
 
-        self.on_read_complete(
+        self.on_read_complete(ReadCompleteEvent {
             transaction_id,
             group_handle,
             master_quality,
@@ -164,7 +98,7 @@ impl<'a, T: DataCallbackTrait + 'a> opc_da_bindings::IOPCDataCallback_Impl
             qualities,
             timestamps,
             errors,
-        )
+        })
     }
 
     fn OnWriteComplete(
@@ -179,16 +113,19 @@ impl<'a, T: DataCallbackTrait + 'a> opc_da_bindings::IOPCDataCallback_Impl
         let client_items = RemoteArray::from_ptr(client_handles, count);
         let errors = RemoteArray::from_ptr(errors, count);
 
-        self.on_write_complete(
+        self.on_write_complete(WriteCompleteEvent {
             transaction_id,
             group_handle,
             master_error,
             client_items,
             errors,
-        )
+        })
     }
 
     fn OnCancelComplete(&self, transaction_id: u32, group_handle: u32) -> windows_core::Result<()> {
-        self.on_cancel_complete(transaction_id, group_handle)
+        self.on_cancel_complete(CancelCompleteEvent {
+            transaction_id,
+            group_handle,
+        })
     }
 }
