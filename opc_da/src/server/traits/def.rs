@@ -1,9 +1,10 @@
 use crate::{
-    def::{ServerStatus, ToNative as _, TryToLocal as _, TryToNative as _},
+    def::ServerStatus,
     server::com::{
         base::Variant,
         utils::{PointerWriter, TryWriteArray, TryWriteTo},
     },
+    utils::{ToNative as _, TryToLocal as _, TryToNative as _},
 };
 
 pub struct AvailableProperty {

@@ -1,9 +1,8 @@
-use std::str::FromStr;
-
-use crate::client::memory::{LocalPointer, RemotePointer};
 use opc_da_bindings::{
     tagOPCBROWSEDIRECTION, tagOPCBROWSETYPE, tagOPCNAMESPACETYPE, IOPCBrowseServerAddressSpace,
 };
+
+use crate::utils::{LocalPointer, RemotePointer};
 
 /// Server address space browsing functionality.
 ///
@@ -33,7 +32,7 @@ pub trait BrowseServerAddressSpaceTrait {
         browse_direction: tagOPCBROWSEDIRECTION,
         position: &str,
     ) -> windows::core::Result<()> {
-        let position = LocalPointer::from_str(position)?;
+        let position = LocalPointer::from(position);
 
         unsafe {
             self.interface()?
@@ -81,7 +80,7 @@ pub trait BrowseServerAddressSpaceTrait {
     /// # Returns
     /// Fully qualified item ID string
     fn get_item_id(&self, item_data_id: &str) -> windows::core::Result<String> {
-        let item_data_id = LocalPointer::from_str(item_data_id)?;
+        let item_data_id = LocalPointer::from(item_data_id);
 
         let output = unsafe { self.interface()?.GetItemID(item_data_id.as_pwstr())? };
 
@@ -99,7 +98,7 @@ pub trait BrowseServerAddressSpaceTrait {
         &self,
         item_id: &str,
     ) -> windows::core::Result<windows::Win32::System::Com::IEnumString> {
-        let item_id = LocalPointer::from_str(item_id)?;
+        let item_id = LocalPointer::from(item_id);
         unsafe { self.interface()?.BrowseAccessPaths(item_id.as_pwstr()) }
     }
 }

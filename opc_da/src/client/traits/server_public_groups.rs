@@ -1,4 +1,4 @@
-use crate::client::memory::LocalPointer;
+use crate::utils::LocalPointer;
 use std::str::FromStr;
 
 /// Server public groups management functionality.

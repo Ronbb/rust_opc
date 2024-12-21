@@ -1,166 +1,7 @@
-use crate::client::{LocalPointer, RemoteArray, RemotePointer};
-
-pub(crate) trait IntoBridge<Bridge> {
-    fn into_bridge(self) -> Bridge;
-}
-
-pub(crate) trait ToNative<Native> {
-    fn to_native(&self) -> Native;
-}
-
-pub(crate) trait FromNative<Native> {
-    fn from_native(native: &Native) -> Self
-    where
-        Self: Sized;
-}
-
-pub(crate) trait TryToNative<Native> {
-    fn try_to_native(&self) -> windows::core::Result<Native>;
-}
-
-pub(crate) trait TryFromNative<Native> {
-    fn try_from_native(native: &Native) -> windows::core::Result<Self>
-    where
-        Self: Sized;
-}
-
-pub(crate) trait TryToLocal<Local> {
-    fn try_to_local(&self) -> windows::core::Result<Local>;
-}
-
-impl<Native, T: TryFromNative<Native>> TryToLocal<T> for Native {
-    fn try_to_local(&self) -> windows::core::Result<T> {
-        T::try_from_native(self)
-    }
-}
-
-impl<Native, T: FromNative<Native>> TryFromNative<Native> for T {
-    fn try_from_native(native: &Native) -> windows::core::Result<Self> {
-        Ok(Self::from_native(native))
-    }
-}
-
-impl<Native, T: ToNative<Native>> TryToNative<Native> for T {
-    fn try_to_native(&self) -> windows::core::Result<Native> {
-        Ok(self.to_native())
-    }
-}
-
-impl<Bridge, B: IntoBridge<Bridge>> IntoBridge<Vec<Bridge>> for Vec<B> {
-    fn into_bridge(self) -> Vec<Bridge> {
-        self.into_iter().map(IntoBridge::into_bridge).collect()
-    }
-}
-
-impl<Bridge, B: IntoBridge<Bridge> + Clone> IntoBridge<Vec<Bridge>> for &[B] {
-    fn into_bridge(self) -> Vec<Bridge> {
-        self.iter().cloned().map(IntoBridge::into_bridge).collect()
-    }
-}
-
-impl<Native, T: TryToNative<Native>> TryToNative<Vec<Native>> for Vec<T> {
-    fn try_to_native(&self) -> windows::core::Result<Vec<Native>> {
-        self.iter().map(TryToNative::try_to_native).collect()
-    }
-}
-
-impl TryFromNative<RemoteArray<windows::core::HRESULT>> for Vec<windows::core::Result<()>> {
-    fn try_from_native(
-        native: &RemoteArray<windows::core::HRESULT>,
-    ) -> windows::core::Result<Self> {
-        Ok(native.as_slice().iter().map(|v| (*v).ok()).collect())
-    }
-}
-
-impl<Native, T: TryFromNative<Native>> TryFromNative<RemoteArray<Native>> for Vec<T> {
-    fn try_from_native(native: &RemoteArray<Native>) -> windows::core::Result<Self> {
-        native.as_slice().iter().map(T::try_from_native).collect()
-    }
-}
-impl<Native, T: TryFromNative<Native>>
-    TryFromNative<(RemoteArray<Native>, RemoteArray<windows::core::HRESULT>)>
-    for Vec<windows::core::Result<T>>
-{
-    fn try_from_native(
-        native: &(RemoteArray<Native>, RemoteArray<windows::core::HRESULT>),
-    ) -> windows::core::Result<Self> {
-        let (results, errors) = native;
-        if results.len() != errors.len() {
-            return Err(windows::core::Error::new(
-                windows::Win32::Foundation::E_INVALIDARG,
-                "Results and errors arrays have different lengths",
-            ));
-        }
-
-        Ok(results
-            .as_slice()
-            .iter()
-            .zip(errors.as_slice())
-            .map(|(result, error)| {
-                if error.is_ok() {
-                    T::try_from_native(result)
-                } else {
-                    Err((*error).into())
-                }
-            })
-            .collect())
-    }
-}
-
-impl TryFromNative<windows::Win32::Foundation::FILETIME> for std::time::SystemTime {
-    fn try_from_native(
-        native: &windows::Win32::Foundation::FILETIME,
-    ) -> windows::core::Result<Self> {
-        let ft = ((native.dwHighDateTime as u64) << 32) | (native.dwLowDateTime as u64);
-        let duration_since_1601 = std::time::Duration::from_nanos(ft * 100);
-
-        let windows_to_unix_epoch_diff = std::time::Duration::from_secs(11_644_473_600);
-        let duration_since_unix_epoch = duration_since_1601
-            .checked_sub(windows_to_unix_epoch_diff)
-            .ok_or_else(|| {
-                windows::core::Error::new(
-                    windows::Win32::Foundation::E_INVALIDARG,
-                    "FILETIME is before UNIX_EPOCH",
-                )
-            })?;
-
-        Ok(std::time::UNIX_EPOCH + duration_since_unix_epoch)
-    }
-}
-
-macro_rules! from {
-    ($native:expr) => {
-        TryFromNative::try_from_native($native)?
-    };
-}
-
-impl TryToNative<windows::Win32::Foundation::FILETIME> for std::time::SystemTime {
-    fn try_to_native(&self) -> windows::core::Result<windows::Win32::Foundation::FILETIME> {
-        let duration_since_unix_epoch =
-            self.duration_since(std::time::UNIX_EPOCH).map_err(|_| {
-                windows::core::Error::new(
-                    windows::Win32::Foundation::E_INVALIDARG,
-                    "SystemTime is before UNIX_EPOCH",
-                )
-            })?;
-
-        let duration_since_windows_epoch =
-            duration_since_unix_epoch + std::time::Duration::from_secs(11_644_473_600);
-
-        let ft = duration_since_windows_epoch.as_nanos() / 100;
-
-        Ok(windows::Win32::Foundation::FILETIME {
-            dwLowDateTime: ft as u32,
-            dwHighDateTime: (ft >> 32) as u32,
-        })
-    }
-}
-
-impl TryFromNative<windows::core::PWSTR> for String {
-    fn try_from_native(native: &windows::core::PWSTR) -> windows::core::Result<Self> {
-        RemotePointer::from(*native).try_into()
-    }
-}
+use crate::{
+    try_from_native,
+    utils::{IntoBridge, LocalPointer, RemoteArray, ToNative, TryFromNative, TryToNative},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Version {
@@ -200,16 +41,16 @@ impl TryFromNative<opc_da_bindings::tagOPCSERVERSTATUS> for ServerStatus {
         native: &opc_da_bindings::tagOPCSERVERSTATUS,
     ) -> windows::core::Result<Self> {
         Ok(Self {
-            start_time: from!(&native.ftStartTime),
-            current_time: from!(&native.ftCurrentTime),
-            last_update_time: from!(&native.ftLastUpdateTime),
-            server_state: from!(&native.dwServerState),
+            start_time: try_from_native!(&native.ftStartTime),
+            current_time: try_from_native!(&native.ftCurrentTime),
+            last_update_time: try_from_native!(&native.ftLastUpdateTime),
+            server_state: try_from_native!(&native.dwServerState),
             group_count: native.dwGroupCount,
             band_width: native.dwBandWidth,
             major_version: native.wMajorVersion,
             minor_version: native.wMinorVersion,
             build_number: native.wBuildNumber,
-            vendor_info: from!(&native.szVendorInfo),
+            vendor_info: try_from_native!(&native.szVendorInfo),
         })
     }
 }
@@ -225,7 +66,7 @@ pub struct ItemDef {
 }
 
 pub mod bridge {
-    use crate::client::LocalPointer;
+    use crate::utils::LocalPointer;
 
     pub struct ItemDef {
         pub access_path: LocalPointer<Vec<u16>>,
@@ -390,8 +231,8 @@ impl TryFromNative<opc_da_bindings::tagOPCITEMATTRIBUTES> for ItemAttributes {
         native: &opc_da_bindings::tagOPCITEMATTRIBUTES,
     ) -> windows::core::Result<Self> {
         Ok(Self {
-            access_path: from!(&native.szAccessPath),
-            item_id: from!(&native.szItemID),
+            access_path: try_from_native!(&native.szAccessPath),
+            item_id: try_from_native!(&native.szItemID),
             active: native.bActive.into(),
             client_handle: native.hClient,
             server_handle: native.hServer,
@@ -401,7 +242,7 @@ impl TryFromNative<opc_da_bindings::tagOPCITEMATTRIBUTES> for ItemAttributes {
                 .to_vec(),
             requested_data_type: native.vtRequestedDataType,
             canonical_data_type: native.vtCanonicalDataType,
-            eu_type: from!(&native.dwEUType),
+            eu_type: try_from_native!(&native.dwEUType),
             eu_info: (*native.vEUInfo).clone(),
         })
     }
@@ -438,7 +279,7 @@ impl TryFromNative<opc_da_bindings::tagOPCITEMSTATE> for ItemState {
     fn try_from_native(native: &opc_da_bindings::tagOPCITEMSTATE) -> windows::core::Result<Self> {
         Ok(Self {
             client_handle: native.hClient,
-            timestamp: from!(&native.ftTimeStamp),
+            timestamp: try_from_native!(&native.ftTimeStamp),
             quality: native.wQuality,
             data_value: (*native.vDataValue).clone(),
         })
@@ -532,7 +373,7 @@ impl
                     Ok(ItemValue {
                         value: value.clone(),
                         quality: *quality,
-                        timestamp: from!(timestamp),
+                        timestamp: try_from_native!(timestamp),
                     })
                 } else {
                     Err((*error).into())
@@ -639,7 +480,7 @@ pub struct WriteCompleteEvent {
     pub transaction_id: u32,
     pub group_handle: u32,
     pub master_error: windows_core::HRESULT,
-    pub client_items: RemoteArray<u32>,
+    pub client_handles: RemoteArray<u32>,
     pub errors: RemoteArray<windows_core::HRESULT>,
 }
 

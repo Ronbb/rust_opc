@@ -1,9 +1,7 @@
 use crate::{
-    client::RemotePointer,
-    def::{ItemAttributes, TryToLocal},
+    def::ItemAttributes,
+    utils::{RemoteArray, RemotePointer, TryToLocal as _},
 };
-
-use super::RemoteArray;
 
 const MAX_CACHE_SIZE: usize = 16;
 
