@@ -1,4 +1,4 @@
-use crate::client::memory::RemoteArray;
+use crate::utils::RemoteArray;
 
 /// Item deadband management functionality (OPC DA 3.0).
 ///

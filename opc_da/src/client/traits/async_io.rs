@@ -1,5 +1,6 @@
-use crate::client::memory::RemoteArray;
 use windows::core::VARIANT;
+
+use crate::utils::RemoteArray;
 
 /// Asynchronous I/O functionality (OPC DA 1.0).
 ///

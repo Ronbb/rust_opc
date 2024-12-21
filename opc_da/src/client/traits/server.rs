@@ -1,6 +1,9 @@
 use windows::core::Interface as _;
 
-use crate::client::{GroupIterator, LocalPointer, RemotePointer, StringIterator};
+use crate::{
+    client::{GroupIterator, StringIterator},
+    utils::{LocalPointer, RemotePointer},
+};
 
 /// OPC Server management functionality.
 ///

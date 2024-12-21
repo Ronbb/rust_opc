@@ -1,5 +1,4 @@
-use crate::client::memory::RemoteArray;
-use windows::core::VARIANT;
+use crate::utils::RemoteArray;
 
 /// Asynchronous I/O functionality (OPC DA 2.0).
 ///
@@ -56,7 +55,7 @@ pub trait AsyncIo2Trait {
     fn write(
         &self,
         server_handles: &[u32],
-        values: &[VARIANT],
+        values: &[windows::core::VARIANT],
         transaction_id: u32,
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
         let len = server_handles.len().try_into()?;

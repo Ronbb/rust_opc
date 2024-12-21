@@ -1,6 +1,6 @@
 use crate::{
-    client::RemoteArray,
     def::{CancelCompleteEvent, DataChangeEvent, ReadCompleteEvent, WriteCompleteEvent},
+    utils::RemoteArray,
 };
 
 #[windows::core::implement(
@@ -110,14 +110,14 @@ impl<'a, T: DataCallbackTrait + 'a> opc_da_bindings::IOPCDataCallback_Impl
         client_handles: *const u32,
         errors: *const windows_core::HRESULT,
     ) -> windows_core::Result<()> {
-        let client_items = RemoteArray::from_ptr(client_handles, count);
+        let client_handles = RemoteArray::from_ptr(client_handles, count);
         let errors = RemoteArray::from_ptr(errors, count);
 
         self.on_write_complete(WriteCompleteEvent {
             transaction_id,
             group_handle,
             master_error,
-            client_items,
+            client_handles,
             errors,
         })
     }

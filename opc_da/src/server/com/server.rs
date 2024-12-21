@@ -1,6 +1,6 @@
 use crate::{
-    def::{TryToLocal as _, TryToNative as _},
     server::traits::{ItemOptionalVqt, ItemWithMaxAge, ServerTrait},
+    utils::{TryToLocal as _, TryToNative as _},
 };
 
 use super::{

@@ -1,6 +1,6 @@
 use crate::{
-    client::{memory::LocalPointer, RemotePointer},
     def::GroupState,
+    utils::{LocalPointer, RemotePointer},
 };
 
 /// Group state management functionality.

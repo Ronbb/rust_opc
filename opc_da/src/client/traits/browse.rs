@@ -1,5 +1,6 @@
-use crate::client::memory::{LocalPointer, RemoteArray, RemotePointer};
 use opc_da_bindings::{tagOPCBROWSEELEMENT, tagOPCBROWSEFILTER, tagOPCITEMPROPERTIES, IOPCBrowse};
+
+use crate::utils::{LocalPointer, RemoteArray, RemotePointer};
 
 /// Server address space browsing functionality (OPC DA 3.0).
 ///

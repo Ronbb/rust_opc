@@ -1,6 +1,6 @@
 use windows::core::Interface as _;
 
-use crate::client::{memory, ItemAttributeIterator};
+use crate::{client::ItemAttributeIterator, utils::RemoteArray};
 
 /// Item management functionality.
 ///
@@ -26,8 +26,8 @@ pub trait ItemMgtTrait {
         &self,
         items: &[opc_da_bindings::tagOPCITEMDEF],
     ) -> windows::core::Result<(
-        memory::RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
-        memory::RemoteArray<windows::core::HRESULT>,
+        RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
+        RemoteArray<windows::core::HRESULT>,
     )> {
         if items.is_empty() {
             return Err(windows_core::Error::new(
@@ -37,8 +37,8 @@ pub trait ItemMgtTrait {
         }
 
         let len = items.len().try_into()?;
-        let mut results = memory::RemoteArray::new(len);
-        let mut errors = memory::RemoteArray::new(len);
+        let mut results = RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.AddItems(
@@ -67,8 +67,8 @@ pub trait ItemMgtTrait {
         items: &[opc_da_bindings::tagOPCITEMDEF],
         blob_update: bool,
     ) -> windows::core::Result<(
-        memory::RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
-        memory::RemoteArray<windows::core::HRESULT>,
+        RemoteArray<opc_da_bindings::tagOPCITEMRESULT>,
+        RemoteArray<windows::core::HRESULT>,
     )> {
         if items.is_empty() {
             return Err(windows_core::Error::new(
@@ -78,8 +78,8 @@ pub trait ItemMgtTrait {
         }
 
         let len = items.len().try_into()?;
-        let mut results = memory::RemoteArray::new(len);
-        let mut errors = memory::RemoteArray::new(len);
+        let mut results = RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.ValidateItems(
@@ -107,7 +107,7 @@ pub trait ItemMgtTrait {
     fn remove_items(
         &self,
         server_handles: &[u32],
-    ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+    ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
         if server_handles.is_empty() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
@@ -116,7 +116,7 @@ pub trait ItemMgtTrait {
         }
 
         let len = server_handles.len().try_into()?;
-        let mut errors = memory::RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?
@@ -141,7 +141,7 @@ pub trait ItemMgtTrait {
         &self,
         server_handles: &[u32],
         active: bool,
-    ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+    ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
         if server_handles.is_empty() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
@@ -150,7 +150,7 @@ pub trait ItemMgtTrait {
         }
 
         let len = server_handles.len().try_into()?;
-        let mut errors = memory::RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.SetActiveState(
@@ -179,7 +179,7 @@ pub trait ItemMgtTrait {
         &self,
         server_handles: &[u32],
         client_handles: &[u32],
-    ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+    ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
         if server_handles.len() != client_handles.len() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
@@ -195,7 +195,7 @@ pub trait ItemMgtTrait {
         }
 
         let len = server_handles.len().try_into()?;
-        let mut errors = memory::RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.SetClientHandles(
@@ -224,7 +224,7 @@ pub trait ItemMgtTrait {
         &self,
         server_handles: &[u32],
         requested_datatypes: &[u16],
-    ) -> windows::core::Result<memory::RemoteArray<windows::core::HRESULT>> {
+    ) -> windows::core::Result<RemoteArray<windows::core::HRESULT>> {
         if server_handles.len() != requested_datatypes.len() {
             return Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
@@ -240,7 +240,7 @@ pub trait ItemMgtTrait {
         }
 
         let len = server_handles.len().try_into()?;
-        let mut errors = memory::RemoteArray::new(len);
+        let mut errors = RemoteArray::new(len);
 
         unsafe {
             self.interface()?.SetDatatypes(

@@ -1,4 +1,4 @@
-use crate::client::memory::RemoteArray;
+use crate::utils::RemoteArray;
 use windows::Win32::Foundation::BOOL;
 
 /// Item sampling management functionality (OPC DA 3.0).

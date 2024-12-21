@@ -1,6 +1,6 @@
-use std::str::FromStr;
-
 use unified::{Guard, Server};
+
+use crate::utils::LocalPointer;
 
 use super::*;
 
@@ -84,7 +84,7 @@ fn test_client() {
         )
         .expect("Failed to add group");
 
-    let name = LocalPointer::from_str(&name).expect("Failed to convert name");
+    let name = LocalPointer::from(&name);
     let (results, errors) = group
         .add_items(&[opc_da_bindings::tagOPCITEMDEF {
             szAccessPath: windows::core::PWSTR::null(),

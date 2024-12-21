@@ -1,9 +1,7 @@
 use crate::{
     client::{v1, v2, v3, ItemMgtTrait, SyncIo2Trait, SyncIoTrait},
-    def::{
-        DataSourceTarget, IntoBridge as _, ItemDef, ItemResult, ItemState, ItemValue,
-        TryToLocal as _, TryToNative as _,
-    },
+    def::{DataSourceTarget, ItemDef, ItemResult, ItemState, ItemValue},
+    utils::{IntoBridge as _, TryToLocal as _, TryToNative as _},
 };
 
 pub struct Group {

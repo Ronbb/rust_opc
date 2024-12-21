@@ -194,15 +194,15 @@ impl<T: Sized> RemotePointer<T> {
         Self { inner: pointer }
     }
 
-    pub(crate) fn copy(value: &T) -> Self {
-        let pointer = unsafe { CoTaskMemAlloc(std::mem::size_of::<T>()) };
-        unsafe {
-            core::ptr::copy_nonoverlapping(value, pointer as _, 1);
-        }
-        Self {
-            inner: pointer as _,
-        }
-    }
+    // pub(crate) fn copy(value: &T) -> Self {
+    //     let pointer = unsafe { CoTaskMemAlloc(std::mem::size_of::<T>()) };
+    //     unsafe {
+    //         core::ptr::copy_nonoverlapping(value, pointer as _, 1);
+    //     }
+    //     Self {
+    //         inner: pointer as _,
+    //     }
+    // }
 
     pub(crate) fn copy_slice(value: &[T]) -> Self {
         let pointer = unsafe { CoTaskMemAlloc(core::mem::size_of_val(value)) };
