@@ -1,4 +1,4 @@
-use crate::client::memory::RemoteArray;
+use crate::utils::RemoteArray;
 use windows::core::VARIANT;
 
 /// Synchronous I/O functionality (OPC DA 1.0).

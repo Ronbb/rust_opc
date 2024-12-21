@@ -1,4 +1,4 @@
-use crate::client::memory::{LocalPointer, RemoteArray};
+use crate::utils::{LocalPointer, RemoteArray};
 use opc_da_bindings::{tagOPCITEMVQT, IOPCItemIO};
 
 /// Direct item I/O functionality (OPC DA 3.0).

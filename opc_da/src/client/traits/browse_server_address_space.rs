@@ -1,9 +1,8 @@
-use std::str::FromStr;
-
-use crate::client::memory::{LocalPointer, RemotePointer};
 use opc_da_bindings::{
     tagOPCBROWSEDIRECTION, tagOPCBROWSETYPE, tagOPCNAMESPACETYPE, IOPCBrowseServerAddressSpace,
 };
+
+use crate::utils::{LocalPointer, RemotePointer};
 
 /// Server address space browsing functionality.
 ///
@@ -33,7 +32,7 @@ pub trait BrowseServerAddressSpaceTrait {
         browse_direction: tagOPCBROWSEDIRECTION,
         position: &str,
     ) -> windows::core::Result<()> {
-        let position = LocalPointer::from_str(position)?;
+        let position = LocalPointer::from(position);
 
         unsafe {
             self.interface()?
@@ -51,20 +50,23 @@ pub trait BrowseServerAddressSpaceTrait {
     ///
     /// # Returns
     /// Enumerator for matching item IDs
-    fn browse_opc_item_ids(
+    fn browse_opc_item_ids<S0>(
         &self,
         browse_type: tagOPCBROWSETYPE,
-        filter_criteria: &str,
-        datatype_filter: u16,
+        filter_criteria: Option<S0>,
+        data_type_filter: u16,
         access_rights_filter: u32,
-    ) -> windows::core::Result<windows::Win32::System::Com::IEnumString> {
-        let filter_criteria = LocalPointer::from_str(filter_criteria)?;
+    ) -> windows::core::Result<windows::Win32::System::Com::IEnumString>
+    where
+        S0: AsRef<str>,
+    {
+        let filter_criteria = LocalPointer::from_option(filter_criteria);
 
         unsafe {
             self.interface()?.BrowseOPCItemIDs(
                 browse_type,
                 filter_criteria.as_pwstr(),
-                datatype_filter,
+                data_type_filter,
                 access_rights_filter,
             )
         }
@@ -78,7 +80,7 @@ pub trait BrowseServerAddressSpaceTrait {
     /// # Returns
     /// Fully qualified item ID string
     fn get_item_id(&self, item_data_id: &str) -> windows::core::Result<String> {
-        let item_data_id = LocalPointer::from_str(item_data_id)?;
+        let item_data_id = LocalPointer::from(item_data_id);
 
         let output = unsafe { self.interface()?.GetItemID(item_data_id.as_pwstr())? };
 
@@ -96,7 +98,7 @@ pub trait BrowseServerAddressSpaceTrait {
         &self,
         item_id: &str,
     ) -> windows::core::Result<windows::Win32::System::Com::IEnumString> {
-        let item_id = LocalPointer::from_str(item_id)?;
+        let item_id = LocalPointer::from(item_id);
         unsafe { self.interface()?.BrowseAccessPaths(item_id.as_pwstr()) }
     }
 }

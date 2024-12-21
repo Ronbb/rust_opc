@@ -1,8 +1,6 @@
-use std::str::FromStr;
-
 use crate::{
-    client::{memory::LocalPointer, RemotePointer},
-    def,
+    def::GroupState,
+    utils::{LocalPointer, RemotePointer},
 };
 
 /// Group state management functionality.
@@ -20,11 +18,11 @@ pub trait GroupStateMgtTrait {
     /// Gets the current state of the group.
     ///
     /// Returns a GroupState structure containing all group parameters.
-    fn get_state(&self) -> windows::core::Result<def::GroupState> {
-        let mut state = def::GroupState::default();
+    fn get_state(&self) -> windows::core::Result<GroupState> {
+        let mut state = GroupState::default();
         let mut active = windows::Win32::Foundation::BOOL::default();
         let name = {
-            let mut name = RemotePointer::new();
+            let mut name = RemotePointer::null();
             unsafe {
                 self.interface()?.GetState(
                     &mut state.update_rate,
@@ -92,7 +90,7 @@ pub trait GroupStateMgtTrait {
 
     /// Sets the name of the group.
     fn set_name(&self, name: &str) -> windows::core::Result<()> {
-        let name = LocalPointer::from_str(name)?;
+        let name = LocalPointer::from(name);
 
         unsafe { self.interface()?.SetName(name.as_pwstr()) }
     }
@@ -107,7 +105,7 @@ pub trait GroupStateMgtTrait {
         name: &str,
         id: &windows::core::GUID,
     ) -> windows::core::Result<windows::core::IUnknown> {
-        let name = LocalPointer::from_str(name)?;
+        let name = LocalPointer::from(name);
 
         unsafe { self.interface()?.CloneGroup(name.as_pwstr(), id) }
     }

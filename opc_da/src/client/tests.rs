@@ -1,6 +1,6 @@
-use std::str::FromStr;
-
 use unified::{Guard, Server};
+
+use crate::utils::LocalPointer;
 
 use super::*;
 
@@ -36,7 +36,7 @@ fn test_client() {
 
     let branch = StringIterator::new(
         server
-            .browse_opc_item_ids(opc_da_bindings::OPC_BRANCH, "", 0, 0)
+            .browse_opc_item_ids(opc_da_bindings::OPC_BRANCH, Option::<String>::None, 0, 0)
             .expect("Failed to browse items"),
     )
     .take(1)
@@ -53,7 +53,7 @@ fn test_client() {
 
     let leaf = StringIterator::new(
         server
-            .browse_opc_item_ids(opc_da_bindings::OPC_FLAT, "", 0, 0)
+            .browse_opc_item_ids(opc_da_bindings::OPC_FLAT, Option::<String>::None, 0, 0)
             .expect("Failed to browse items"),
     )
     .take(1)
@@ -84,7 +84,7 @@ fn test_client() {
         )
         .expect("Failed to add group");
 
-    let name = LocalPointer::from_str(&name).expect("Failed to convert name");
+    let name = LocalPointer::from(&name);
     let (results, errors) = group
         .add_items(&[opc_da_bindings::tagOPCITEMDEF {
             szAccessPath: windows::core::PWSTR::null(),

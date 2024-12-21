@@ -1,6 +1,7 @@
 use crate::{
-    client::{v1, v2, v3, ServerTrait as _},
-    def::{self, ToNative as _, TryFromNative as _},
+    client::{v1, v2, v3, BrowseServerAddressSpaceTrait, BrowseTrait, ServerTrait},
+    def::{BrowseFilter, BrowseType, EnumScope, GroupState, ServerStatus},
+    utils::ToNative as _,
 };
 
 use super::Group;
@@ -12,54 +13,42 @@ pub enum Server {
 }
 
 impl Server {
-    pub fn add_group(&self, state: def::GroupState) -> windows::core::Result<Group> {
-        let mut state = state;
+    fn add_group_with_server<
+        G: TryFrom<windows::core::IUnknown, Error = windows::core::Error>,
+        T: ServerTrait<G>,
+    >(
+        server: &T,
+        mut state: GroupState,
+    ) -> windows::core::Result<G> {
+        server.add_group(
+            &state.name,
+            state.active,
+            state.client_handle,
+            state.update_rate,
+            state.locale_id,
+            state.time_bias,
+            state.percent_deadband,
+            &mut state.update_rate,
+            &mut state.server_handle,
+        )
+    }
 
+    pub fn add_group(&self, state: GroupState) -> windows::core::Result<Group> {
         match self {
-            Self::V1(server) => Ok(Group::V1(server.add_group(
-                &state.name,
-                state.active,
-                state.client_handle,
-                state.update_rate,
-                state.locale_id,
-                state.time_bias,
-                state.percent_deadband,
-                &mut state.update_rate,
-                &mut state.server_handle,
-            )?)),
-            Self::V2(server) => Ok(Group::V2(server.add_group(
-                &state.name,
-                state.active,
-                state.client_handle,
-                state.update_rate,
-                state.locale_id,
-                state.time_bias,
-                state.percent_deadband,
-                &mut state.update_rate,
-                &mut state.server_handle,
-            )?)),
-            Self::V3(server) => Ok(Group::V3(server.add_group(
-                &state.name,
-                state.active,
-                state.client_handle,
-                state.update_rate,
-                state.locale_id,
-                state.time_bias,
-                state.percent_deadband,
-                &mut state.update_rate,
-                &mut state.server_handle,
-            )?)),
+            Self::V1(server) => Ok(Self::add_group_with_server(server, state)?.into()),
+            Self::V2(server) => Ok(Self::add_group_with_server(server, state)?.into()),
+            Self::V3(server) => Ok(Self::add_group_with_server(server, state)?.into()),
         }
     }
 
-    pub fn get_status(&self) -> windows::core::Result<def::ServerStatus> {
+    pub fn get_status(&self) -> windows::core::Result<ServerStatus> {
         let status = match self {
             Self::V1(server) => server.get_status(),
             Self::V2(server) => server.get_status(),
             Self::V3(server) => server.get_status(),
         }?;
 
-        def::ServerStatus::try_from_native(status.as_result()?)
+        ServerStatus::try_from_native(status.ok()?)
     }
 
     pub fn remove_group(&self, server_handle: u32, force: bool) -> windows::core::Result<()> {
@@ -72,7 +61,7 @@ impl Server {
 
     pub fn create_group_enumerator(
         &self,
-        scope: def::EnumScope,
+        scope: EnumScope,
     ) -> windows::core::Result<GroupIterator> {
         let scope = scope.to_native();
 
@@ -83,6 +72,26 @@ impl Server {
         };
 
         Ok(iterator)
+    }
+
+    pub fn browse_items(
+        &self,
+        options: BrowseItemsOptions,
+    ) -> windows::core::Result<BrowseItemsIterator<v2::Server, v3::Server>> {
+        match self {
+            Self::V1(_) => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "Browsing item ids is not implemented in v1",
+            )),
+            Self::V2(server) => Ok(BrowseItemsIterator::BrowseServerAddressSpace {
+                inner: server,
+                options,
+            }),
+            Self::V3(server) => Ok(BrowseItemsIterator::Browse {
+                inner: server,
+                options,
+            }),
+        }
     }
 }
 
@@ -108,4 +117,99 @@ pub enum GroupIterator {
     V1(v1::GroupIterator),
     V2(v2::GroupIterator),
     V3(v3::GroupIterator),
+}
+
+impl Iterator for GroupIterator {
+    type Item = windows::core::Result<Group>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::V1(iterator) => iterator.next().map(|group| group.map(Group::from)),
+            Self::V2(iterator) => iterator.next().map(|group| group.map(Group::from)),
+            Self::V3(iterator) => iterator.next().map(|group| group.map(Group::from)),
+        }
+    }
+}
+
+pub struct BrowseItemsOptions {
+    pub browse_type: BrowseType,
+    pub browse_filter: BrowseFilter,
+    pub item_id: Option<String>,
+    pub continuation_point: Option<String>,
+    pub data_type_filter: u16,
+    pub access_rights_filter: u32,
+    pub max_elements: u32,
+    pub element_name_filter: Option<String>,
+    pub vendor_filter: Option<String>,
+    pub return_all_properties: bool,
+    pub return_property_values: bool,
+    pub property_ids: Vec<u32>,
+}
+
+pub struct BrowseServerAddressSpaceIterator<'a, T: BrowseServerAddressSpaceTrait> {
+    inner: &'a T,
+}
+
+impl<'a, T: BrowseServerAddressSpaceTrait> Iterator for BrowseServerAddressSpaceIterator<'a, T> {
+    type Item = windows::core::Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let browse_type = BrowseType::Leaf;
+
+        let organization = self.inner.query_organization();
+
+        self.inner
+            .browse_opc_item_ids(BrowseType::Branch, Option::<String>::None, 0, 0)
+            .map(|enumerator| enumerator.next())
+            .transpose()
+    }
+}
+
+pub struct BrowseIterator<'a, T: BrowseTrait> {
+    inner: &'a T,
+}
+
+impl<'a, T: BrowseTrait> Iterator for BrowseIterator<'a, T> {
+    type Item = windows::core::Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner
+            .browse(
+                Option::<String>::None,
+                Option::<String>::None,
+                0,
+                BrowseFilter::All,
+                Option::<String>::None,
+                Option::<String>::None,
+                false,
+                false,
+                &[],
+            )
+            .map(|(more_elements, _, elements)| {
+                if more_elements {
+                    Some(elements[0].name.clone())
+                } else {
+                    None
+                }
+            })
+            .transpose()
+    }
+}
+
+pub enum BrowseItemsIterator<'a, T0: BrowseServerAddressSpaceTrait, T1: BrowseTrait> {
+    BrowseServerAddressSpace(BrowseServerAddressSpaceIterator<'a, T0>),
+    Browse(BrowseIterator<'a, T1>),
+}
+
+impl<'a, T0: BrowseServerAddressSpaceTrait, T1: BrowseTrait> Iterator
+    for BrowseItemsIterator<'a, T0, T1>
+{
+    type Item = windows::core::Result<String>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self {
+            Self::BrowseServerAddressSpace(inner) => inner.next(),
+            Self::Browse(inner) => inner.next(),
+        }
+    }
 }

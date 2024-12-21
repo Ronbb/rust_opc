@@ -9,3 +9,6 @@ pub use client::*;
 pub use group::*;
 pub use guard::*;
 pub use server::*;
+
+#[cfg(test)]
+mod tests;

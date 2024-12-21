@@ -1,8 +1,6 @@
-use crate::client::{
-    memory::{LocalPointer, RemotePointer},
-    RemoteArray,
-};
 use opc_da_bindings::IOPCCommon;
+
+use crate::utils::{LocalPointer, RemoteArray, RemotePointer};
 
 /// Common OPC server functionality trait.
 ///

@@ -1,8 +1,9 @@
 use actix::prelude::*;
 
 use crate::{
-    client::{unified::Client, GuidIterator, RemotePointer},
+    client::{unified::Client, GuidIterator},
     mb_error,
+    utils::RemotePointer,
 };
 
 impl Actor for Client {

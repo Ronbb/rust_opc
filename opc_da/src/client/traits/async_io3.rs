@@ -1,4 +1,4 @@
-use crate::client::memory::RemoteArray;
+use crate::utils::RemoteArray;
 
 /// Asynchronous I/O functionality (OPC DA 3.0).
 ///
