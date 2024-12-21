@@ -1,5 +1,5 @@
 use crate::{
-    def::{self, ToNative as _, TryToLocal as _, TryToNative as _},
+    def::{ServerStatus, ToNative as _, TryToLocal as _, TryToNative as _},
     server::com::{
         base::Variant,
         utils::{PointerWriter, TryWriteArray, TryWriteTo},
@@ -308,10 +308,10 @@ impl TryFrom<opc_da_bindings::tagOPCITEMVQT> for ItemVqt {
     }
 }
 
-impl TryFrom<def::ServerStatus> for opc_da_bindings::tagOPCSERVERSTATUS {
+impl TryFrom<ServerStatus> for opc_da_bindings::tagOPCSERVERSTATUS {
     type Error = windows::core::Error;
 
-    fn try_from(value: def::ServerStatus) -> Result<Self, Self::Error> {
+    fn try_from(value: ServerStatus) -> Result<Self, Self::Error> {
         Ok(Self {
             ftStartTime: value.start_time.try_to_native()?,
             ftCurrentTime: value.current_time.try_to_native()?,
