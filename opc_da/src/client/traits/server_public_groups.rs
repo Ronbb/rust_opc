@@ -15,11 +15,6 @@ pub trait ServerPublicGroupsTrait {
     ///
     /// # Returns
     /// The requested interface pointer for the public group
-    ///
-    /// # Example
-    /// ```no_run
-    /// let group = server.get_public_group_by_name("MyGroup", &IOPCItemMgt::IID)?;
-    /// ```
     fn get_public_group_by_name(
         &self,
         name: &str,

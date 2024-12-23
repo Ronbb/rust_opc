@@ -17,12 +17,6 @@ pub trait CommonTrait {
     ///
     /// # Returns
     /// Result indicating if the locale was successfully set
-    ///
-    /// # Examples
-    /// ```no_run
-    /// use windows::Win32::System::SystemServices::LOCALE_USER_DEFAULT;
-    /// server.set_locale_id(LOCALE_USER_DEFAULT);
-    /// ```
     fn set_locale_id(&self, locale_id: u32) -> windows::core::Result<()> {
         unsafe { self.interface()?.SetLocaleID(locale_id) }
     }

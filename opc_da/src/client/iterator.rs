@@ -38,7 +38,7 @@ impl Iterator for GuidIterator {
             return None;
         }
 
-        if self.index == self.cache.len() as u32 {
+        if self.index == self.count {
             let code = unsafe {
                 self.inner
                     .Next(self.cache.as_mut_slice(), Some(&mut self.count))
@@ -94,7 +94,7 @@ impl Iterator for StringIterator {
             return None;
         }
 
-        if self.index == self.cache.len() as u32 {
+        if self.index == self.count {
             let code = unsafe {
                 self.inner
                     .Next(self.cache.as_mut_slice(), Some(&mut self.count))
@@ -154,7 +154,7 @@ impl<Group: TryFrom<windows::core::IUnknown, Error = windows::core::Error>> Iter
             return None;
         }
 
-        if self.index == self.cache.len() as u32 {
+        if self.index == self.count {
             let code = unsafe {
                 self.inner
                     .Next(self.cache.as_mut_slice(), Some(&mut self.count))

@@ -18,12 +18,6 @@ pub trait ConnectionPointContainerTrait {
     /// # Returns
     /// Connection point interface for the specified GUID
     ///
-    /// # Example
-    /// ```no_run
-    /// use windows::core::GUID;
-    /// let cp = container.find_connection_point(&GUID_CALLBACK_INTERFACE);
-    /// ```
-    ///
     /// # Safety  
     /// Caller must ensure:  
     /// - COM is properly initialized  

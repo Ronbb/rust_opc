@@ -7,17 +7,6 @@
 /// # Thread Safety
 /// The guard is intentionally not `Send` and not `Sync` to ensure COM operations
 /// remain on the thread where they were initialized.
-///
-/// # Example
-/// ```
-/// use opc_da::client::unified::Guard;
-///
-/// let guard = Guard::new(some_value)?;
-/// // COM is now initialized for this thread
-/// // Use the wrapped value through deref
-/// guard.some_method();
-/// // COM will be uninitialized when guard is dropped
-/// ```
 #[derive(Debug)]
 pub struct Guard<T> {
     inner: T,

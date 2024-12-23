@@ -36,7 +36,7 @@ fn test_client() {
 
     let branch = StringIterator::new(
         server
-            .browse_opc_item_ids(opc_da_bindings::OPC_BRANCH, Option::<String>::None, 0, 0)
+            .browse_opc_item_ids(opc_da_bindings::OPC_BRANCH, Some(""), 0, 0)
             .expect("Failed to browse items"),
     )
     .take(1)
@@ -53,7 +53,7 @@ fn test_client() {
 
     let leaf = StringIterator::new(
         server
-            .browse_opc_item_ids(opc_da_bindings::OPC_FLAT, Option::<String>::None, 0, 0)
+            .browse_opc_item_ids(opc_da_bindings::OPC_FLAT, Some(""), 0, 0)
             .expect("Failed to browse items"),
     )
     .take(1)
