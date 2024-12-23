@@ -632,6 +632,70 @@ impl Group {
             GroupInner::V3(group) => self.cancel_async2(group, cancel_id),
         }
     }
+
+    fn refresh2_async<T: AsyncIo2Trait>(
+        &self,
+        async_io2: &T,
+        data_source: DataSourceTarget,
+    ) -> windows::core::Result<DataCallbackFuture<DataChangeEvent>> {
+        let transaction_id = self
+            .next_transaction_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let cancel_id = async_io2.refresh2(data_source.try_to_native()?, transaction_id)?;
+
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+
+        let mut awaiters = self.data_change_awaiters.lock().map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
+        })?;
+
+        awaiters.insert(transaction_id, sender);
+
+        Ok(DataCallbackFuture {
+            receiver: Box::pin(receiver),
+            transaction_id,
+            cancel_id,
+        })
+    }
+
+    fn refresh3_async<T: AsyncIo3Trait>(
+        &self,
+        async_io3: &T,
+        data_source: DataSourceTarget,
+    ) -> windows::core::Result<DataCallbackFuture<DataChangeEvent>> {
+        let transaction_id = self
+            .next_transaction_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let cancel_id = async_io3.refresh_max_age(data_source.max_age(), transaction_id)?;
+
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+
+        let mut awaiters = self.data_change_awaiters.lock().map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
+        })?;
+
+        awaiters.insert(transaction_id, sender);
+
+        Ok(DataCallbackFuture {
+            receiver: Box::pin(receiver),
+            transaction_id,
+            cancel_id,
+        })
+    }
+
+    pub fn refresh_async(
+        &self,
+        data_source: DataSourceTarget,
+    ) -> windows::core::Result<DataCallbackFuture<DataChangeEvent>> {
+        match &self.inner {
+            GroupInner::V1(_) => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "refresh not implemented for v1",
+            )),
+            GroupInner::V2(group) => self.refresh2_async(group, data_source),
+            GroupInner::V3(group) => self.refresh3_async(group, data_source),
+        }
+    }
 }
 
 impl From<v1::Group> for Group {
