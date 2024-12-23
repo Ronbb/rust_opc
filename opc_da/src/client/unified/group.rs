@@ -92,6 +92,44 @@ impl Group {
     pub fn data_change_receiver(&self) -> tokio::sync::broadcast::Receiver<DataChangeEvent> {
         self.data_change_broadcaster.subscribe()
     }
+
+    fn handle_callback<T>(
+        &self,
+        awaiters: &std::sync::Mutex<BTreeMap<u32, tokio::sync::oneshot::Sender<T>>>,
+        transaction_id: u32,
+        event: T,
+    ) -> windows::core::Result<()> {
+        let mut awaiters = awaiters.lock().map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
+        })?;
+
+        let awaiter = awaiters.remove(&transaction_id).ok_or_else(|| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "no awaiter found")
+        })?;
+
+        awaiter.send(event).map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "event awaiter dropped")
+        })
+    }
+
+    fn next_receiver<T>(
+        &self,
+        awaiters: &std::sync::Mutex<BTreeMap<u32, tokio::sync::oneshot::Sender<T>>>,
+    ) -> windows::core::Result<(u32, tokio::sync::oneshot::Receiver<T>)> {
+        let transaction_id = self
+            .next_transaction_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+
+        let mut awaiters = awaiters.lock().map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
+        })?;
+
+        awaiters.insert(transaction_id, sender);
+
+        Ok((transaction_id, receiver))
+    }
 }
 
 impl DataCallbackTrait for Group {
@@ -105,103 +143,19 @@ impl DataCallbackTrait for Group {
                 )
             })?;
 
-        let mut awaiters = self.data_change_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        let awaiter = match awaiters.remove(&event.transaction_id) {
-            Some(awaiter) => awaiter,
-            None => {
-                return Err(windows_core::Error::new(
-                    windows::Win32::Foundation::E_FAIL,
-                    "no awaiter found",
-                ))
-            }
-        };
-
-        awaiter.send(event).map_err(|_| {
-            windows_core::Error::new(
-                windows::Win32::Foundation::E_FAIL,
-                "data change event awaiter dropped",
-            )
-        })?;
-
-        Ok(())
+        self.handle_callback(&self.data_change_awaiters, event.transaction_id, event)
     }
 
     fn on_read_complete(&self, event: ReadCompleteEvent) -> windows_core::Result<()> {
-        let mut awaiters = self.read_complete_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        let awaiter = match awaiters.remove(&event.transaction_id) {
-            Some(awaiter) => awaiter,
-            None => {
-                return Err(windows_core::Error::new(
-                    windows::Win32::Foundation::E_FAIL,
-                    "no awaiter found",
-                ))
-            }
-        };
-
-        awaiter.send(event).map_err(|_| {
-            windows_core::Error::new(
-                windows::Win32::Foundation::E_FAIL,
-                "read complete event awaiter dropped",
-            )
-        })?;
-
-        Ok(())
+        self.handle_callback(&self.read_complete_awaiters, event.transaction_id, event)
     }
 
     fn on_write_complete(&self, event: WriteCompleteEvent) -> windows_core::Result<()> {
-        let mut awaiters = self.write_complete_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        let awaiter = match awaiters.remove(&event.transaction_id) {
-            Some(awaiter) => awaiter,
-            None => {
-                return Err(windows_core::Error::new(
-                    windows::Win32::Foundation::E_FAIL,
-                    "no awaiter found",
-                ))
-            }
-        };
-
-        awaiter.send(event).map_err(|_| {
-            windows_core::Error::new(
-                windows::Win32::Foundation::E_FAIL,
-                "write complete event awaiter dropped",
-            )
-        })?;
-
-        Ok(())
+        self.handle_callback(&self.write_complete_awaiters, event.transaction_id, event)
     }
 
     fn on_cancel_complete(&self, event: CancelCompleteEvent) -> windows_core::Result<()> {
-        let mut awaiters = self.cancel_complete_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        let awaiter = match awaiters.remove(&event.transaction_id) {
-            Some(awaiter) => awaiter,
-            None => {
-                return Err(windows_core::Error::new(
-                    windows::Win32::Foundation::E_FAIL,
-                    "no awaiter found",
-                ))
-            }
-        };
-
-        awaiter.send(event).map_err(|_| {
-            windows_core::Error::new(
-                windows::Win32::Foundation::E_FAIL,
-                "cancel complete event awaiter dropped",
-            )
-        })?;
-
-        Ok(())
+        self.handle_callback(&self.cancel_complete_awaiters, event.transaction_id, event)
     }
 }
 
@@ -325,23 +279,13 @@ impl Group {
         DataCallbackFuture<ReadCompleteEvent>,
         Vec<windows::core::Result<()>>,
     )> {
-        let transaction_id = self
-            .next_transaction_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        let (sender, receive) = tokio::sync::oneshot::channel();
-
-        let mut awaiters = self.read_complete_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        awaiters.insert(transaction_id, sender);
+        let (transaction_id, receiver) = self.next_receiver(&self.read_complete_awaiters)?;
 
         let (cancel_id, results) = async_io2.read(server_handles, transaction_id)?;
 
         Ok((
             DataCallbackFuture {
-                receiver: Box::pin(receive),
+                receiver: Box::pin(receiver),
                 transaction_id,
                 cancel_id,
             },
@@ -358,24 +302,14 @@ impl Group {
         DataCallbackFuture<ReadCompleteEvent>,
         Vec<windows::core::Result<()>>,
     )> {
-        let transaction_id = self
-            .next_transaction_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        let (sender, receive) = tokio::sync::oneshot::channel();
-
-        let mut awaiters = self.read_complete_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        awaiters.insert(transaction_id, sender);
+        let (transaction_id, receiver) = self.next_receiver(&self.read_complete_awaiters)?;
 
         let (cancel_id, results) =
             async_io3.read_max_age(server_handles, max_ages, transaction_id)?;
 
         Ok((
             DataCallbackFuture {
-                receiver: Box::pin(receive),
+                receiver: Box::pin(receiver),
                 transaction_id,
                 cancel_id,
             },
@@ -527,24 +461,14 @@ impl Group {
         DataCallbackFuture<WriteCompleteEvent>,
         Vec<windows::core::Result<()>>,
     )> {
-        let transaction_id = self
-            .next_transaction_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-
-        let (sender, receive) = tokio::sync::oneshot::channel();
-
-        let mut awaiters = self.write_complete_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        awaiters.insert(transaction_id, sender);
+        let (transaction_id, receiver) = self.next_receiver(&self.write_complete_awaiters)?;
 
         let (cancel_id, results) =
             async_io3.write_vqt(server_handles, item_values, transaction_id)?;
 
         Ok((
             DataCallbackFuture {
-                receiver: Box::pin(receive),
+                receiver: Box::pin(receiver),
                 transaction_id,
                 cancel_id,
             },
@@ -602,7 +526,7 @@ impl Group {
         async_io2: &T,
         cancel_id: u32,
     ) -> windows::core::Result<DataCallbackFuture<CancelCompleteEvent>> {
-        let (sender, receive) = tokio::sync::oneshot::channel();
+        let (sender, receiver) = tokio::sync::oneshot::channel();
 
         let mut awaiters = self.cancel_complete_awaiters.lock().map_err(|_| {
             windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
@@ -613,7 +537,7 @@ impl Group {
         async_io2.cancel2(cancel_id)?;
 
         Ok(DataCallbackFuture {
-            receiver: Box::pin(receive),
+            receiver: Box::pin(receiver),
             transaction_id: cancel_id,
             cancel_id,
         })
@@ -638,18 +562,9 @@ impl Group {
         async_io2: &T,
         data_source: DataSourceTarget,
     ) -> windows::core::Result<DataCallbackFuture<DataChangeEvent>> {
-        let transaction_id = self
-            .next_transaction_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (transaction_id, receiver) = self.next_receiver(&self.data_change_awaiters)?;
+
         let cancel_id = async_io2.refresh2(data_source.try_to_native()?, transaction_id)?;
-
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-
-        let mut awaiters = self.data_change_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        awaiters.insert(transaction_id, sender);
 
         Ok(DataCallbackFuture {
             receiver: Box::pin(receiver),
@@ -663,18 +578,9 @@ impl Group {
         async_io3: &T,
         data_source: DataSourceTarget,
     ) -> windows::core::Result<DataCallbackFuture<DataChangeEvent>> {
-        let transaction_id = self
-            .next_transaction_id
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let (transaction_id, receiver) = self.next_receiver(&self.data_change_awaiters)?;
+
         let cancel_id = async_io3.refresh_max_age(data_source.max_age(), transaction_id)?;
-
-        let (sender, receiver) = tokio::sync::oneshot::channel();
-
-        let mut awaiters = self.data_change_awaiters.lock().map_err(|_| {
-            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
-        })?;
-
-        awaiters.insert(transaction_id, sender);
 
         Ok(DataCallbackFuture {
             receiver: Box::pin(receiver),
