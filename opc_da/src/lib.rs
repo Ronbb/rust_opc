@@ -1,7 +1,7 @@
 pub mod def;
 pub mod utils;
 
-#[cfg(feature = "client")]
+#[cfg(feature = "unstable_client")]
 pub mod client;
-#[cfg(feature = "server")]
+#[cfg(feature = "unstable_server")]
 pub mod server;
