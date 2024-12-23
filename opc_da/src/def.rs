@@ -1,3 +1,5 @@
+use std::mem::ManuallyDrop;
+
 use crate::{
     try_from_native,
     utils::{IntoBridge, LocalPointer, RemoteArray, ToNative, TryFromNative, TryToNative},
@@ -380,6 +382,31 @@ impl
                 }
             })
             .collect())
+    }
+}
+
+pub struct ItemPartialValue {
+    pub value: windows::core::VARIANT,
+    pub quality: Option<u16>,
+    pub timestamp: Option<std::time::SystemTime>,
+}
+
+// try to native
+impl TryToNative<opc_da_bindings::tagOPCITEMVQT> for ItemPartialValue {
+    fn try_to_native(&self) -> windows::core::Result<opc_da_bindings::tagOPCITEMVQT> {
+        Ok(opc_da_bindings::tagOPCITEMVQT {
+            vDataValue: ManuallyDrop::new(self.value.clone()),
+            bQualitySpecified: self.quality.is_some().into(),
+            wQuality: self.quality.unwrap_or_default(),
+            bTimeStampSpecified: self.timestamp.is_some().into(),
+            ftTimeStamp: self
+                .timestamp
+                .map(|t| t.try_to_native())
+                .transpose()?
+                .unwrap_or_default(),
+            wReserved: 0,
+            dwReserved: 0,
+        })
     }
 }
 

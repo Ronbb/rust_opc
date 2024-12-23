@@ -8,8 +8,8 @@ use crate::{
         DataCallbackTrait, ItemMgtTrait, SyncIo2Trait, SyncIoTrait,
     },
     def::{
-        CancelCompleteEvent, DataChangeEvent, DataSourceTarget, ItemDef, ItemResult, ItemState,
-        ItemValue, ReadCompleteEvent, WriteCompleteEvent,
+        CancelCompleteEvent, DataChangeEvent, DataSourceTarget, ItemDef, ItemPartialValue,
+        ItemResult, ItemState, ItemValue, ReadCompleteEvent, WriteCompleteEvent,
     },
     utils::{IntoBridge as _, TryToLocal as _, TryToNative as _},
 };
@@ -215,7 +215,7 @@ impl Group {
         }
     }
 
-    pub fn add_items(
+    pub fn add(
         &self,
         items: Vec<ItemDef>,
     ) -> windows::core::Result<Vec<windows::core::Result<ItemResult>>> {
@@ -225,7 +225,7 @@ impl Group {
             .try_to_local()
     }
 
-    pub fn validate_items(
+    pub fn validate(
         &self,
         items: Vec<ItemDef>,
         blob_update: bool,
@@ -236,7 +236,7 @@ impl Group {
             .try_to_local()
     }
 
-    pub fn remove_items(
+    pub fn remove(
         &self,
         server_handles: Vec<u32>,
     ) -> windows::core::Result<Vec<windows::core::Result<()>>> {
@@ -250,7 +250,7 @@ impl Group {
     // TODO set_datatypes
     // TODO create_enumerator
 
-    fn read_items_sync1<T: SyncIoTrait>(
+    fn read_sync1<T: SyncIoTrait>(
         &self,
         sync_io1: &T,
         data_source: DataSourceTarget,
@@ -272,7 +272,7 @@ impl Group {
             .collect())
     }
 
-    fn read_items_sync2<T: SyncIo2Trait>(
+    fn read_sync2<T: SyncIo2Trait>(
         &self,
         sync_io2: &T,
         server_handles: &[u32],
@@ -283,7 +283,7 @@ impl Group {
             .try_to_local()
     }
 
-    pub fn read_items_sync<S>(
+    pub fn read_sync<S>(
         &self,
         items_names: &[S],
         data_source: DataSourceTarget,
@@ -307,9 +307,9 @@ impl Group {
             .collect::<windows::core::Result<_>>()?;
 
         match &self.inner {
-            GroupInner::V1(group) => self.read_items_sync1(group, data_source, &server_handles),
-            GroupInner::V2(group) => self.read_items_sync1(group, data_source, &server_handles),
-            GroupInner::V3(group) => self.read_items_sync2(
+            GroupInner::V1(group) => self.read_sync1(group, data_source, &server_handles),
+            GroupInner::V2(group) => self.read_sync1(group, data_source, &server_handles),
+            GroupInner::V3(group) => self.read_sync2(
                 group,
                 &server_handles,
                 &vec![data_source.max_age(); server_handles.len()],
@@ -317,7 +317,7 @@ impl Group {
         }
     }
 
-    fn read_items_async2<T: AsyncIo2Trait>(
+    fn read_async2<T: AsyncIo2Trait>(
         &self,
         async_io2: &T,
         server_handles: &[u32],
@@ -349,7 +349,7 @@ impl Group {
         ))
     }
 
-    fn read_items_async3<T: AsyncIo3Trait>(
+    fn read_async3<T: AsyncIo3Trait>(
         &self,
         async_io3: &T,
         server_handles: &[u32],
@@ -383,7 +383,7 @@ impl Group {
         ))
     }
 
-    pub fn read_items_async<S: AsRef<str>>(
+    pub fn read_async<S: AsRef<str>>(
         &self,
         items_names: &[S],
         data_source: DataSourceTarget,
@@ -409,14 +409,227 @@ impl Group {
         match &self.inner {
             GroupInner::V1(_) => Err(windows_core::Error::new(
                 windows::Win32::Foundation::E_NOTIMPL,
-                "read_items_async not implemented for v1",
+                "read_async not implemented for v1",
             )),
-            GroupInner::V2(group) => self.read_items_async2(group, &server_handles),
-            GroupInner::V3(group) => self.read_items_async3(
+            GroupInner::V2(group) => self.read_async2(group, &server_handles),
+            GroupInner::V3(group) => self.read_async3(
                 group,
                 &server_handles,
                 &vec![data_source.max_age(); server_handles.len()],
             ),
+        }
+    }
+
+    fn write_sync1<T: SyncIoTrait>(
+        &self,
+        sync_io1: &T,
+        server_handles: &[u32],
+        item_values: &[windows::core::VARIANT],
+    ) -> windows::core::Result<Vec<windows::core::Result<()>>> {
+        let results: Vec<windows::core::Result<()>> = sync_io1
+            .write(server_handles, item_values)?
+            .try_to_local()?;
+
+        Ok(results)
+    }
+
+    fn write_sync2<T: SyncIo2Trait>(
+        &self,
+        sync_io2: &T,
+        server_handles: &[u32],
+        item_values: &[opc_da_bindings::tagOPCITEMVQT],
+    ) -> windows::core::Result<Vec<windows::core::Result<()>>> {
+        sync_io2
+            .write_vqt(server_handles, item_values)?
+            .try_to_local()
+    }
+
+    pub fn write_sync<S>(
+        &self,
+        item_entities: &[(S, ItemPartialValue)],
+    ) -> windows::core::Result<Vec<windows::core::Result<()>>>
+    where
+        S: AsRef<str>,
+    {
+        let server_handles: Vec<u32> = item_entities
+            .iter()
+            .map(|(name, _)| {
+                self.items
+                    .get(name.as_ref())
+                    .map(|item| item.server_handle)
+                    .ok_or_else(|| {
+                        windows::core::Error::new(
+                            windows::Win32::Foundation::E_INVALIDARG,
+                            "item name not found",
+                        )
+                    })
+            })
+            .collect::<windows::core::Result<_>>()?;
+
+        let variants = item_entities.iter().map(|(_, value)| value.value.clone());
+
+        let item_values = item_entities.iter().map(|(_, value)| value.try_to_native());
+
+        match &self.inner {
+            GroupInner::V1(group) => {
+                self.write_sync1(group, &server_handles, &variants.collect::<Vec<_>>())
+            }
+            GroupInner::V2(group) => {
+                self.write_sync1(group, &server_handles, &variants.collect::<Vec<_>>())
+            }
+            GroupInner::V3(group) => self.write_sync2(
+                group,
+                &server_handles,
+                &item_values.collect::<windows::core::Result<Vec<_>>>()?,
+            ),
+        }
+    }
+
+    fn write_async2<T: AsyncIo2Trait>(
+        &self,
+        async_io2: &T,
+        server_handles: &[u32],
+        item_values: &[windows::core::VARIANT],
+    ) -> windows::core::Result<(
+        DataCallbackFuture<WriteCompleteEvent>,
+        Vec<windows::core::Result<()>>,
+    )> {
+        let transaction_id = self
+            .next_transaction_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        let (sender, receive) = tokio::sync::oneshot::channel();
+
+        let mut awaiters = self.write_complete_awaiters.lock().map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
+        })?;
+
+        awaiters.insert(transaction_id, sender);
+
+        let (cancel_id, results) = async_io2.write(server_handles, item_values, transaction_id)?;
+
+        Ok((
+            DataCallbackFuture {
+                receiver: Box::pin(receive),
+                transaction_id,
+                cancel_id,
+            },
+            results.try_to_local()?,
+        ))
+    }
+
+    fn write_async3<T: AsyncIo3Trait>(
+        &self,
+        async_io3: &T,
+        server_handles: &[u32],
+        item_values: &[opc_da_bindings::tagOPCITEMVQT],
+    ) -> windows::core::Result<(
+        DataCallbackFuture<WriteCompleteEvent>,
+        Vec<windows::core::Result<()>>,
+    )> {
+        let transaction_id = self
+            .next_transaction_id
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+
+        let (sender, receive) = tokio::sync::oneshot::channel();
+
+        let mut awaiters = self.write_complete_awaiters.lock().map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
+        })?;
+
+        awaiters.insert(transaction_id, sender);
+
+        let (cancel_id, results) =
+            async_io3.write_vqt(server_handles, item_values, transaction_id)?;
+
+        Ok((
+            DataCallbackFuture {
+                receiver: Box::pin(receive),
+                transaction_id,
+                cancel_id,
+            },
+            results.try_to_local()?,
+        ))
+    }
+
+    pub fn write_async<S>(
+        &self,
+        item_entities: &[(S, ItemPartialValue)],
+    ) -> windows::core::Result<(
+        DataCallbackFuture<WriteCompleteEvent>,
+        Vec<windows::core::Result<()>>,
+    )>
+    where
+        S: AsRef<str>,
+    {
+        let server_handles: Vec<u32> = item_entities
+            .iter()
+            .map(|(name, _)| {
+                self.items
+                    .get(name.as_ref())
+                    .map(|item| item.server_handle)
+                    .ok_or_else(|| {
+                        windows::core::Error::new(
+                            windows::Win32::Foundation::E_INVALIDARG,
+                            "item name not found",
+                        )
+                    })
+            })
+            .collect::<windows::core::Result<_>>()?;
+
+        let variants = item_entities.iter().map(|(_, value)| value.value.clone());
+
+        let item_values = item_entities.iter().map(|(_, value)| value.try_to_native());
+
+        match &self.inner {
+            GroupInner::V1(_) => Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "write_async not implemented for v1",
+            )),
+            GroupInner::V2(group) => {
+                self.write_async2(group, &server_handles, &variants.collect::<Vec<_>>())
+            }
+            GroupInner::V3(group) => self.write_async3(
+                group,
+                &server_handles,
+                &item_values.collect::<windows::core::Result<Vec<_>>>()?,
+            ),
+        }
+    }
+
+    fn cancel_async2<T: AsyncIo2Trait>(
+        &self,
+        async_io2: &T,
+        cancel_id: u32,
+    ) -> windows::core::Result<DataCallbackFuture<CancelCompleteEvent>> {
+        let (sender, receive) = tokio::sync::oneshot::channel();
+
+        let mut awaiters = self.cancel_complete_awaiters.lock().map_err(|_| {
+            windows_core::Error::new(windows::Win32::Foundation::E_FAIL, "lock poisoned")
+        })?;
+
+        awaiters.insert(cancel_id, sender);
+
+        async_io2.cancel2(cancel_id)?;
+
+        Ok(DataCallbackFuture {
+            receiver: Box::pin(receive),
+            transaction_id: cancel_id,
+            cancel_id,
+        })
+    }
+
+    pub fn cancel_async(
+        &self,
+        cancel_id: u32,
+    ) -> windows::core::Result<DataCallbackFuture<CancelCompleteEvent>> {
+        match &self.inner {
+            GroupInner::V1(_) => Err(windows_core::Error::new(
+                windows::Win32::Foundation::E_NOTIMPL,
+                "cancel_async not implemented for v1",
+            )),
+            GroupInner::V2(group) => self.cancel_async2(group, cancel_id),
+            GroupInner::V3(group) => self.cancel_async2(group, cancel_id),
         }
     }
 }
