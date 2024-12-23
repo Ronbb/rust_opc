@@ -9,11 +9,11 @@ use crate::{
 )]
 pub struct DataCallback<'a, T>(pub &'a T)
 where
-    T: DataCallbackTrait + 'a;
+    T: DataCallbackTrait;
 
-impl<'a, T> std::ops::Deref for DataCallback<'a, T>
+impl<T> std::ops::Deref for DataCallback<'_, T>
 where
-    T: DataCallbackTrait + 'a,
+    T: DataCallbackTrait,
 {
     type Target = T;
 

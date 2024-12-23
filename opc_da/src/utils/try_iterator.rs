@@ -1,5 +1,3 @@
-use std::ops::Index;
-
 pub trait TryIterator {
     type Item;
     type Error;
@@ -37,16 +35,35 @@ impl<T: TryIterator> Iterator for TryIter<T> {
 pub trait TryCacheIterator {
     type Item;
     type Error;
-    type Cache: AsRef<[Self::Item]> + Index<usize, Output = Self::Item>;
+    type Cache: IntoIterator<Item = Self::Item>;
 
-    fn try_cache(&mut self) -> Result<Self::Cache, Self::Error>;
+    fn try_cache(&mut self) -> Result<Option<Self::Cache>, Self::Error>;
+
+    #[inline(always)]
+    fn into_iter(self) -> TryCacheIter<Self>
+    where
+        Self: Sized,
+    {
+        TryCacheIter::new(self)
+    }
 }
 
 pub struct TryCacheIter<T: TryCacheIterator> {
     inner: T,
-    cache: T::Cache,
+    cache: Option<<<T as TryCacheIterator>::Cache as std::iter::IntoIterator>::IntoIter>,
     index: usize,
     done: bool,
+}
+
+impl<T: TryCacheIterator> TryCacheIter<T> {
+    pub fn new(inner: T) -> Self {
+        Self {
+            inner,
+            cache: None,
+            index: 0,
+            done: false,
+        }
+    }
 }
 
 impl<T: TryCacheIterator> Iterator for TryCacheIter<T> {
@@ -57,32 +74,28 @@ impl<T: TryCacheIterator> Iterator for TryCacheIter<T> {
             return None;
         }
 
-        if self.index < self.cache.as_ref().len() {
-            let item = unsafe {
-                core::ptr::replace(
-                    &self.cache[self.index] as *const _ as *mut _,
-                    core::mem::zeroed(),
-                )
-            };
-            self.index += 1;
-            return Some(Ok(item));
-        }
+        let next = match &mut self.cache {
+            Some(cache) => cache.next(),
+            None => None,
+        };
 
-        match self.inner.try_cache() {
-            Ok(cache) => {
-                self.cache = cache;
-                self.index = 0;
-                if self.cache.as_ref().is_empty() {
-                    self.done = true;
-                    None
-                } else {
+        match next {
+            Some(item) => Some(Ok(item)),
+            None => match self.inner.try_cache() {
+                Ok(Some(cache)) => {
+                    self.cache = Some(cache.into_iter());
+                    self.index = 0;
                     self.next()
                 }
-            }
-            Err(e) => {
-                self.done = true;
-                Some(Err(e))
-            }
+                Ok(None) => {
+                    self.done = true;
+                    None
+                }
+                Err(e) => {
+                    self.done = true;
+                    Some(Err(e))
+                }
+            },
         }
     }
 }

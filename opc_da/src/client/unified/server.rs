@@ -1,7 +1,7 @@
 use crate::{
-    client::{v1, v2, v3, BrowseServerAddressSpaceTrait, BrowseTrait, ServerTrait},
+    client::{v1, v2, v3, ServerTrait},
     def::{BrowseFilter, BrowseType, EnumScope, GroupState, ServerStatus},
-    utils::ToNative as _,
+    utils::{ToNative as _, TryToLocal},
 };
 
 use super::Group;
@@ -48,7 +48,7 @@ impl Server {
             Self::V3(server) => server.get_status(),
         }?;
 
-        ServerStatus::try_from_native(status.ok()?)
+        status.ok()?.try_to_local()
     }
 
     pub fn remove_group(&self, server_handle: u32, force: bool) -> windows::core::Result<()> {
@@ -72,26 +72,6 @@ impl Server {
         };
 
         Ok(iterator)
-    }
-
-    pub fn browse_items(
-        &self,
-        options: BrowseItemsOptions,
-    ) -> windows::core::Result<BrowseItemsIterator<v2::Server, v3::Server>> {
-        match self {
-            Self::V1(_) => Err(windows::core::Error::new(
-                windows::Win32::Foundation::E_NOTIMPL,
-                "Browsing item ids is not implemented in v1",
-            )),
-            Self::V2(server) => Ok(BrowseItemsIterator::BrowseServerAddressSpace {
-                inner: server,
-                options,
-            }),
-            Self::V3(server) => Ok(BrowseItemsIterator::Browse {
-                inner: server,
-                options,
-            }),
-        }
     }
 }
 
@@ -144,72 +124,4 @@ pub struct BrowseItemsOptions {
     pub return_all_properties: bool,
     pub return_property_values: bool,
     pub property_ids: Vec<u32>,
-}
-
-pub struct BrowseServerAddressSpaceIterator<'a, T: BrowseServerAddressSpaceTrait> {
-    inner: &'a T,
-}
-
-impl<'a, T: BrowseServerAddressSpaceTrait> Iterator for BrowseServerAddressSpaceIterator<'a, T> {
-    type Item = windows::core::Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let browse_type = BrowseType::Leaf;
-
-        let organization = self.inner.query_organization();
-
-        self.inner
-            .browse_opc_item_ids(BrowseType::Branch, Option::<String>::None, 0, 0)
-            .map(|enumerator| enumerator.next())
-            .transpose()
-    }
-}
-
-pub struct BrowseIterator<'a, T: BrowseTrait> {
-    inner: &'a T,
-}
-
-impl<'a, T: BrowseTrait> Iterator for BrowseIterator<'a, T> {
-    type Item = windows::core::Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner
-            .browse(
-                Option::<String>::None,
-                Option::<String>::None,
-                0,
-                BrowseFilter::All,
-                Option::<String>::None,
-                Option::<String>::None,
-                false,
-                false,
-                &[],
-            )
-            .map(|(more_elements, _, elements)| {
-                if more_elements {
-                    Some(elements[0].name.clone())
-                } else {
-                    None
-                }
-            })
-            .transpose()
-    }
-}
-
-pub enum BrowseItemsIterator<'a, T0: BrowseServerAddressSpaceTrait, T1: BrowseTrait> {
-    BrowseServerAddressSpace(BrowseServerAddressSpaceIterator<'a, T0>),
-    Browse(BrowseIterator<'a, T1>),
-}
-
-impl<'a, T0: BrowseServerAddressSpaceTrait, T1: BrowseTrait> Iterator
-    for BrowseItemsIterator<'a, T0, T1>
-{
-    type Item = windows::core::Result<String>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        match self {
-            Self::BrowseServerAddressSpace(inner) => inner.next(),
-            Self::Browse(inner) => inner.next(),
-        }
-    }
 }
