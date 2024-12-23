@@ -51,7 +51,6 @@ pub trait TryCacheIterator {
 pub struct TryCacheIter<T: TryCacheIterator> {
     inner: T,
     cache: Option<<<T as TryCacheIterator>::Cache as std::iter::IntoIterator>::IntoIter>,
-    index: usize,
     done: bool,
 }
 
@@ -60,7 +59,6 @@ impl<T: TryCacheIterator> TryCacheIter<T> {
         Self {
             inner,
             cache: None,
-            index: 0,
             done: false,
         }
     }
@@ -84,7 +82,6 @@ impl<T: TryCacheIterator> Iterator for TryCacheIter<T> {
             None => match self.inner.try_cache() {
                 Ok(Some(cache)) => {
                     self.cache = Some(cache.into_iter());
-                    self.index = 0;
                     self.next()
                 }
                 Ok(None) => {
