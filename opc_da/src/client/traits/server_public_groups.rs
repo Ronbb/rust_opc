@@ -1,5 +1,4 @@
 use crate::utils::LocalPointer;
-use std::str::FromStr;
 
 /// Server public groups management functionality.
 ///
@@ -26,7 +25,7 @@ pub trait ServerPublicGroupsTrait {
         name: &str,
         id: &windows::core::GUID,
     ) -> windows::core::Result<windows::core::IUnknown> {
-        let name = LocalPointer::from_str(name)?;
+        let name = LocalPointer::from(name);
 
         unsafe { self.interface()?.GetPublicGroupByName(name.as_pcwstr(), id) }
     }

@@ -16,5 +16,5 @@ fn test_unified() {
         .expect("Failed to create server");
 
     let group_state = GroupState::default();
-    let group = server.add_group(group_state).expect("Failed to add group");
+    let _ = server.add_group(group_state).expect("Failed to add group");
 }

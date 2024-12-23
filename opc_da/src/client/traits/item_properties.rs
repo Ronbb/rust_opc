@@ -1,6 +1,5 @@
 use crate::utils::{LocalPointer, RemoteArray};
 use opc_da_bindings::IOPCItemProperties;
-use std::str::FromStr;
 
 /// Item properties management functionality.
 ///
@@ -38,7 +37,7 @@ pub trait ItemPropertiesTrait {
             ));
         }
 
-        let item_id = LocalPointer::from_str(item_id)?;
+        let item_id = LocalPointer::from(item_id);
 
         let mut count = 0;
         let mut property_ids = RemoteArray::new(0);
@@ -94,7 +93,7 @@ pub trait ItemPropertiesTrait {
             ));
         }
 
-        let item_id = LocalPointer::from_str(item_id)?;
+        let item_id = LocalPointer::from(item_id);
 
         let mut values = RemoteArray::new(property_ids.len().try_into()?);
         let mut errors = RemoteArray::new(property_ids.len().try_into()?);
@@ -140,7 +139,7 @@ pub trait ItemPropertiesTrait {
             ));
         }
 
-        let item_id = LocalPointer::from_str(item_id)?;
+        let item_id = LocalPointer::from(item_id);
 
         let mut new_item_ids = RemoteArray::new(property_ids.len().try_into()?);
         let mut errors = RemoteArray::new(property_ids.len().try_into()?);

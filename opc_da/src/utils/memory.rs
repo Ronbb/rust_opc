@@ -7,7 +7,6 @@
 //! - `RemotePointer<T>` for managing single values allocated by COM.
 //! - `LocalPointer<T>` for managing local memory that needs to be passed to COM functions.
 
-use std::str::FromStr;
 use windows::core::PWSTR;
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 
@@ -17,7 +16,7 @@ use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 /// It provides safe access to the underlying array through slices.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RemoteArray<T: Sized> {
-    pointer: *mut T,
+    pointer: RemotePointer<T>,
     len: u32,
 }
 
@@ -27,7 +26,7 @@ impl<T: Sized> RemoteArray<T> {
     #[inline(always)]
     pub fn new(len: u32) -> Self {
         Self {
-            pointer: std::ptr::null_mut(),
+            pointer: RemotePointer::null(),
             len,
         }
     }
@@ -37,8 +36,11 @@ impl<T: Sized> RemoteArray<T> {
     /// # Safety
     /// The caller must ensure that the pointer is valid and points to a COM-allocated array.
     #[inline(always)]
-    pub fn from_mut_ptr(pointer: *mut T, len: u32) -> Self {
-        Self { pointer, len }
+    pub(crate) fn from_mut_ptr(pointer: *mut T, len: u32) -> Self {
+        Self {
+            pointer: RemotePointer::from_raw(pointer),
+            len,
+        }
     }
 
     /// Creates a `RemoteArray` from a constant pointer and length.
@@ -46,9 +48,9 @@ impl<T: Sized> RemoteArray<T> {
     /// # Safety
     /// The caller must ensure that the pointer is valid and points to a COM-allocated array.
     #[inline(always)]
-    pub fn from_ptr(pointer: *const T, len: u32) -> Self {
+    pub(crate) fn from_ptr(pointer: *const T, len: u32) -> Self {
         Self {
-            pointer: pointer as *mut T,
+            pointer: RemotePointer::from_raw(pointer as *mut T),
             len,
         }
     }
@@ -57,7 +59,7 @@ impl<T: Sized> RemoteArray<T> {
     #[inline(always)]
     pub fn empty() -> Self {
         Self {
-            pointer: std::ptr::null_mut(),
+            pointer: RemotePointer::null(),
             len: 0,
         }
     }
@@ -67,7 +69,7 @@ impl<T: Sized> RemoteArray<T> {
     /// This is useful when calling COM functions that output an array via a pointer to a pointer.
     #[inline(always)]
     pub fn as_mut_ptr(&mut self) -> *mut *mut T {
-        &mut self.pointer
+        self.pointer.as_mut_ptr()
     }
 
     /// Returns a slice to the underlying array.
@@ -76,14 +78,14 @@ impl<T: Sized> RemoteArray<T> {
     /// The caller must ensure that the `pointer` is valid for reads and points to an array of `len` elements.
     #[inline(always)]
     pub fn as_slice(&self) -> &[T] {
-        if self.pointer.is_null() || self.len == 0 {
+        if self.pointer.inner.is_null() || self.len == 0 {
             return &[];
         }
 
         let len = usize::try_from(self.len).unwrap_or(0);
 
         // Pointer and length are guaranteed to be valid
-        unsafe { core::slice::from_raw_parts(self.pointer, len) }
+        unsafe { core::slice::from_raw_parts(self.pointer.inner, len) }
     }
 
     /// Returns a mutable slice to the underlying array.
@@ -92,20 +94,20 @@ impl<T: Sized> RemoteArray<T> {
     /// The caller must ensure that the `pointer` is valid for reads and writes and points to an array of `len` elements.
     #[inline(always)]
     pub fn as_mut_slice(&mut self) -> &mut [T] {
-        if self.pointer.is_null() || self.len == 0 {
+        if self.pointer.inner.is_null() || self.len == 0 {
             return &mut [];
         }
 
         let len = usize::try_from(self.len).unwrap_or(0);
 
         // Pointer and length are guaranteed to be valid
-        unsafe { core::slice::from_raw_parts_mut(self.pointer, len) }
+        unsafe { core::slice::from_raw_parts_mut(self.pointer.inner, len) }
     }
 
     /// Returns the length of the array.
     #[inline(always)]
     pub fn len(&self) -> u32 {
-        if self.pointer.is_null() {
+        if self.pointer.inner.is_null() {
             return 0;
         }
 
@@ -115,7 +117,7 @@ impl<T: Sized> RemoteArray<T> {
     /// Checks if the array is empty.
     #[inline(always)]
     pub fn is_empty(&self) -> bool {
-        self.len == 0 || self.pointer.is_null()
+        self.len == 0 || self.pointer.inner.is_null()
     }
 
     /// Returns a mutable pointer to the length.
@@ -134,6 +136,13 @@ impl<T: Sized> RemoteArray<T> {
     pub(crate) unsafe fn set_len(&mut self, len: u32) {
         self.len = len;
     }
+
+    pub fn into_vec(self) -> Vec<RemotePointer<T>> {
+        self.as_slice()
+            .iter()
+            .map(|v| RemotePointer::from_raw(v as *const T as *mut T))
+            .collect()
+    }
 }
 
 impl<T: Sized> Default for RemoteArray<T> {
@@ -144,35 +153,12 @@ impl<T: Sized> Default for RemoteArray<T> {
     }
 }
 
-impl<T: Sized> Drop for RemoteArray<T> {
-    /// Drops the `RemoteArray`, freeing the COM-allocated memory.
-    #[inline(always)]
-    fn drop(&mut self) {
-        if !self.pointer.is_null() {
-            unsafe {
-                CoTaskMemFree(Some(self.pointer as _));
-            }
-        }
-    }
-}
-
-impl<T, E: Into<RemotePointer<T>> + Copy> From<RemoteArray<E>> for Vec<RemotePointer<T>> {
-    /// Converts a `RemoteArray` to a vector of `RemotePointer`.
-    #[inline(always)]
-    fn from(array: RemoteArray<E>) -> Self {
-        array
-            .as_slice()
-            .iter()
-            .map(|value| (*value).into())
-            .collect()
-    }
-}
-
 /// A safe wrapper around a pointer allocated by COM.
 ///
 /// This struct ensures proper cleanup of COM-allocated memory when dropped.
 /// It provides methods to access the underlying pointer.
 #[repr(transparent)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct RemotePointer<T: Sized> {
     inner: *mut T,
 }
@@ -182,7 +168,7 @@ impl<T: Sized> RemotePointer<T> {
     #[inline(always)]
     pub fn null() -> Self {
         Self {
-            inner: std::ptr::null_mut(),
+            inner: core::ptr::null_mut(),
         }
     }
 
@@ -390,16 +376,6 @@ impl<T: Sized> LocalPointer<T> {
 }
 
 // Implementations for string handling
-
-impl FromStr for LocalPointer<Vec<u16>> {
-    type Err = windows::core::HRESULT;
-
-    /// Converts a string slice to a `LocalPointer` containing a UTF-16 encoded null-terminated string.
-    #[inline(always)]
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self::from(s))
-    }
-}
 
 impl<S: AsRef<str>> From<S> for LocalPointer<Vec<u16>> {
     /// Converts a string slice to a `LocalPointer` containing a UTF-16 encoded null-terminated string.

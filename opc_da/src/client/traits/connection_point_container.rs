@@ -1,5 +1,4 @@
-use windows::core::GUID;
-use windows::Win32::System::Com::IConnectionPoint;
+use windows::core::{Interface as _, GUID};
 
 /// COM connection point container functionality.
 ///
@@ -34,8 +33,17 @@ pub trait ConnectionPointContainerTrait {
     /// Returns an error if:  
     /// - The COM operation fails  
     /// - The connection point is not found
-    fn find_connection_point(&self, id: &GUID) -> windows::core::Result<IConnectionPoint> {
+    fn find_connection_point(
+        &self,
+        id: &GUID,
+    ) -> windows::core::Result<windows::Win32::System::Com::IConnectionPoint> {
         unsafe { self.interface()?.FindConnectionPoint(id) }
+    }
+
+    fn data_callback_connection_point(
+        &self,
+    ) -> windows::core::Result<windows::Win32::System::Com::IConnectionPoint> {
+        self.find_connection_point(&opc_da_bindings::IOPCDataCallback::IID)
     }
 
     /// Enumerates all available connection points.

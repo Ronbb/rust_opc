@@ -445,6 +445,7 @@ impl ToNative<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum DataCallbackEvent {
     DataChange(DataChangeEvent),
     ReadComplete(ReadCompleteEvent),
@@ -452,6 +453,7 @@ pub enum DataCallbackEvent {
     CancelComplete(CancelCompleteEvent),
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct DataChangeEvent {
     pub transaction_id: u32,
     pub group_handle: u32,
@@ -464,6 +466,7 @@ pub struct DataChangeEvent {
     pub errors: RemoteArray<windows_core::HRESULT>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct ReadCompleteEvent {
     pub transaction_id: u32,
     pub group_handle: u32,
@@ -476,6 +479,7 @@ pub struct ReadCompleteEvent {
     pub errors: RemoteArray<windows_core::HRESULT>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct WriteCompleteEvent {
     pub transaction_id: u32,
     pub group_handle: u32,
@@ -484,7 +488,37 @@ pub struct WriteCompleteEvent {
     pub errors: RemoteArray<windows_core::HRESULT>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct CancelCompleteEvent {
     pub transaction_id: u32,
     pub group_handle: u32,
+}
+
+pub enum NamespaceType {
+    Flat,
+    Hierarchy,
+}
+
+impl TryFromNative<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
+    fn try_from_native(
+        native: &opc_da_bindings::tagOPCNAMESPACETYPE,
+    ) -> windows::core::Result<Self> {
+        match *native {
+            opc_da_bindings::OPC_NS_HIERARCHIAL => Ok(NamespaceType::Hierarchy),
+            opc_da_bindings::OPC_NS_FLAT => Ok(NamespaceType::Flat),
+            unknown => Err(windows::core::Error::new(
+                windows::Win32::Foundation::E_INVALIDARG,
+                format!("Unknown namespace type: {:?}", unknown),
+            )),
+        }
+    }
+}
+
+impl ToNative<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
+    fn to_native(&self) -> opc_da_bindings::tagOPCNAMESPACETYPE {
+        match self {
+            NamespaceType::Hierarchy => opc_da_bindings::OPC_NS_HIERARCHIAL,
+            NamespaceType::Flat => opc_da_bindings::OPC_NS_FLAT,
+        }
+    }
 }
