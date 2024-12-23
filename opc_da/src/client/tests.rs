@@ -128,4 +128,7 @@ fn test_client() {
 
     let state = states.as_slice().first().unwrap();
     println!("State: {:?}", state);
+
+    SyncIoTrait::write(&group, &[server_handle], &[(*state.vDataValue).clone()])
+        .expect("Failed to write");
 }
