@@ -29,13 +29,6 @@ impl ClientTrait<Server> for Client {
 /// - `IOPCCommon` for server status and locale management
 /// - `IOPCBrowse` for browsing the server address space
 /// - `IOPCItemIO` for direct item read/write operations
-///
-/// # Example
-/// ```no_run
-/// use opc_da::client::v3::Server;
-/// // Create server from IUnknown interface
-/// let server: Server = unknown.try_into()?;
-/// ```
 pub struct Server {
     pub(crate) server: opc_da_bindings::IOPCServer,
     pub(crate) common: opc_da_bindings::IOPCCommon,

@@ -31,13 +31,6 @@ impl ClientTrait<Server> for Client {
 /// - `IOPCItemProperties` for browsing item properties
 /// - `IOPCServerPublicGroups` for public group management
 /// - `IOPCBrowseServerAddressSpace` for browsing the address space
-///
-/// # Example
-/// ```no_run
-/// use opc_da::client::v2::Server;
-/// // Create server from IUnknown interface
-/// let server: Server = unknown.try_into()?;
-/// ```
 pub struct Server {
     pub(crate) server: opc_da_bindings::IOPCServer,
     pub(crate) common: opc_da_bindings::IOPCCommon,
