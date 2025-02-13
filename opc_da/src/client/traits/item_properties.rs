@@ -83,7 +83,7 @@ pub trait ItemPropertiesTrait {
         item_id: &str,
         property_ids: &[u32],
     ) -> windows::core::Result<(
-        RemoteArray<windows::core::VARIANT>,
+        RemoteArray<windows::Win32::System::Variant::VARIANT>,
         RemoteArray<windows::core::HRESULT>,
     )> {
         if property_ids.is_empty() {

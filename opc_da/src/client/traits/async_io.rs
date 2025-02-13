@@ -1,4 +1,4 @@
-use windows::core::VARIANT;
+use windows::Win32::System::Variant::VARIANT;
 
 use crate::utils::RemoteArray;
 

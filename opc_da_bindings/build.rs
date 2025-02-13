@@ -5,12 +5,14 @@ fn main() {
     windows_bindgen::bindgen([
         "--in",
         ".windows/winmd/OPCDA.winmd",
+        "default",
         "--out",
         "src/bindings.rs",
+        "--reference",
+        "windows,skip-root,Windows",
         "--filter",
         "OPCDA",
-        "--config",
-        "implement",
-    ])
-    .unwrap();
+        "--flat",
+        "--implement",
+    ]);
 }

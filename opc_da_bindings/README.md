@@ -61,3 +61,12 @@ pub fn get_servers() -> Vec<String> {
     results
 }
 ```
+
+## Rebuild metadata
+
+Open **Developer Powershell for VS2022**.
+
+```batch
+cd .metadata
+dotnet build
+```

@@ -98,7 +98,7 @@ pub trait GroupTrait {
     fn write(
         &self,
         item_server_handles: &[u32],
-        item_values: &[windows::core::VARIANT],
+        item_values: &[windows::Win32::System::Variant::VARIANT],
         errors: &mut [windows::core::HRESULT],
     ) -> windows::core::Result<()>;
 
@@ -106,7 +106,7 @@ pub trait GroupTrait {
         &self,
         item_server_handles: &[u32],
         max_age: &[u32],
-        values: &mut [windows::core::VARIANT],
+        values: &mut [windows::Win32::System::Variant::VARIANT],
         qualities: &mut [u16],
         timestamps: &mut [windows::Win32::Foundation::FILETIME],
         errors: &mut [windows::core::HRESULT],
@@ -132,7 +132,7 @@ pub trait GroupTrait {
         &self,
         count: u32,
         item_server_handles: &[u32],
-        item_values: &[windows::core::VARIANT],
+        item_values: &[windows::Win32::System::Variant::VARIANT],
         transaction_id: u32,
         cancel_id: &mut u32,
         errors: &mut [windows::core::HRESULT],
@@ -248,7 +248,7 @@ pub trait GroupTrait {
         &self,
         connection: u32,
         item_server_handles: &[u32],
-        item_values: &[windows::core::VARIANT],
+        item_values: &[windows::Win32::System::Variant::VARIANT],
         transaction_id: &mut u32,
         errors: &mut [windows::core::HRESULT],
     ) -> windows::core::Result<()>;
@@ -313,5 +313,6 @@ pub trait GroupTrait {
 
     fn data_unadvise(&self, connection: u32) -> windows::core::Result<()>;
 
-    fn enum_data_advise(&self) -> windows::core::Result<windows::Win32::System::Com::IEnumSTATDATA>;
+    fn enum_data_advise(&self)
+        -> windows::core::Result<windows::Win32::System::Com::IEnumSTATDATA>;
 }

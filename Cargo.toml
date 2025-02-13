@@ -1,3 +1,6 @@
 [workspace]
 resolver = "2"
 members = ["opc_da_bindings", "opc_da"]
+
+[profile.dev.build-override]
+debug = true

@@ -1,5 +1,5 @@
 use crate::utils::RemoteArray;
-use windows::core::VARIANT;
+use windows::Win32::System::Variant::VARIANT;
 
 /// Synchronous I/O functionality (OPC DA 1.0).
 ///

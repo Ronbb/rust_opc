@@ -274,7 +274,7 @@ pub struct ItemState {
     pub client_handle: u32,
     pub timestamp: std::time::SystemTime,
     pub quality: u16,
-    pub data_value: windows::core::VARIANT,
+    pub data_value: windows::Win32::System::Variant::VARIANT,
 }
 
 impl TryFromNative<opc_da_bindings::tagOPCITEMSTATE> for ItemState {
@@ -331,14 +331,14 @@ impl TryToNative<opc_da_bindings::tagOPCDATASOURCE> for DataSourceTarget {
 }
 
 pub struct ItemValue {
-    pub value: windows::core::VARIANT,
+    pub value: windows::Win32::System::Variant::VARIANT,
     pub quality: u16,
     pub timestamp: std::time::SystemTime,
 }
 
 impl
     TryFromNative<(
-        RemoteArray<windows::core::VARIANT>,
+        RemoteArray<windows::Win32::System::Variant::VARIANT>,
         RemoteArray<u16>,
         RemoteArray<windows::Win32::Foundation::FILETIME>,
         RemoteArray<windows::core::HRESULT>,
@@ -346,7 +346,7 @@ impl
 {
     fn try_from_native(
         native: &(
-            RemoteArray<windows::core::VARIANT>,
+            RemoteArray<windows::Win32::System::Variant::VARIANT>,
             RemoteArray<u16>,
             RemoteArray<windows::Win32::Foundation::FILETIME>,
             RemoteArray<windows::core::HRESULT>,
@@ -386,7 +386,7 @@ impl
 }
 
 pub struct ItemPartialValue {
-    pub value: windows::core::VARIANT,
+    pub value: windows::Win32::System::Variant::VARIANT,
     pub quality: Option<u16>,
     pub timestamp: Option<std::time::SystemTime>,
 }
@@ -487,7 +487,7 @@ pub struct DataChangeEvent {
     pub master_quality: windows_core::HRESULT,
     pub master_error: windows_core::HRESULT,
     pub client_items: RemoteArray<u32>,
-    pub values: RemoteArray<windows::core::VARIANT>,
+    pub values: RemoteArray<windows::Win32::System::Variant::VARIANT>,
     pub qualities: RemoteArray<u16>,
     pub timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
     pub errors: RemoteArray<windows_core::HRESULT>,
@@ -500,7 +500,7 @@ pub struct ReadCompleteEvent {
     pub master_quality: windows_core::HRESULT,
     pub master_error: windows_core::HRESULT,
     pub client_items: RemoteArray<u32>,
-    pub values: RemoteArray<windows::core::VARIANT>,
+    pub values: RemoteArray<windows::Win32::System::Variant::VARIANT>,
     pub qualities: RemoteArray<u16>,
     pub timestamps: RemoteArray<windows::Win32::Foundation::FILETIME>,
     pub errors: RemoteArray<windows_core::HRESULT>,
