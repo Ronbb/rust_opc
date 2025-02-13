@@ -14,17 +14,17 @@ targets = []
 [dependencies]
 opc_da_bindings = { path = "../opc_da_bindings", version = "0.1.2" }
 globset = "0.4.15"
-tokio = { version = "1.42.0", features = ["rt-multi-thread", "full"] }
-windows = { version = "0.58.0", features = [
-    "implement",
+tokio = { version = "1.43.0", features = ["rt-multi-thread", "full"] }
+windows = { version = "0.59.0", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
+    "Win32_System_Ole",
     "Win32_System_Variant",
     "Win32_System_WinRT",
 ] }
-windows-core = "0.58.0"
+windows-core = "0.59.0"
 actix = "0.13.5"
 
 [features]

@@ -231,7 +231,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCItemProperties_Impl for Serv
         item_id: &windows::core::PCWSTR,
         count: u32,
         property_ids: *const u32,
-        data: *mut *mut windows::core::VARIANT,
+        data: *mut *mut windows::Win32::System::Variant::VARIANT,
         errors: *mut *mut windows::core::HRESULT,
     ) -> windows::core::Result<()> {
         let property_ids = PointerReader::try_read_array(count, property_ids)?;
@@ -480,7 +480,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCItemIO_Impl for Server_Impl<
         count: u32,
         item_ids: *const windows::core::PCWSTR,
         max_ages: *const u32,
-        values: *mut *mut windows::core::VARIANT,
+        values: *mut *mut windows::Win32::System::Variant::VARIANT,
         qualities: *mut *mut u16,
         timestamps: *mut *mut windows::Win32::Foundation::FILETIME,
         errors: *mut *mut windows::core::HRESULT,

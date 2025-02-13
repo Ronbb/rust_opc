@@ -1,0 +1,21 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "(Windows) 启动",
+            "type": "cppvsdbg",
+            "request": "launch",
+            "program": "D:\\Project\\rust_opc\\target\\debug\\build\\opc_da_bindings-379a4664215fade9\\build-script-build",
+            "args": [],
+            "stopAtEntry": false,
+            "cwd": "D:\\Project\\rust_opc\\opc_da_bindings",
+            "environment": [
+                {
+                    "name": "RUST_BACKTRACE",
+                    "value": "full"
+                }
+            ],
+            "console": "externalTerminal"
+        }
+    ]
+}

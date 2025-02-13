@@ -269,7 +269,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCSyncIO_Impl for Group_Impl<T>
         &self,
         count: u32,
         item_server_handles: *const u32,
-        item_values: *const windows::core::VARIANT,
+        item_values: *const windows::Win32::System::Variant::VARIANT,
         errors: *mut *mut windows::core::HRESULT,
     ) -> windows::core::Result<()> {
         safe_call! {
@@ -292,7 +292,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCSyncIO2_Impl for Group_Impl<T
         count: u32,
         item_server_handles: *const u32,
         max_age: *const u32,
-        values: *mut *mut windows::core::VARIANT,
+        values: *mut *mut windows::Win32::System::Variant::VARIANT,
         qualities: *mut *mut u16,
         timestamps: *mut *mut windows::Win32::Foundation::FILETIME,
         errors: *mut *mut windows::core::HRESULT,
@@ -359,7 +359,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO2_Impl for Group_Impl<
         &self,
         count: u32,
         item_server_handles: *const u32,
-        item_values: *const windows::core::VARIANT,
+        item_values: *const windows::Win32::System::Variant::VARIANT,
         transaction_id: u32,
         cancel_id: *mut u32,
         errors: *mut *mut windows::core::HRESULT,
@@ -648,7 +648,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO_Impl for Group_Impl<T
         connection: u32,
         count: u32,
         item_server_handles: *const u32,
-        item_values: *const windows::core::VARIANT,
+        item_values: *const windows::Win32::System::Variant::VARIANT,
         transaction_id: *mut u32,
         errors: *mut *mut windows::core::HRESULT,
     ) -> windows::core::Result<()> {

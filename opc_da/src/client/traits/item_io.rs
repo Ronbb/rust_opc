@@ -29,7 +29,7 @@ pub trait ItemIoTrait {
         item_ids: &[String],
         max_age: &[u32],
     ) -> windows::core::Result<(
-        RemoteArray<windows::core::VARIANT>,
+        RemoteArray<windows::Win32::System::Variant::VARIANT>,
         RemoteArray<u16>,
         RemoteArray<windows::Win32::Foundation::FILETIME>,
         RemoteArray<windows::core::HRESULT>,

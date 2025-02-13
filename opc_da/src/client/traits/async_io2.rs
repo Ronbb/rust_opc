@@ -55,7 +55,7 @@ pub trait AsyncIo2Trait {
     fn write(
         &self,
         server_handles: &[u32],
-        values: &[windows::core::VARIANT],
+        values: &[windows::Win32::System::Variant::VARIANT],
         transaction_id: u32,
     ) -> windows::core::Result<(u32, RemoteArray<windows::core::HRESULT>)> {
         let len = server_handles.len().try_into()?;

@@ -358,7 +358,7 @@ impl Group {
         &self,
         sync_io1: &T,
         server_handles: &[u32],
-        item_values: &[windows::core::VARIANT],
+        item_values: &[windows::Win32::System::Variant::VARIANT],
     ) -> windows::core::Result<Vec<windows::core::Result<()>>> {
         let results: Vec<windows::core::Result<()>> = sync_io1
             .write(server_handles, item_values)?
@@ -423,7 +423,7 @@ impl Group {
         &self,
         async_io2: &T,
         server_handles: &[u32],
-        item_values: &[windows::core::VARIANT],
+        item_values: &[windows::Win32::System::Variant::VARIANT],
     ) -> windows::core::Result<(
         DataCallbackFuture<WriteCompleteEvent>,
         Vec<windows::core::Result<()>>,
