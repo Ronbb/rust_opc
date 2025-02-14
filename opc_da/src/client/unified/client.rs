@@ -1,4 +1,7 @@
-use crate::client::{v1, v2, v3, ClientTrait as _, GuidIterator};
+use crate::{
+    client::{v1, v2, v3, ClientTrait as _, GuidIterator},
+    def::ClassContext,
+};
 
 use super::Server;
 
@@ -32,9 +35,15 @@ impl Client {
 
     pub fn create_server(&self, class_id: windows::core::GUID) -> windows::core::Result<Server> {
         match self {
-            Client::V1(client) => Ok(Server::V1(client.create_server(class_id)?)),
-            Client::V2(client) => Ok(Server::V2(client.create_server(class_id)?)),
-            Client::V3(client) => Ok(Server::V3(client.create_server(class_id)?)),
+            Client::V1(client) => Ok(Server::V1(
+                client.create_server(class_id, ClassContext::All)?,
+            )),
+            Client::V2(client) => Ok(Server::V2(
+                client.create_server(class_id, ClassContext::All)?,
+            )),
+            Client::V3(client) => Ok(Server::V3(
+                client.create_server(class_id, ClassContext::All)?,
+            )),
         }
     }
 }

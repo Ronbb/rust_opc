@@ -65,22 +65,18 @@ pub struct ItemDef {
     pub blob: Vec<u8>,
 }
 
-pub mod bridge {
-    use crate::utils::LocalPointer;
-
-    pub struct ItemDef {
-        pub access_path: LocalPointer<Vec<u16>>,
-        pub item_id: LocalPointer<Vec<u16>>,
-        pub active: bool,
-        pub item_client_handle: u32,
-        pub requested_data_type: u16,
-        pub blob: LocalPointer<Vec<u8>>,
-    }
+pub struct ItemDefBridge {
+    pub access_path: LocalPointer<Vec<u16>>,
+    pub item_id: LocalPointer<Vec<u16>>,
+    pub active: bool,
+    pub item_client_handle: u32,
+    pub requested_data_type: u16,
+    pub blob: LocalPointer<Vec<u8>>,
 }
 
-impl IntoBridge<bridge::ItemDef> for ItemDef {
-    fn into_bridge(self) -> bridge::ItemDef {
-        bridge::ItemDef {
+impl IntoBridge<ItemDefBridge> for ItemDef {
+    fn into_bridge(self) -> ItemDefBridge {
+        ItemDefBridge {
             access_path: LocalPointer::from(&self.access_path),
             item_id: LocalPointer::from(&self.item_id),
             active: self.active,
@@ -91,7 +87,7 @@ impl IntoBridge<bridge::ItemDef> for ItemDef {
     }
 }
 
-impl TryToNative<opc_da_bindings::tagOPCITEMDEF> for bridge::ItemDef {
+impl TryToNative<opc_da_bindings::tagOPCITEMDEF> for ItemDefBridge {
     fn try_to_native(&self) -> windows::core::Result<opc_da_bindings::tagOPCITEMDEF> {
         Ok(opc_da_bindings::tagOPCITEMDEF {
             szAccessPath: self.access_path.as_pwstr(),
@@ -544,6 +540,213 @@ impl ToNative<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
         match self {
             NamespaceType::Hierarchy => opc_da_bindings::OPC_NS_HIERARCHIAL,
             NamespaceType::Flat => opc_da_bindings::OPC_NS_FLAT,
+        }
+    }
+}
+
+// COSERVERINFO
+#[derive(Debug, Clone, PartialEq)]
+pub struct ServerInfo {
+    pub name: String,
+    pub auth_info: AuthInfo,
+}
+
+pub struct ServerInfoBridge {
+    pub name: LocalPointer<Vec<u16>>,
+    pub auth_info: AuthInfoBridge,
+}
+
+impl IntoBridge<ServerInfoBridge> for ServerInfo {
+    fn into_bridge(self) -> ServerInfoBridge {
+        ServerInfoBridge {
+            name: LocalPointer::from(&self.name),
+            auth_info: self.auth_info.into_bridge(),
+        }
+    }
+}
+
+impl TryToNative<windows::Win32::System::Com::COSERVERINFO> for ServerInfoBridge {
+    fn try_to_native(&self) -> windows::core::Result<windows::Win32::System::Com::COSERVERINFO> {
+        Ok(windows::Win32::System::Com::COSERVERINFO {
+            dwReserved1: 0,
+            dwReserved2: 0,
+            pwszName: self.name.as_pwstr(),
+            pAuthInfo: &self.auth_info.try_to_native()? as *const _ as *mut _,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuthInfo {
+    pub authn_svc: u32,
+    pub authz_svc: u32,
+    pub server_principal_name: String,
+    pub authn_level: u32,
+    pub impersonation_level: u32,
+    pub auth_identity_data: AuthIdentity,
+    pub capabilities: u32,
+}
+
+pub struct AuthInfoBridge {
+    pub authn_svc: u32,
+    pub authz_svc: u32,
+    pub server_principal_name: LocalPointer<Vec<u16>>,
+    pub authn_level: u32,
+    pub impersonation_level: u32,
+    pub auth_identity_data: AuthIdentityBridge,
+    pub capabilities: u32,
+}
+
+impl IntoBridge<AuthInfoBridge> for AuthInfo {
+    fn into_bridge(self) -> AuthInfoBridge {
+        AuthInfoBridge {
+            authn_svc: self.authn_svc,
+            authz_svc: self.authz_svc,
+            server_principal_name: LocalPointer::from(&self.server_principal_name),
+            authn_level: self.authn_level,
+            impersonation_level: self.impersonation_level,
+            auth_identity_data: self.auth_identity_data.into_bridge(),
+            capabilities: self.capabilities,
+        }
+    }
+}
+
+impl TryToNative<windows::Win32::System::Com::COAUTHINFO> for AuthInfoBridge {
+    fn try_to_native(&self) -> windows::core::Result<windows::Win32::System::Com::COAUTHINFO> {
+        Ok(windows::Win32::System::Com::COAUTHINFO {
+            dwAuthnSvc: self.authn_svc,
+            dwAuthzSvc: self.authz_svc,
+            pwszServerPrincName: self.server_principal_name.as_pwstr(),
+            dwAuthnLevel: self.authn_level,
+            dwImpersonationLevel: self.impersonation_level,
+            pAuthIdentityData: &self.auth_identity_data.try_to_native()? as *const _ as *mut _,
+            dwCapabilities: self.capabilities,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AuthIdentity {
+    pub user: String,
+    pub domain: String,
+    pub password: String,
+    pub flags: u32,
+}
+
+pub struct AuthIdentityBridge {
+    pub user: LocalPointer<Vec<u16>>,
+    pub domain: LocalPointer<Vec<u16>>,
+    pub password: LocalPointer<Vec<u16>>,
+    pub flags: u32,
+}
+
+impl IntoBridge<AuthIdentityBridge> for AuthIdentity {
+    fn into_bridge(self) -> AuthIdentityBridge {
+        AuthIdentityBridge {
+            user: LocalPointer::from(&self.user),
+            domain: LocalPointer::from(&self.domain),
+            password: LocalPointer::from(&self.password),
+            flags: self.flags,
+        }
+    }
+}
+
+impl TryToNative<windows::Win32::System::Com::COAUTHIDENTITY> for AuthIdentityBridge {
+    fn try_to_native(&self) -> windows::core::Result<windows::Win32::System::Com::COAUTHIDENTITY> {
+        Ok(windows::Win32::System::Com::COAUTHIDENTITY {
+            User: self.user.as_pwstr().0,
+            UserLength: self.user.len().try_into().map_err(|_| {
+                windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "User name exceeds u32 maximum length",
+                )
+            })?,
+            Domain: self.domain.as_pwstr().0,
+            DomainLength: self.domain.len().try_into().map_err(|_| {
+                windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "Domain name exceeds u32 maximum length",
+                )
+            })?,
+            Password: self.password.as_pwstr().0,
+            PasswordLength: self.password.len().try_into().map_err(|_| {
+                windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "Password exceeds u32 maximum length",
+                )
+            })?,
+            Flags: self.flags,
+        })
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClassContext {
+    All,
+    InProcServer,
+    InProcHandler,
+    LocalServer,
+    InProcServer16,
+    RemoteServer,
+    InProcHandler16,
+    NoCodeDownload,
+    NoCustomMarshal,
+    EnableCodeDownload,
+    NoFailureLog,
+    DisableAAA,
+    EnableAAA,
+    FromDefaultContext,
+    ActivateX86Server,
+    Activate32BitServer,
+    Activate64BitServer,
+    EnableCloaking,
+    AppContainer,
+    ActivateAAAAsIU,
+    ActivateARM32Server,
+    AllowLowerTrustRegistration,
+    PsDll,
+}
+
+impl ToNative<windows::Win32::System::Com::CLSCTX> for ClassContext {
+    fn to_native(&self) -> windows::Win32::System::Com::CLSCTX {
+        match self {
+            ClassContext::All => windows::Win32::System::Com::CLSCTX_ALL,
+            ClassContext::InProcServer => windows::Win32::System::Com::CLSCTX_INPROC_SERVER,
+            ClassContext::InProcHandler => windows::Win32::System::Com::CLSCTX_INPROC_HANDLER,
+            ClassContext::LocalServer => windows::Win32::System::Com::CLSCTX_LOCAL_SERVER,
+            ClassContext::InProcServer16 => windows::Win32::System::Com::CLSCTX_INPROC_SERVER16,
+            ClassContext::RemoteServer => windows::Win32::System::Com::CLSCTX_REMOTE_SERVER,
+            ClassContext::InProcHandler16 => windows::Win32::System::Com::CLSCTX_INPROC_HANDLER16,
+            ClassContext::NoCodeDownload => windows::Win32::System::Com::CLSCTX_NO_CODE_DOWNLOAD,
+            ClassContext::NoCustomMarshal => windows::Win32::System::Com::CLSCTX_NO_CUSTOM_MARSHAL,
+            ClassContext::EnableCodeDownload => {
+                windows::Win32::System::Com::CLSCTX_ENABLE_CODE_DOWNLOAD
+            }
+            ClassContext::NoFailureLog => windows::Win32::System::Com::CLSCTX_NO_FAILURE_LOG,
+            ClassContext::DisableAAA => windows::Win32::System::Com::CLSCTX_DISABLE_AAA,
+            ClassContext::EnableAAA => windows::Win32::System::Com::CLSCTX_ENABLE_AAA,
+            ClassContext::FromDefaultContext => {
+                windows::Win32::System::Com::CLSCTX_FROM_DEFAULT_CONTEXT
+            }
+            ClassContext::ActivateX86Server => {
+                windows::Win32::System::Com::CLSCTX_ACTIVATE_X86_SERVER
+            }
+            ClassContext::Activate32BitServer => {
+                windows::Win32::System::Com::CLSCTX_ACTIVATE_32_BIT_SERVER
+            }
+            ClassContext::Activate64BitServer => {
+                windows::Win32::System::Com::CLSCTX_ACTIVATE_64_BIT_SERVER
+            }
+            ClassContext::EnableCloaking => windows::Win32::System::Com::CLSCTX_ENABLE_CLOAKING,
+            ClassContext::AppContainer => windows::Win32::System::Com::CLSCTX_APPCONTAINER,
+            ClassContext::ActivateAAAAsIU => windows::Win32::System::Com::CLSCTX_ACTIVATE_AAA_AS_IU,
+            ClassContext::ActivateARM32Server => {
+                windows::Win32::System::Com::CLSCTX_ACTIVATE_ARM32_SERVER
+            }
+            ClassContext::AllowLowerTrustRegistration => {
+                windows::Win32::System::Com::CLSCTX_ALLOW_LOWER_TRUST_REGISTRATION
+            }
+            ClassContext::PsDll => windows::Win32::System::Com::CLSCTX_PS_DLL,
         }
     }
 }
