@@ -43,7 +43,7 @@ pub trait BrowseTrait {
             self.interface()?.GetProperties(
                 item_ids.len() as u32,
                 item_ptrs.as_ptr(),
-                windows::Win32::Foundation::BOOL::from(return_property_values),
+                return_property_values,
                 property_ids,
                 results.as_mut_ptr(),
             )?;

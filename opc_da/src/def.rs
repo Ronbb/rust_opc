@@ -1,5 +1,3 @@
-use std::mem::ManuallyDrop;
-
 use crate::{
     try_from_native,
     utils::{IntoBridge, LocalPointer, RemoteArray, ToNative, TryFromNative, TryToNative},
@@ -225,7 +223,7 @@ pub struct ItemAttributes {
     pub requested_data_type: u16,
     pub canonical_data_type: u16,
     pub eu_type: EuType,
-    pub eu_info: windows_core::VARIANT,
+    pub eu_info: windows::Win32::System::Variant::VARIANT,
 }
 
 impl TryFromNative<opc_da_bindings::tagOPCITEMATTRIBUTES> for ItemAttributes {
@@ -245,7 +243,7 @@ impl TryFromNative<opc_da_bindings::tagOPCITEMATTRIBUTES> for ItemAttributes {
             requested_data_type: native.vtRequestedDataType,
             canonical_data_type: native.vtCanonicalDataType,
             eu_type: try_from_native!(&native.dwEUType),
-            eu_info: (*native.vEUInfo).clone(),
+            eu_info: native.vEUInfo.clone(),
         })
     }
 }
@@ -283,7 +281,7 @@ impl TryFromNative<opc_da_bindings::tagOPCITEMSTATE> for ItemState {
             client_handle: native.hClient,
             timestamp: try_from_native!(&native.ftTimeStamp),
             quality: native.wQuality,
-            data_value: (*native.vDataValue).clone(),
+            data_value: native.vDataValue.clone(),
         })
     }
 }
@@ -395,7 +393,7 @@ pub struct ItemPartialValue {
 impl TryToNative<opc_da_bindings::tagOPCITEMVQT> for ItemPartialValue {
     fn try_to_native(&self) -> windows::core::Result<opc_da_bindings::tagOPCITEMVQT> {
         Ok(opc_da_bindings::tagOPCITEMVQT {
-            vDataValue: ManuallyDrop::new(self.value.clone()),
+            vDataValue: self.value.clone(),
             bQualitySpecified: self.quality.is_some().into(),
             wQuality: self.quality.unwrap_or_default(),
             bTimeStampSpecified: self.timestamp.is_some().into(),

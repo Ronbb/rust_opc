@@ -6,8 +6,8 @@ use crate::{
 use super::{
     enumeration::{ConnectionPointsEnumerator, StringEnumerator},
     utils::{
-        PointerReader, PointerWriter, TryReadArray, TryWrite, TryWriteArrayPointer, TryWriteInto,
-        TryWriteTo,
+        PointerReader, PointerWriter, TryReadArray, TryWriteArrayPointer, TryWriteInto,
+        TryWritePointer, TryWriteTo,
     },
 };
 
@@ -50,7 +50,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServer_Impl for Server_Impl<
         server_group: *mut u32,
         revised_update_rate: *mut u32,
         reference_interface_id: *const windows::core::GUID,
-        unknown: *mut Option<windows::core::IUnknown>,
+        unknown: windows::core::OutRef<'_, windows::core::IUnknown>,
     ) -> windows::core::Result<()> {
         let info = self.add_group(
             unsafe { name.to_string() }?,

@@ -750,7 +750,7 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
         &self,
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
         adv: u32,
-        sink: Option<&windows::Win32::System::Com::IAdviseSink>,
+        sink: windows::core::Ref<'_, windows::Win32::System::Com::IAdviseSink>,
     ) -> windows::core::Result<u32> {
         self.data_advise(format_etc_in.into_ref()?, adv, sink)
     }

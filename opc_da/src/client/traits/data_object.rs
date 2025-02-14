@@ -75,13 +75,7 @@ pub trait DataObjectTrait {
         medium: &STGMEDIUM,
         release: bool,
     ) -> windows::core::Result<()> {
-        unsafe {
-            self.interface()?.SetData(
-                format,
-                medium,
-                windows::Win32::Foundation::BOOL::from(release),
-            )
-        }
+        unsafe { self.interface()?.SetData(format, medium, release) }
     }
 
     /// Enumerates available data formats.
