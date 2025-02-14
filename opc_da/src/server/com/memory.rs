@@ -62,6 +62,24 @@ impl<'a, P> IntoArrayRef<&'a mut [P]> for *mut P {
     }
 }
 
+impl<'a, P: windows::core::Interface> IntoArrayRef<&'a mut [Option<P>]>
+    for windows::core::OutRef<'a, P>
+{
+    #[inline(always)]
+    fn into_array_ref(self, count: u32) -> windows::core::Result<&'a mut [Option<P>]> {
+        if self.is_null() {
+            Err(windows::core::Error::from_hresult(E_POINTER))
+        } else {
+            unsafe {
+                Ok(std::slice::from_raw_parts_mut(
+                    *(&self as *const _ as *mut *mut Option<P>),
+                    count as usize,
+                ))
+            }
+        }
+    }
+}
+
 impl<P> FreeRaw for *mut *mut P {
     #[inline(always)]
     fn free_raw(self) {
@@ -136,7 +154,10 @@ impl<'a, P1, P2> IntoComArrayRef<Vec<(&'a P1, &'a mut P2)>> for (*const P1, *mut
 
 impl<'a, P1, P2> IntoComArrayRef<Vec<(&'a mut P1, &'a mut P2)>> for (*mut *mut P1, *mut *mut P2) {
     #[inline(always)]
-    fn into_com_array_ref(self, count: u32) -> windows::core::Result<Vec<(&'a mut P1, &'a mut P2)>> {
+    fn into_com_array_ref(
+        self,
+        count: u32,
+    ) -> windows::core::Result<Vec<(&'a mut P1, &'a mut P2)>> {
         let (p0, p1) = self;
 
         Ok(p0

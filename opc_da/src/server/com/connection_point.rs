@@ -37,7 +37,10 @@ impl IConnectionPoint_Impl for ConnectionPoint_Impl {
         Ok(self.container.clone())
     }
 
-    fn Advise(&self, sink: Option<&windows::core::IUnknown>) -> windows::core::Result<u32> {
+    fn Advise(
+        &self,
+        sink: windows::core::Ref<'_, windows::core::IUnknown>,
+    ) -> windows::core::Result<u32> {
         let cookie = self
             .next_cookie
             .fetch_add(1, core::sync::atomic::Ordering::SeqCst);

@@ -186,7 +186,7 @@ impl IEnumUnknown_Impl for UnknownEnumerator_Impl {
     fn Next(
         &self,
         count: u32,
-        range_elements: *mut Option<windows::core::IUnknown>,
+        range_elements: windows::core::OutRef<'_, windows::core::IUnknown>,
         fetched_count: *mut u32,
     ) -> windows::core::HRESULT {
         let fetched = match fetched_count.into_ref() {
@@ -230,7 +230,7 @@ impl IEnumConnectionPoints_Impl for ConnectionPointsEnumerator_Impl {
     fn Next(
         &self,
         count: u32,
-        range_connection_points: *mut Option<IConnectionPoint>,
+        range_connection_points: windows::core::OutRef<'_, IConnectionPoint>,
         count_fetched: *mut u32,
     ) -> windows::core::HRESULT {
         let fetched = match count_fetched.into_ref() {

@@ -164,7 +164,7 @@ impl TryFrom<ItemProperty> for opc_da_bindings::tagOPCITEMPROPERTY {
             dwPropertyID: value.property_id,
             szItemID: PointerWriter::try_write_to(&value.item_id)?,
             szDescription: PointerWriter::try_write_to(&value.description)?,
-            vValue: core::mem::ManuallyDrop::new(value.value.into()),
+            vValue: value.value.into(),
             hrErrorID: value.error_id,
             dwReserved: 0,
         })
@@ -294,7 +294,7 @@ impl TryFrom<opc_da_bindings::tagOPCITEMVQT> for ItemVqt {
 
     fn try_from(value: opc_da_bindings::tagOPCITEMVQT) -> Result<Self, Self::Error> {
         Ok(ItemVqt {
-            value: (*value.vDataValue.as_raw()).into(),
+            value: value.vDataValue.into(),
             quality: if value.bQualitySpecified.as_bool() {
                 Some(value.wQuality)
             } else {

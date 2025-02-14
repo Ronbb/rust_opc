@@ -1,8 +1,5 @@
-use windows::core::{BSTR, VARIANT};
-use windows::Win32::{
-    Foundation::{VARIANT_BOOL, VARIANT_TRUE},
-    System::Variant::VARENUM,
-};
+use windows::core::BSTR;
+use windows::Win32::System::Variant::VARIANT;
 
 use super::base::{AccessRight, Quality, Variant};
 
@@ -51,8 +48,8 @@ impl AccessRight {
 
 impl From<Variant> for VARIANT {
     fn from(val: Variant) -> Self {
-        match val.clone() {
-            Variant::Empty => VARIANT::new(),
+        match val {
+            Variant::Empty => VARIANT::default(),
             Variant::Bool(value) => VARIANT::from(value),
             Variant::String(value) => VARIANT::from(BSTR::from(value)),
             Variant::I8(value) => VARIANT::from(value),
@@ -69,24 +66,17 @@ impl From<Variant> for VARIANT {
     }
 }
 
-impl From<Variant> for windows::core::imp::VARIANT {
-    fn from(val: Variant) -> Self {
-        let variant: VARIANT = val.into();
-        *variant.as_raw()
-    }
-}
-
 impl From<VARIANT> for Variant {
     fn from(value: VARIANT) -> Self {
         unsafe {
-            let value = value.as_raw().Anonymous.Anonymous;
-            match VARENUM(value.vt) {
+            let value = &value.Anonymous.Anonymous;
+            match value.vt {
                 windows::Win32::System::Variant::VT_EMPTY => Variant::Empty,
                 windows::Win32::System::Variant::VT_BOOL => {
-                    Variant::Bool(VARIANT_BOOL(value.Anonymous.boolVal) == VARIANT_TRUE)
+                    Variant::Bool(value.Anonymous.boolVal.as_bool())
                 }
                 windows::Win32::System::Variant::VT_BSTR => {
-                    Variant::String(BSTR::from_raw(value.Anonymous.bstrVal).to_string())
+                    Variant::String(value.Anonymous.bstrVal.to_string())
                 }
                 windows::Win32::System::Variant::VT_I1 => Variant::I8(value.Anonymous.cVal),
                 windows::Win32::System::Variant::VT_I2 => Variant::I16(value.Anonymous.iVal),
@@ -101,11 +91,5 @@ impl From<VARIANT> for Variant {
                 _ => Variant::Empty,
             }
         }
-    }
-}
-
-impl From<windows::core::imp::VARIANT> for Variant {
-    fn from(value: windows::core::imp::VARIANT) -> Self {
-        unsafe { Variant::from(VARIANT::from_raw(value)) }
     }
 }

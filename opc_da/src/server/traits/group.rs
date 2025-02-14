@@ -308,7 +308,7 @@ pub trait GroupTrait {
         &self,
         format_etc_in: &windows::Win32::System::Com::FORMATETC,
         adv: u32,
-        sink: Option<&windows::Win32::System::Com::IAdviseSink>,
+        sink: windows::core::Ref<'_, windows::Win32::System::Com::IAdviseSink>,
     ) -> windows::core::Result<u32>;
 
     fn data_unadvise(&self, connection: u32) -> windows::core::Result<()>;

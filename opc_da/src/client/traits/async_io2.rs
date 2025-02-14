@@ -112,10 +112,7 @@ pub trait AsyncIo2Trait {
     /// # Returns
     /// `Ok(())` if the enable state was successfully changed
     fn set_enable(&self, enable: bool) -> windows::core::Result<()> {
-        unsafe {
-            self.interface()?
-                .SetEnable(windows::Win32::Foundation::BOOL::from(enable))
-        }
+        unsafe { self.interface()?.SetEnable(enable) }
     }
 
     /// Gets the current enable state of asynchronous I/O operations.

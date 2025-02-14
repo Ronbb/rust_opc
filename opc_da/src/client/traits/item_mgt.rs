@@ -85,7 +85,7 @@ pub trait ItemMgtTrait {
             self.interface()?.ValidateItems(
                 len,
                 items.as_ptr(),
-                windows::Win32::Foundation::BOOL::from(blob_update),
+                blob_update,
                 results.as_mut_ptr(),
                 errors.as_mut_ptr(),
             )?;
@@ -156,7 +156,7 @@ pub trait ItemMgtTrait {
             self.interface()?.SetActiveState(
                 len,
                 server_handles.as_ptr(),
-                windows::Win32::Foundation::BOOL::from(active),
+                active,
                 errors.as_mut_ptr(),
             )?;
         }

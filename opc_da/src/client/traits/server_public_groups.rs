@@ -34,9 +34,6 @@ pub trait ServerPublicGroupsTrait {
     /// # Returns
     /// Ok(()) if the group was successfully removed
     fn remove_public_group(&self, server_group: u32, force: bool) -> windows::core::Result<()> {
-        unsafe {
-            self.interface()?
-                .RemovePublicGroup(server_group, windows::Win32::Foundation::BOOL::from(force))
-        }
+        unsafe { self.interface()?.RemovePublicGroup(server_group, force) }
     }
 }

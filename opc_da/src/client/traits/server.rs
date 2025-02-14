@@ -48,7 +48,7 @@ pub trait ServerTrait<Group: TryFrom<windows::core::IUnknown, Error = windows::c
         unsafe {
             self.interface()?.AddGroup(
                 group_name,
-                windows::Win32::Foundation::BOOL::from(active),
+                active,
                 update_rate,
                 client_handle,
                 &time_bias,
@@ -89,8 +89,7 @@ pub trait ServerTrait<Group: TryFrom<windows::core::IUnknown, Error = windows::c
     /// * `force` - If true, remove even if clients are connected
     fn remove_group(&self, server_handle: u32, force: bool) -> windows::core::Result<()> {
         unsafe {
-            self.interface()?
-                .RemoveGroup(server_handle, windows::Win32::Foundation::BOOL::from(force))?;
+            self.interface()?.RemoveGroup(server_handle, force)?;
         }
         Ok(())
     }

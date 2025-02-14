@@ -2,7 +2,7 @@ pub struct PointerReader;
 
 pub struct PointerWriter;
 
-pub trait TryWrite<T> {
+pub trait TryWritePointer<T> {
     type Error;
 
     fn try_write(value: T, pointer: *mut T) -> Result<(), Self::Error>;
@@ -11,7 +11,7 @@ pub trait TryWrite<T> {
 pub trait TryWriteInto<T, R> {
     type Error;
 
-    fn try_write_into(value: T, pointer: *mut R) -> Result<(), Self::Error>;
+    fn try_write_into(value: T, pointer: R) -> Result<(), Self::Error>;
 }
 
 pub trait TryWriteTo<T, R> {
@@ -59,7 +59,7 @@ impl<T: Sized> TryRead<T> for PointerReader {
     }
 }
 
-impl<T: Sized> TryWrite<T> for PointerWriter {
+impl<T: Sized> TryWritePointer<T> for PointerWriter {
     type Error = windows::core::Error;
 
     fn try_write(value: T, pointer: *mut T) -> Result<(), Self::Error> {
@@ -78,10 +78,12 @@ impl<T: Sized> TryWrite<T> for PointerWriter {
     }
 }
 
-impl<T: Sized> TryWriteInto<T, Option<T>> for PointerWriter {
+impl<T: Sized + windows::core::Interface> TryWriteInto<T, windows::core::OutRef<'_, T>>
+    for PointerWriter
+{
     type Error = windows::core::Error;
 
-    fn try_write_into(value: T, pointer: *mut Option<T>) -> Result<(), Self::Error> {
+    fn try_write_into(value: T, pointer: windows::core::OutRef<'_, T>) -> Result<(), Self::Error> {
         if pointer.is_null() {
             return Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_POINTER,
@@ -89,9 +91,7 @@ impl<T: Sized> TryWriteInto<T, Option<T>> for PointerWriter {
             ));
         }
 
-        unsafe {
-            pointer.write(Some(value));
-        }
+        pointer.write(Some(value))?;
 
         Ok(())
     }
@@ -101,7 +101,7 @@ impl<T: Sized> TryWriteInto<T, Option<T>> for PointerWriter {
 ///
 /// # Safety  
 /// The caller is responsible for freeing the allocated memory using `CoTaskMemFree`.  
-impl<T: AsRef<str>> TryWriteInto<T, windows::core::PWSTR> for PointerWriter {
+impl<T: AsRef<str>> TryWriteInto<T, *mut windows::core::PWSTR> for PointerWriter {
     type Error = windows::core::Error;
 
     fn try_write_into(value: T, pointer: *mut windows::core::PWSTR) -> Result<(), Self::Error> {
@@ -131,7 +131,7 @@ impl<T: AsRef<str>> TryWriteInto<T, windows::core::PWSTR> for PointerWriter {
     }
 }
 
-impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows::core::PWSTR> for PointerWriter {
+impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut *mut windows::core::PWSTR> for PointerWriter {
     type Error = windows::core::Error;
 
     fn try_write_into(
@@ -187,7 +187,7 @@ impl<'a, T: AsRef<[&'a str]>> TryWriteInto<T, *mut windows::core::PWSTR> for Poi
     }
 }
 
-impl<T, W: TryWrite<T, Error = windows::core::Error>> TryWriteTo<T, *mut T> for W {
+impl<T, W: TryWritePointer<T, Error = windows::core::Error>> TryWriteTo<T, *mut T> for W {
     type Error = windows::core::Error;
 
     fn try_write_to(value: T) -> windows::core::Result<*mut T> {
