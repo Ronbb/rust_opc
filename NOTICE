@@ -1,0 +1,4 @@
+This project includes files from the OPC Foundation:
+
+- opc_da_bindings/.metadata/OPCComn.idl, opc_da_bindings/.metadata/opcda.idl
+  These files are subject to the OPC Foundation's license terms.
