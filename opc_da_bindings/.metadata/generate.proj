@@ -6,8 +6,8 @@
         <AdditionalIncludes>$(CompiledHeadersDir)</AdditionalIncludes>
     </PropertyGroup>
     <ItemGroup>
-        <Idls Include="OPCDA_3.00.idl;OPCComn.idl" />
-        <Headers Include="$(CompiledHeadersDir)\OPCDA_3.00.h;$(CompiledHeadersDir)\OPCComn.h" />
+        <Idls Include="opcda.idl;opccomn.idl" />
+        <Headers Include="$(CompiledHeadersDir)\opcda.h;$(CompiledHeadersDir)\opccomn.h" />
         <Partition Include="main.cpp">
             <TraverseFiles>@(Headers)</TraverseFiles>
             <Namespace>OPCDA</Namespace>

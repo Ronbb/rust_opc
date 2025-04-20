@@ -1941,6 +1941,149 @@ impl IOPCDataCallback_Vtbl {
 }
 impl windows_core::RuntimeName for IOPCDataCallback {}
 windows_core::imp::define_interface!(
+    IOPCEnumGUID,
+    IOPCEnumGUID_Vtbl,
+    0x55c382c8_21c7_4e88_96c1_becfb1e3f483
+);
+windows_core::imp::interface_hierarchy!(IOPCEnumGUID, windows_core::IUnknown);
+impl IOPCEnumGUID {
+    pub unsafe fn Next(
+        &self,
+        rgelt: &mut [windows_core::GUID],
+        pceltfetched: *mut u32,
+    ) -> windows_core::Result<()> {
+        unsafe {
+            (windows_core::Interface::vtable(self).Next)(
+                windows_core::Interface::as_raw(self),
+                rgelt.len().try_into().unwrap(),
+                core::mem::transmute(rgelt.as_ptr()),
+                pceltfetched as _,
+            )
+            .ok()
+        }
+    }
+    pub unsafe fn Skip(&self, celt: u32) -> windows_core::Result<()> {
+        unsafe {
+            (windows_core::Interface::vtable(self).Skip)(
+                windows_core::Interface::as_raw(self),
+                celt,
+            )
+            .ok()
+        }
+    }
+    pub unsafe fn Reset(&self) -> windows_core::Result<()> {
+        unsafe {
+            (windows_core::Interface::vtable(self).Reset)(windows_core::Interface::as_raw(self))
+                .ok()
+        }
+    }
+    pub unsafe fn Clone(&self) -> windows_core::Result<IOPCEnumGUID> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).Clone)(
+                windows_core::Interface::as_raw(self),
+                &mut result__,
+            )
+            .and_then(|| windows_core::Type::from_abi(result__))
+        }
+    }
+}
+#[repr(C)]
+pub struct IOPCEnumGUID_Vtbl {
+    pub base__: windows_core::IUnknown_Vtbl,
+    pub Next: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        u32,
+        *mut windows_core::GUID,
+        *mut u32,
+    ) -> windows_core::HRESULT,
+    pub Skip: unsafe extern "system" fn(*mut core::ffi::c_void, u32) -> windows_core::HRESULT,
+    pub Reset: unsafe extern "system" fn(*mut core::ffi::c_void) -> windows_core::HRESULT,
+    pub Clone: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *mut *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+}
+pub trait IOPCEnumGUID_Impl: windows_core::IUnknownImpl {
+    fn Next(
+        &self,
+        celt: u32,
+        rgelt: *mut windows_core::GUID,
+        pceltfetched: *mut u32,
+    ) -> windows_core::Result<()>;
+    fn Skip(&self, celt: u32) -> windows_core::Result<()>;
+    fn Reset(&self) -> windows_core::Result<()>;
+    fn Clone(&self) -> windows_core::Result<IOPCEnumGUID>;
+}
+impl IOPCEnumGUID_Vtbl {
+    pub const fn new<Identity: IOPCEnumGUID_Impl, const OFFSET: isize>() -> Self {
+        unsafe extern "system" fn Next<Identity: IOPCEnumGUID_Impl, const OFFSET: isize>(
+            this: *mut core::ffi::c_void,
+            celt: u32,
+            rgelt: *mut windows_core::GUID,
+            pceltfetched: *mut u32,
+        ) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity =
+                    &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                IOPCEnumGUID_Impl::Next(
+                    this,
+                    core::mem::transmute_copy(&celt),
+                    core::mem::transmute_copy(&rgelt),
+                    core::mem::transmute_copy(&pceltfetched),
+                )
+                .into()
+            }
+        }
+        unsafe extern "system" fn Skip<Identity: IOPCEnumGUID_Impl, const OFFSET: isize>(
+            this: *mut core::ffi::c_void,
+            celt: u32,
+        ) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity =
+                    &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                IOPCEnumGUID_Impl::Skip(this, core::mem::transmute_copy(&celt)).into()
+            }
+        }
+        unsafe extern "system" fn Reset<Identity: IOPCEnumGUID_Impl, const OFFSET: isize>(
+            this: *mut core::ffi::c_void,
+        ) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity =
+                    &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                IOPCEnumGUID_Impl::Reset(this).into()
+            }
+        }
+        unsafe extern "system" fn Clone<Identity: IOPCEnumGUID_Impl, const OFFSET: isize>(
+            this: *mut core::ffi::c_void,
+            ppenum: *mut *mut core::ffi::c_void,
+        ) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity =
+                    &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                match IOPCEnumGUID_Impl::Clone(this) {
+                    Ok(ok__) => {
+                        ppenum.write(core::mem::transmute(ok__));
+                        windows_core::HRESULT(0)
+                    }
+                    Err(err) => err.into(),
+                }
+            }
+        }
+        Self {
+            base__: windows_core::IUnknown_Vtbl::new::<Identity, OFFSET>(),
+            Next: Next::<Identity, OFFSET>,
+            Skip: Skip::<Identity, OFFSET>,
+            Reset: Reset::<Identity, OFFSET>,
+            Clone: Clone::<Identity, OFFSET>,
+        }
+    }
+    pub fn matches(iid: &windows_core::GUID) -> bool {
+        iid == &<IOPCEnumGUID as windows_core::Interface>::IID
+    }
+}
+impl windows_core::RuntimeName for IOPCEnumGUID {}
+windows_core::imp::define_interface!(
     IOPCGroupStateMgt,
     IOPCGroupStateMgt_Vtbl,
     0x39c13a50_011e_11d0_9675_0020afd8adb3
@@ -4181,6 +4324,197 @@ impl IOPCServerList_Vtbl {
 }
 impl windows_core::RuntimeName for IOPCServerList {}
 windows_core::imp::define_interface!(
+    IOPCServerList2,
+    IOPCServerList2_Vtbl,
+    0x9dd0b56c_ad9e_43ee_8305_487f3188bf7a
+);
+windows_core::imp::interface_hierarchy!(IOPCServerList2, windows_core::IUnknown);
+impl IOPCServerList2 {
+    pub unsafe fn EnumClassesOfCategories(
+        &self,
+        rgcatidimpl: &[windows_core::GUID],
+        rgcatidreq: &[windows_core::GUID],
+    ) -> windows_core::Result<IOPCEnumGUID> {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).EnumClassesOfCategories)(
+                windows_core::Interface::as_raw(self),
+                rgcatidimpl.len().try_into().unwrap(),
+                core::mem::transmute(rgcatidimpl.as_ptr()),
+                rgcatidreq.len().try_into().unwrap(),
+                core::mem::transmute(rgcatidreq.as_ptr()),
+                &mut result__,
+            )
+            .and_then(|| windows_core::Type::from_abi(result__))
+        }
+    }
+    pub unsafe fn GetClassDetails(
+        &self,
+        clsid: *const windows_core::GUID,
+        ppszprogid: *mut windows_core::PWSTR,
+        ppszusertype: *mut windows_core::PWSTR,
+        ppszverindprogid: *mut windows_core::PWSTR,
+    ) -> windows_core::Result<()> {
+        unsafe {
+            (windows_core::Interface::vtable(self).GetClassDetails)(
+                windows_core::Interface::as_raw(self),
+                clsid,
+                ppszprogid as _,
+                ppszusertype as _,
+                ppszverindprogid as _,
+            )
+            .ok()
+        }
+    }
+    pub unsafe fn CLSIDFromProgID<P0>(
+        &self,
+        szprogid: P0,
+    ) -> windows_core::Result<windows_core::GUID>
+    where
+        P0: windows_core::Param<windows_core::PCWSTR>,
+    {
+        unsafe {
+            let mut result__ = core::mem::zeroed();
+            (windows_core::Interface::vtable(self).CLSIDFromProgID)(
+                windows_core::Interface::as_raw(self),
+                szprogid.param().abi(),
+                &mut result__,
+            )
+            .map(|| result__)
+        }
+    }
+}
+#[repr(C)]
+pub struct IOPCServerList2_Vtbl {
+    pub base__: windows_core::IUnknown_Vtbl,
+    pub EnumClassesOfCategories: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        u32,
+        *const windows_core::GUID,
+        u32,
+        *const windows_core::GUID,
+        *mut *mut core::ffi::c_void,
+    ) -> windows_core::HRESULT,
+    pub GetClassDetails: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        *const windows_core::GUID,
+        *mut windows_core::PWSTR,
+        *mut windows_core::PWSTR,
+        *mut windows_core::PWSTR,
+    ) -> windows_core::HRESULT,
+    pub CLSIDFromProgID: unsafe extern "system" fn(
+        *mut core::ffi::c_void,
+        windows_core::PCWSTR,
+        *mut windows_core::GUID,
+    ) -> windows_core::HRESULT,
+}
+pub trait IOPCServerList2_Impl: windows_core::IUnknownImpl {
+    fn EnumClassesOfCategories(
+        &self,
+        cimplemented: u32,
+        rgcatidimpl: *const windows_core::GUID,
+        crequired: u32,
+        rgcatidreq: *const windows_core::GUID,
+    ) -> windows_core::Result<IOPCEnumGUID>;
+    fn GetClassDetails(
+        &self,
+        clsid: *const windows_core::GUID,
+        ppszprogid: *mut windows_core::PWSTR,
+        ppszusertype: *mut windows_core::PWSTR,
+        ppszverindprogid: *mut windows_core::PWSTR,
+    ) -> windows_core::Result<()>;
+    fn CLSIDFromProgID(
+        &self,
+        szprogid: &windows_core::PCWSTR,
+    ) -> windows_core::Result<windows_core::GUID>;
+}
+impl IOPCServerList2_Vtbl {
+    pub const fn new<Identity: IOPCServerList2_Impl, const OFFSET: isize>() -> Self {
+        unsafe extern "system" fn EnumClassesOfCategories<
+            Identity: IOPCServerList2_Impl,
+            const OFFSET: isize,
+        >(
+            this: *mut core::ffi::c_void,
+            cimplemented: u32,
+            rgcatidimpl: *const windows_core::GUID,
+            crequired: u32,
+            rgcatidreq: *const windows_core::GUID,
+            ppenumclsid: *mut *mut core::ffi::c_void,
+        ) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity =
+                    &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                match IOPCServerList2_Impl::EnumClassesOfCategories(
+                    this,
+                    core::mem::transmute_copy(&cimplemented),
+                    core::mem::transmute_copy(&rgcatidimpl),
+                    core::mem::transmute_copy(&crequired),
+                    core::mem::transmute_copy(&rgcatidreq),
+                ) {
+                    Ok(ok__) => {
+                        ppenumclsid.write(core::mem::transmute(ok__));
+                        windows_core::HRESULT(0)
+                    }
+                    Err(err) => err.into(),
+                }
+            }
+        }
+        unsafe extern "system" fn GetClassDetails<
+            Identity: IOPCServerList2_Impl,
+            const OFFSET: isize,
+        >(
+            this: *mut core::ffi::c_void,
+            clsid: *const windows_core::GUID,
+            ppszprogid: *mut windows_core::PWSTR,
+            ppszusertype: *mut windows_core::PWSTR,
+            ppszverindprogid: *mut windows_core::PWSTR,
+        ) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity =
+                    &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                IOPCServerList2_Impl::GetClassDetails(
+                    this,
+                    core::mem::transmute_copy(&clsid),
+                    core::mem::transmute_copy(&ppszprogid),
+                    core::mem::transmute_copy(&ppszusertype),
+                    core::mem::transmute_copy(&ppszverindprogid),
+                )
+                .into()
+            }
+        }
+        unsafe extern "system" fn CLSIDFromProgID<
+            Identity: IOPCServerList2_Impl,
+            const OFFSET: isize,
+        >(
+            this: *mut core::ffi::c_void,
+            szprogid: windows_core::PCWSTR,
+            clsid: *mut windows_core::GUID,
+        ) -> windows_core::HRESULT {
+            unsafe {
+                let this: &Identity =
+                    &*((this as *const *const ()).offset(OFFSET) as *const Identity);
+                match IOPCServerList2_Impl::CLSIDFromProgID(this, core::mem::transmute(&szprogid)) {
+                    Ok(ok__) => {
+                        clsid.write(core::mem::transmute(ok__));
+                        windows_core::HRESULT(0)
+                    }
+                    Err(err) => err.into(),
+                }
+            }
+        }
+        Self {
+            base__: windows_core::IUnknown_Vtbl::new::<Identity, OFFSET>(),
+            EnumClassesOfCategories: EnumClassesOfCategories::<Identity, OFFSET>,
+            GetClassDetails: GetClassDetails::<Identity, OFFSET>,
+            CLSIDFromProgID: CLSIDFromProgID::<Identity, OFFSET>,
+        }
+    }
+    pub fn matches(iid: &windows_core::GUID) -> bool {
+        iid == &<IOPCServerList2 as windows_core::Interface>::IID
+    }
+}
+impl windows_core::RuntimeName for IOPCServerList2 {}
+windows_core::imp::define_interface!(
     IOPCServerPublicGroups,
     IOPCServerPublicGroups_Vtbl,
     0x39c13a4e_011e_11d0_9675_0020afd8adb3
@@ -4672,14 +5006,17 @@ pub const OPC_CATEGORY_DESCRIPTION_DA30: windows_core::PCWSTR =
     windows_core::w!("OPC Data Access Servers Version 3.0");
 pub const OPC_CATEGORY_DESCRIPTION_XMLDA10: windows_core::PCWSTR =
     windows_core::w!("OPC XML Data Access Servers Version 1.0");
+pub const OPC_CONSISTENCY_WINDOW_NOT_CONSISTENT: windows_core::PCWSTR =
+    windows_core::w!("Not Consistent");
+pub const OPC_CONSISTENCY_WINDOW_UNKNOWN: windows_core::PCWSTR = windows_core::w!("Unknown");
 pub const OPC_DS_CACHE: tagOPCDATASOURCE = tagOPCDATASOURCE(1i32);
 pub const OPC_DS_DEVICE: tagOPCDATASOURCE = tagOPCDATASOURCE(2i32);
 pub const OPC_ENUMERATED: tagOPCEUTYPE = tagOPCEUTYPE(2i32);
 pub const OPC_ENUM_ALL: tagOPCENUMSCOPE = tagOPCENUMSCOPE(6i32);
 pub const OPC_ENUM_ALL_CONNECTIONS: tagOPCENUMSCOPE = tagOPCENUMSCOPE(3i32);
-pub const OPC_ENUM_PRIVATE: tagOPCENUMSCOPE = tagOPCENUMSCOPE(5i32);
+pub const OPC_ENUM_PRIVATE: tagOPCENUMSCOPE = tagOPCENUMSCOPE(4i32);
 pub const OPC_ENUM_PRIVATE_CONNECTIONS: tagOPCENUMSCOPE = tagOPCENUMSCOPE(1i32);
-pub const OPC_ENUM_PUBLIC: tagOPCENUMSCOPE = tagOPCENUMSCOPE(4i32);
+pub const OPC_ENUM_PUBLIC: tagOPCENUMSCOPE = tagOPCENUMSCOPE(5i32);
 pub const OPC_ENUM_PUBLIC_CONNECTIONS: tagOPCENUMSCOPE = tagOPCENUMSCOPE(2i32);
 pub const OPC_FLAT: tagOPCBROWSETYPE = tagOPCBROWSETYPE(3i32);
 pub const OPC_LEAF: tagOPCBROWSETYPE = tagOPCBROWSETYPE(2i32);
@@ -4698,7 +5035,9 @@ pub const OPC_PROPERTY_CHANGE_RATE_LIMIT: u32 = 311u32;
 pub const OPC_PROPERTY_CLOSE_LABEL: u32 = 106u32;
 pub const OPC_PROPERTY_CONDITION_LOGIC: u32 = 304u32;
 pub const OPC_PROPERTY_CONDITION_STATUS: u32 = 300u32;
+pub const OPC_PROPERTY_CONSISTENCY_WINDOW: u32 = 605u32;
 pub const OPC_PROPERTY_DATATYPE: u32 = 1u32;
+pub const OPC_PROPERTY_DATA_FILTER_VALUE: u32 = 609u32;
 pub const OPC_PROPERTY_DEADBAND: u32 = 306u32;
 pub const OPC_PROPERTY_DESCRIPTION: u32 = 101u32;
 pub const OPC_PROPERTY_DESC_ACCESS_RIGHTS: windows_core::PCWSTR =
@@ -4715,13 +5054,19 @@ pub const OPC_PROPERTY_DESC_CONDITION_LOGIC: windows_core::PCWSTR =
     windows_core::w!("Condition Logic");
 pub const OPC_PROPERTY_DESC_CONDITION_STATUS: windows_core::PCWSTR =
     windows_core::w!("Condition Status");
+pub const OPC_PROPERTY_DESC_CONSISTENCY_WINDOW: windows_core::PCWSTR =
+    windows_core::w!("Consistency Window");
 pub const OPC_PROPERTY_DESC_DATATYPE: windows_core::PCWSTR =
     windows_core::w!("Item Canonical Data Type");
+pub const OPC_PROPERTY_DESC_DATA_FILTER_VALUE: windows_core::PCWSTR =
+    windows_core::w!("Data Filter Value");
 pub const OPC_PROPERTY_DESC_DEADBAND: windows_core::PCWSTR = windows_core::w!("Deadband");
 pub const OPC_PROPERTY_DESC_DESCRIPTION: windows_core::PCWSTR =
     windows_core::w!("Item Description");
 pub const OPC_PROPERTY_DESC_DEVIATION_LIMIT: windows_core::PCWSTR =
     windows_core::w!("Deviation Limit");
+pub const OPC_PROPERTY_DESC_DICTIONARY: windows_core::PCWSTR = windows_core::w!("Dictionary");
+pub const OPC_PROPERTY_DESC_DICTIONARY_ID: windows_core::PCWSTR = windows_core::w!("Dictionary ID");
 pub const OPC_PROPERTY_DESC_EU_INFO: windows_core::PCWSTR = windows_core::w!("Item EU Info");
 pub const OPC_PROPERTY_DESC_EU_TYPE: windows_core::PCWSTR = windows_core::w!("Item EU Type");
 pub const OPC_PROPERTY_DESC_EU_UNITS: windows_core::PCWSTR = windows_core::w!("EU Units");
@@ -4745,8 +5090,21 @@ pub const OPC_PROPERTY_DESC_SCAN_RATE: windows_core::PCWSTR = windows_core::w!("
 pub const OPC_PROPERTY_DESC_SOUND_FILE: windows_core::PCWSTR = windows_core::w!("Sound File");
 pub const OPC_PROPERTY_DESC_TIMESTAMP: windows_core::PCWSTR = windows_core::w!("Item Timestamp");
 pub const OPC_PROPERTY_DESC_TIMEZONE: windows_core::PCWSTR = windows_core::w!("Item Timezone");
+pub const OPC_PROPERTY_DESC_TYPE_DESCRIPTION: windows_core::PCWSTR =
+    windows_core::w!("Type Description");
+pub const OPC_PROPERTY_DESC_TYPE_ID: windows_core::PCWSTR = windows_core::w!("Type ID");
+pub const OPC_PROPERTY_DESC_TYPE_SYSTEM_ID: windows_core::PCWSTR =
+    windows_core::w!("Type System ID");
+pub const OPC_PROPERTY_DESC_UNCONVERTED_ITEM_ID: windows_core::PCWSTR =
+    windows_core::w!("Unconverted Item ID");
+pub const OPC_PROPERTY_DESC_UNFILTERED_ITEM_ID: windows_core::PCWSTR =
+    windows_core::w!("Unfiltered Item ID");
 pub const OPC_PROPERTY_DESC_VALUE: windows_core::PCWSTR = windows_core::w!("Item Value");
+pub const OPC_PROPERTY_DESC_WRITE_BEHAVIOR: windows_core::PCWSTR =
+    windows_core::w!("Write Behavior");
 pub const OPC_PROPERTY_DEVIATION_LIMIT: u32 = 312u32;
+pub const OPC_PROPERTY_DICTIONARY: u32 = 603u32;
+pub const OPC_PROPERTY_DICTIONARY_ID: u32 = 601u32;
 pub const OPC_PROPERTY_EU_INFO: u32 = 8u32;
 pub const OPC_PROPERTY_EU_TYPE: u32 = 7u32;
 pub const OPC_PROPERTY_EU_UNITS: u32 = 100u32;
@@ -4766,7 +5124,13 @@ pub const OPC_PROPERTY_SCAN_RATE: u32 = 6u32;
 pub const OPC_PROPERTY_SOUND_FILE: u32 = 313u32;
 pub const OPC_PROPERTY_TIMESTAMP: u32 = 4u32;
 pub const OPC_PROPERTY_TIMEZONE: u32 = 108u32;
+pub const OPC_PROPERTY_TYPE_DESCRIPTION: u32 = 604u32;
+pub const OPC_PROPERTY_TYPE_ID: u32 = 602u32;
+pub const OPC_PROPERTY_TYPE_SYSTEM_ID: u32 = 600u32;
+pub const OPC_PROPERTY_UNCONVERTED_ITEM_ID: u32 = 607u32;
+pub const OPC_PROPERTY_UNFILTERED_ITEM_ID: u32 = 608u32;
 pub const OPC_PROPERTY_VALUE: u32 = 2u32;
+pub const OPC_PROPERTY_WRITE_BEHAVIOR: u32 = 606u32;
 pub const OPC_QUALITY_BAD: u16 = 0u16;
 pub const OPC_QUALITY_COMM_FAILURE: u16 = 24u16;
 pub const OPC_QUALITY_CONFIG_ERROR: u16 = 4u16;
@@ -4792,7 +5156,12 @@ pub const OPC_STATUS_NOCONFIG: tagOPCSERVERSTATE = tagOPCSERVERSTATE(3i32);
 pub const OPC_STATUS_RUNNING: tagOPCSERVERSTATE = tagOPCSERVERSTATE(1i32);
 pub const OPC_STATUS_SUSPENDED: tagOPCSERVERSTATE = tagOPCSERVERSTATE(4i32);
 pub const OPC_STATUS_TEST: tagOPCSERVERSTATE = tagOPCSERVERSTATE(5i32);
+pub const OPC_TYPE_SYSTEM_OPCBINARY: windows_core::PCWSTR = windows_core::w!("OPCBinary");
+pub const OPC_TYPE_SYSTEM_XMLSCHEMA: windows_core::PCWSTR = windows_core::w!("XMLSchema");
 pub const OPC_WRITEABLE: u32 = 2u32;
+pub const OPC_WRITE_BEHAVIOR_ALL_OR_NOTHING: windows_core::PCWSTR =
+    windows_core::w!("All or Nothing");
+pub const OPC_WRITE_BEHAVIOR_BEST_EFFORT: windows_core::PCWSTR = windows_core::w!("Best Effort");
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub struct tagOPCBROWSEDIRECTION(pub i32);
