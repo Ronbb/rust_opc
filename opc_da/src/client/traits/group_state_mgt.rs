@@ -20,7 +20,7 @@ pub trait GroupStateMgtTrait {
     /// Returns a GroupState structure containing all group parameters.
     fn get_state(&self) -> windows::core::Result<GroupState> {
         let mut state = GroupState::default();
-        let mut active = windows::Win32::Foundation::BOOL::default();
+        let mut active = windows_core::BOOL::default();
         let name = {
             let mut name = RemotePointer::null();
             unsafe {
@@ -67,7 +67,7 @@ pub trait GroupStateMgtTrait {
     ) -> windows::core::Result<u32> {
         let requested_update_rate = LocalPointer::new(update_rate);
         let mut revised_update_rate = LocalPointer::new(Some(0));
-        let active = LocalPointer::new(active.map(windows::Win32::Foundation::BOOL::from));
+        let active = LocalPointer::new(active.map(windows_core::BOOL::from));
         let time_bias = LocalPointer::new(time_bias);
         let percent_deadband = LocalPointer::new(percent_deadband);
         let locale_id = LocalPointer::new(locale_id);

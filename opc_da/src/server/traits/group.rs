@@ -9,7 +9,7 @@ pub trait GroupTrait {
     fn validate_items(
         &self,
         items: &[opc_da_bindings::tagOPCITEMDEF],
-        blob_update: windows::Win32::Foundation::BOOL,
+        blob_update: windows_core::BOOL,
         validation_results: &mut [opc_da_bindings::tagOPCITEMRESULT],
         errors: &mut [windows::core::HRESULT],
     ) -> windows::core::Result<()>;
@@ -23,7 +23,7 @@ pub trait GroupTrait {
     fn set_active_state(
         &self,
         item_server_handles: &[u32],
-        active: windows::Win32::Foundation::BOOL,
+        active: windows_core::BOOL,
         errors: &mut [windows::core::HRESULT],
     ) -> windows::core::Result<()>;
 
@@ -50,7 +50,7 @@ pub trait GroupTrait {
     fn get_state(
         &self,
         update_rate: &mut u32,
-        active: &mut windows::Win32::Foundation::BOOL,
+        active: &mut windows_core::BOOL,
         name: &mut windows::core::PWSTR,
         time_bias: &mut i32,
         percent_deadband: &mut f32,
@@ -64,7 +64,7 @@ pub trait GroupTrait {
         &self,
         requested_update_rate: &u32,
         revised_update_rate: &mut u32,
-        active: &windows::Win32::Foundation::BOOL,
+        active: &windows_core::BOOL,
         time_bias: &i32,
         percent_deadband: &f32,
         locale_id: &u32,
@@ -83,7 +83,7 @@ pub trait GroupTrait {
 
     fn get_keep_alive(&self) -> windows::core::Result<u32>;
 
-    fn get_public_group_state(&self) -> windows::core::Result<windows::Win32::Foundation::BOOL>;
+    fn get_public_group_state(&self) -> windows::core::Result<windows_core::BOOL>;
 
     fn move_to_public(&self) -> windows::core::Result<()>;
 
@@ -146,9 +146,9 @@ pub trait GroupTrait {
 
     fn cancel2(&self, cancel_id: u32) -> windows::core::Result<()>;
 
-    fn set_enable(&self, enable: windows::Win32::Foundation::BOOL) -> windows::core::Result<()>;
+    fn set_enable(&self, enable: windows_core::BOOL) -> windows::core::Result<()>;
 
-    fn get_enable(&self) -> windows::core::Result<windows::Win32::Foundation::BOOL>;
+    fn get_enable(&self) -> windows::core::Result<windows_core::BOOL>;
 
     fn read_max_age2(
         &self,
@@ -215,14 +215,14 @@ pub trait GroupTrait {
     fn set_item_buffer_enable(
         &self,
         item_server_handles: &[u32],
-        penable: &windows::Win32::Foundation::BOOL,
+        penable: &windows_core::BOOL,
         errors: &mut [windows::core::HRESULT],
     ) -> windows::core::Result<()>;
 
     fn get_item_buffer_enable(
         &self,
         item_server_handles: &[u32],
-        enable: &mut [windows::Win32::Foundation::BOOL],
+        enable: &mut [windows_core::BOOL],
         errors: &mut [windows::core::HRESULT],
     ) -> windows::core::Result<()>;
 
@@ -287,7 +287,7 @@ pub trait GroupTrait {
         &self,
         format_etc_in: &windows::Win32::System::Com::FORMATETC,
         medium: &windows::Win32::System::Com::STGMEDIUM,
-        release: windows::Win32::Foundation::BOOL,
+        release: windows_core::BOOL,
     ) -> windows::core::Result<()>;
 
     fn enum_format_etc(
@@ -314,5 +314,5 @@ pub trait GroupTrait {
     fn data_unadvise(&self, connection: u32) -> windows::core::Result<()>;
 
     fn enum_data_advise(&self)
-        -> windows::core::Result<windows::Win32::System::Com::IEnumSTATDATA>;
+    -> windows::core::Result<windows::Win32::System::Com::IEnumSTATDATA>;
 }

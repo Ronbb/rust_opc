@@ -149,7 +149,7 @@ impl TryFromNative<opc_da_bindings::tagOPCSERVERSTATE> for ServerState {
             opc_da_bindings::OPC_STATUS_COMM_FAULT => Ok(ServerState::CommunicationFault),
             unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("Unknown server state: {:?}", unknown),
+                format!("Unknown server state: {unknown:?}"),
             )),
         }
     }
@@ -189,7 +189,7 @@ impl TryFromNative<opc_da_bindings::tagOPCENUMSCOPE> for EnumScope {
             opc_da_bindings::OPC_ENUM_ALL => Ok(EnumScope::All),
             unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("Unknown enum scope: {:?}", unknown),
+                format!("Unknown enum scope: {unknown:?}"),
             )),
         }
     }
@@ -258,7 +258,7 @@ impl TryFromNative<opc_da_bindings::tagOPCEUTYPE> for EuType {
             opc_da_bindings::OPC_ENUMERATED => Ok(EuType::Enumerated),
             unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("Unknown EU type: {:?}", unknown),
+                format!("Unknown EU type: {unknown:?}"),
             )),
         }
     }
@@ -305,7 +305,7 @@ impl TryFromNative<opc_da_bindings::tagOPCDATASOURCE> for DataSourceTarget {
             opc_da_bindings::OPC_DS_DEVICE => Ok(DataSourceTarget::ForceDevice),
             unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("Unknown data source: {:?}", unknown),
+                format!("Unknown data source: {unknown:?}"),
             )),
         }
     }
@@ -418,7 +418,7 @@ impl TryFromNative<opc_da_bindings::tagOPCBROWSETYPE> for BrowseType {
             opc_da_bindings::OPC_FLAT => Ok(BrowseType::Flat),
             unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("Unknown browse type: {:?}", unknown),
+                format!("Unknown browse type: {unknown:?}"),
             )),
         }
     }
@@ -450,7 +450,7 @@ impl TryFromNative<opc_da_bindings::tagOPCBROWSEFILTER> for BrowseFilter {
             opc_da_bindings::OPC_BROWSE_FILTER_ITEMS => Ok(BrowseFilter::Items),
             unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("Unknown browse filter: {:?}", unknown),
+                format!("Unknown browse filter: {unknown:?}"),
             )),
         }
     }
@@ -529,7 +529,7 @@ impl TryFromNative<opc_da_bindings::tagOPCNAMESPACETYPE> for NamespaceType {
             opc_da_bindings::OPC_NS_FLAT => Ok(NamespaceType::Flat),
             unknown => Err(windows::core::Error::new(
                 windows::Win32::Foundation::E_INVALIDARG,
-                format!("Unknown namespace type: {:?}", unknown),
+                format!("Unknown namespace type: {unknown:?}"),
             )),
         }
     }
