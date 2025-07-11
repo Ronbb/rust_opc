@@ -62,7 +62,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         &self,
         count: u32,
         items: *const opc_da_bindings::tagOPCITEMDEF,
-        blob_update: windows::Win32::Foundation::BOOL,
+        blob_update: windows_core::BOOL,
         validation_results: *mut *mut opc_da_bindings::tagOPCITEMRESULT,
         errors: *mut *mut windows::core::HRESULT,
     ) -> windows::core::Result<()> {
@@ -97,7 +97,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemMgt_Impl for Group_Impl<T
         &self,
         count: u32,
         item_server_handles: *const u32,
-        active: windows::Win32::Foundation::BOOL,
+        active: windows_core::BOOL,
         errors: *mut *mut windows::core::HRESULT,
     ) -> windows::core::Result<()> {
         safe_call! {
@@ -161,7 +161,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt_Impl for Group_
     fn GetState(
         &self,
         update_rate: *mut u32,
-        active: *mut windows::Win32::Foundation::BOOL,
+        active: *mut windows_core::BOOL,
         name: *mut windows::core::PWSTR,
         time_bias: *mut i32,
         percent_deadband: *mut f32,
@@ -185,7 +185,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt_Impl for Group_
         &self,
         requested_update_rate: *const u32,
         revised_update_rate: *mut u32,
-        active: *const windows::Win32::Foundation::BOOL,
+        active: *const windows_core::BOOL,
         time_bias: *const i32,
         percent_deadband: *const f32,
         locale_id: *const u32,
@@ -232,7 +232,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCGroupStateMgt2_Impl for Group
 // 2.0 optional
 // 3.0 N/A
 impl<T: GroupTrait + 'static> opc_da_bindings::IOPCPublicGroupStateMgt_Impl for Group_Impl<T> {
-    fn GetState(&self) -> windows::core::Result<windows::Win32::Foundation::BOOL> {
+    fn GetState(&self) -> windows::core::Result<windows_core::BOOL> {
         self.get_public_group_state()
     }
 
@@ -389,11 +389,11 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCAsyncIO2_Impl for Group_Impl<
         self.cancel2(cancel_id)
     }
 
-    fn SetEnable(&self, enable: windows::Win32::Foundation::BOOL) -> windows::core::Result<()> {
+    fn SetEnable(&self, enable: windows_core::BOOL) -> windows::core::Result<()> {
         self.set_enable(enable)
     }
 
-    fn GetEnable(&self) -> windows::core::Result<windows::Win32::Foundation::BOOL> {
+    fn GetEnable(&self) -> windows::core::Result<windows_core::BOOL> {
         self.get_enable()
     }
 }
@@ -566,7 +566,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemSamplingMgt_Impl for Grou
         &self,
         count: u32,
         item_server_handles: *const u32,
-        penable: *const windows::Win32::Foundation::BOOL,
+        penable: *const windows_core::BOOL,
         errors: *mut *mut windows::core::HRESULT,
     ) -> windows::core::Result<()> {
         safe_call! {
@@ -583,7 +583,7 @@ impl<T: GroupTrait + 'static> opc_da_bindings::IOPCItemSamplingMgt_Impl for Grou
         &self,
         count: u32,
         item_server_handles: *const u32,
-        enable: *mut *mut windows::Win32::Foundation::BOOL,
+        enable: *mut *mut windows_core::BOOL,
         errors: *mut *mut windows::core::HRESULT,
     ) -> windows::core::Result<()> {
         safe_call! {
@@ -730,7 +730,7 @@ impl<T: GroupTrait + 'static> windows::Win32::System::Com::IDataObject_Impl for 
         &self,
         format_etc_in: *const windows::Win32::System::Com::FORMATETC,
         storage_medium: *const windows::Win32::System::Com::STGMEDIUM,
-        release: windows::Win32::Foundation::BOOL,
+        release: windows_core::BOOL,
     ) -> windows::core::Result<()> {
         self.set_data(
             format_etc_in.into_ref()?,

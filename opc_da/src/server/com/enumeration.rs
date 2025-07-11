@@ -1,11 +1,13 @@
-use windows::core::PWSTR;
-use windows::Win32::{
-    Foundation::{S_FALSE, S_OK},
-    System::Com::{
-        IConnectionPoint, IEnumConnectionPoints, IEnumConnectionPoints_Impl, IEnumConnections,
-        IEnumConnections_Impl, IEnumString, IEnumString_Impl, IEnumUnknown, IEnumUnknown_Impl,
-        CONNECTDATA,
+use windows::{
+    Win32::{
+        Foundation::{S_FALSE, S_OK},
+        System::Com::{
+            CONNECTDATA, IConnectionPoint, IEnumConnectionPoints, IEnumConnectionPoints_Impl,
+            IEnumConnections, IEnumConnections_Impl, IEnumString, IEnumString_Impl, IEnumUnknown,
+            IEnumUnknown_Impl,
+        },
     },
+    core::PWSTR,
 };
 
 use crate::safe_call;
@@ -186,7 +188,7 @@ impl IEnumUnknown_Impl for UnknownEnumerator_Impl {
     fn Next(
         &self,
         count: u32,
-        range_elements: windows::core::OutRef<'_, windows::core::IUnknown>,
+        range_elements: *mut Option<windows_core::IUnknown>,
         fetched_count: *mut u32,
     ) -> windows::core::HRESULT {
         let fetched = match fetched_count.into_ref() {
@@ -230,7 +232,7 @@ impl IEnumConnectionPoints_Impl for ConnectionPointsEnumerator_Impl {
     fn Next(
         &self,
         count: u32,
-        range_connection_points: windows::core::OutRef<'_, IConnectionPoint>,
+        range_connection_points: *mut Option<IConnectionPoint>,
         count_fetched: *mut u32,
     ) -> windows::core::HRESULT {
         let fetched = match count_fetched.into_ref() {

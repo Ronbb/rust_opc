@@ -7,8 +7,10 @@
 //! - `RemotePointer<T>` for managing single values allocated by COM.
 //! - `LocalPointer<T>` for managing local memory that needs to be passed to COM functions.
 
-use windows::core::PWSTR;
-use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
+use windows::{
+    Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree},
+    core::PWSTR,
+};
 
 /// A safe wrapper around arrays allocated by COM.
 ///

@@ -41,7 +41,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServer_Impl for Server_Impl<
     fn AddGroup(
         &self,
         name: &windows::core::PCWSTR,
-        active: windows::Win32::Foundation::BOOL,
+        active: windows_core::BOOL,
         requested_update_rate: u32,
         client_group: u32,
         time_bias: *const i32,
@@ -102,7 +102,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServer_Impl for Server_Impl<
     fn RemoveGroup(
         &self,
         server_group: u32,
-        force: windows::Win32::Foundation::BOOL,
+        force: windows_core::BOOL,
     ) -> windows::core::Result<()> {
         self.remove_group(server_group, force.as_bool())
     }
@@ -287,7 +287,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCBrowse_Impl for Server_Impl<
         &self,
         item_count: u32,
         item_ids: *const windows::core::PCWSTR,
-        return_property_values: windows::Win32::Foundation::BOOL,
+        return_property_values: windows_core::BOOL,
         property_count: u32,
         property_ids: *const u32,
         item_properties: *mut *mut opc_da_bindings::tagOPCITEMPROPERTIES,
@@ -323,11 +323,11 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCBrowse_Impl for Server_Impl<
         browse_filter: opc_da_bindings::tagOPCBROWSEFILTER,
         element_name_filter: &windows::core::PCWSTR,
         vendor_filter: &windows::core::PCWSTR,
-        return_all_properties: windows::Win32::Foundation::BOOL,
-        return_property_values: windows::Win32::Foundation::BOOL,
+        return_all_properties: windows_core::BOOL,
+        return_property_values: windows_core::BOOL,
         property_count: u32,
         property_ids: *const u32,
-        more_elements: *mut windows::Win32::Foundation::BOOL,
+        more_elements: *mut windows_core::BOOL,
         count: *mut u32,
         browse_elements: *mut *mut opc_da_bindings::tagOPCBROWSEELEMENT,
     ) -> windows::core::Result<()> {
@@ -411,7 +411,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServerPublicGroups_Impl for 
     fn RemovePublicGroup(
         &self,
         server_group: u32,
-        force: windows::Win32::Foundation::BOOL,
+        force: windows_core::BOOL,
     ) -> windows::core::Result<()> {
         self.remove_public_group(server_group, force.as_bool())
     }

@@ -14,5 +14,6 @@ fn main() {
         "OPCDA",
         "--flat",
         "--implement",
-    ]);
+    ])
+    .unwrap();
 }

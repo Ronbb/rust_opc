@@ -1,31 +1,31 @@
 [package]
 name = "opc_da"
+version = "0.3.0"
+edition = "2024"
 description = "OPC Data Access"
-version = "0.2.0"
-license = "MIT"
-edition = "2021"
 repository = "https://github.com/Ronbb/rust_opc"
-keywords = ["opc", "da"]
+license = "MIT"
+keywords = ["da", "opc"]
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
 targets = []
 
 [dependencies]
-opc_da_bindings = { path = "../opc_da_bindings", version = "0.2.0" }
-globset = "0.4.15"
-tokio = { version = "1.43.1", features = ["rt-multi-thread", "full"] }
-windows = { version = "0.59.0", features = [
-    "Win32_Foundation",
-    "Win32_Graphics_Gdi",
-    "Win32_System_Com",
-    "Win32_System_Com_StructuredStorage",
-    "Win32_System_Ole",
-    "Win32_System_Variant",
-    "Win32_System_WinRT",
-] }
-windows-core = "0.59.0"
 actix = "0.13.5"
+globset = "0.4.16"
+opc_da_bindings = { version = "0.3.0", path = "../opc_da_bindings" }
+tokio = { version = "1.46.1", features = ["full", "rt-multi-thread"] }
+windows = { version = "0.61.3", features = [
+  "Win32_Foundation",
+  "Win32_Graphics_Gdi",
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  "Win32_System_Ole",
+  "Win32_System_Variant",
+  "Win32_System_WinRT",
+] }
+windows-core = "0.61.2"
 
 [features]
 default = ["unstable_client", "unstable_server"]

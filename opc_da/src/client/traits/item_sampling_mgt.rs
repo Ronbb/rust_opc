@@ -1,5 +1,5 @@
 use crate::utils::RemoteArray;
-use windows::Win32::Foundation::BOOL;
+use windows_core::BOOL;
 
 /// Item sampling management functionality (OPC DA 3.0).
 ///
@@ -160,7 +160,7 @@ pub trait ItemSamplingMgtTrait {
         &self,
         server_handles: &[u32],
     ) -> windows::core::Result<(
-        RemoteArray<windows::Win32::Foundation::BOOL>,
+        RemoteArray<windows_core::BOOL>,
         RemoteArray<windows::core::HRESULT>,
     )> {
         let len = server_handles.len().try_into()?;

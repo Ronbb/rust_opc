@@ -1,5 +1,4 @@
-use windows::core::BSTR;
-use windows::Win32::System::Variant::VARIANT;
+use windows::{Win32::System::Variant::VARIANT, core::BSTR};
 
 use super::base::{AccessRight, Quality, Variant};
 
