@@ -11,7 +11,7 @@ pub use runtime::*;
 fn mb_error(err: actix::MailboxError) -> windows::core::Error {
     windows::core::Error::new(
         windows::Win32::Foundation::E_FAIL,
-        format!("Failed to send message to client actor: {:?}", err),
+        format!("Failed to send message to client actor: {err:?}"),
     )
 }
 
