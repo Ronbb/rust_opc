@@ -1,4 +1,4 @@
-# OPC DA Bindings
+# OPC Data Access (DA) Bindings
 
 Please see docs on [docs.rs](https://docs.rs/opc_da_bindings/).
 
@@ -7,8 +7,9 @@ Please see docs on [docs.rs](https://docs.rs/opc_da_bindings/).
 ### Enumerate server list
 
 ```rust
-use opc_da_bindings::{
-    CATID_OPCDAServer10, CATID_OPCDAServer20, CATID_OPCDAServer30, IOPCServerList,
+use opc_common_bindings::IOPCServerList;
+use opc_da_bindings::{C
+    ATID_OPCDAServer10, CATID_OPCDAServer20, CATID_OPCDAServer30,
 };
 use windows::Win32::System::Com::{
     CLSIDFromProgID, CoCreateInstance, CoInitializeEx, ProgIDFromCLSID, CLSCTX_ALL,
