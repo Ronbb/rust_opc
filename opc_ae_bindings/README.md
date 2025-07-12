@@ -1,4 +1,4 @@
-# OPC AE Bindings
+# OPC Alarms & Event Bindings
 
 Please see docs on [docs.rs](https://docs.rs/opc_ae_bindings/).
 

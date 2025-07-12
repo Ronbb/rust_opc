@@ -2,7 +2,7 @@
 name = "opc_ae_bindings"
 version = "0.3.0"
 edition = "2024"
-description = "OPC Historical Data Access bindings"
+description = "OPC Alarms & Event bindings"
 readme = "README.md"
 repository = "https://github.com/Ronbb/rust_opc"
 license = "MIT"

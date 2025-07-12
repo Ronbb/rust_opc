@@ -1,4 +1,4 @@
-# OPC HDA Bindings
+# OPC Historial Data Access Bindings
 
 Please see docs on [docs.rs](https://docs.rs/opc_hda_bindings/).
 
