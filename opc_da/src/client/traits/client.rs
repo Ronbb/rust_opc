@@ -21,7 +21,7 @@ pub trait ClientTrait<Server: TryFrom<windows::core::IUnknown, Error = windows::
             windows::Win32::System::Com::CLSIDFromProgID(windows::core::w!("OPC.ServerList.1"))?
         };
 
-        let servers: opc_da_bindings::IOPCServerList = unsafe {
+        let servers: opc_comn_bindings::IOPCServerList = unsafe {
             // TODO: Use CoCreateInstanceEx
             windows::Win32::System::Com::CoCreateInstance(
                 &id,

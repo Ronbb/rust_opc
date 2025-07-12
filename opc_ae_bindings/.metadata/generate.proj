@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.Windows.WinmdGenerator/0.63.31-preview">
     <PropertyGroup Label="Globals">
-        <OutputWinmd>../.windows/winmd/OPCDA.winmd</OutputWinmd>
+        <OutputWinmd>../.windows/winmd/OPCAE.winmd</OutputWinmd>
         <WinmdVersion>0.0.0.1</WinmdVersion>
         <AdditionalIncludes>$(CompiledHeadersDir)</AdditionalIncludes>
     </PropertyGroup>
     <ItemGroup>
-        <Idls Include="opcda.idl" />
-        <Headers Include="$(CompiledHeadersDir)\opcda.h" />
+        <Idls Include="opc_ae.idl" />
+        <Headers Include="$(CompiledHeadersDir)\opc_ae.h" />
         <Partition Include="main.cpp">
             <TraverseFiles>@(Headers)</TraverseFiles>
-            <Namespace>OPCDA</Namespace>
+            <Namespace>OPCAE</Namespace>
             <ExcludeFromCrossarch>true</ExcludeFromCrossarch>
         </Partition>
     </ItemGroup>

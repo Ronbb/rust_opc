@@ -6,12 +6,12 @@
 use windows::core::Interface as _;
 
 use super::{
+    ClientTrait,
     traits::{
         AsyncIo2Trait, AsyncIo3Trait, BrowseTrait, CommonTrait, ConnectionPointContainerTrait,
         GroupStateMgt2Trait, GroupStateMgtTrait, ItemDeadbandMgtTrait, ItemIoTrait, ItemMgtTrait,
         ItemSamplingMgtTrait, ServerTrait, SyncIo2Trait, SyncIoTrait,
     },
-    ClientTrait,
 };
 
 /// Client for OPC DA 3.0 servers.
@@ -31,7 +31,7 @@ impl ClientTrait<Server> for Client {
 /// - `IOPCItemIO` for direct item read/write operations
 pub struct Server {
     pub(crate) server: opc_da_bindings::IOPCServer,
-    pub(crate) common: opc_da_bindings::IOPCCommon,
+    pub(crate) common: opc_comn_bindings::IOPCCommon,
     pub(crate) connection_point_container: windows::Win32::System::Com::IConnectionPointContainer,
     pub(crate) browse: opc_da_bindings::IOPCBrowse,
     pub(crate) item_io: opc_da_bindings::IOPCItemIO,
@@ -58,7 +58,7 @@ impl ServerTrait<Group> for Server {
 }
 
 impl CommonTrait for Server {
-    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCCommon> {
+    fn interface(&self) -> windows::core::Result<&opc_comn_bindings::IOPCCommon> {
         Ok(&self.common)
     }
 }

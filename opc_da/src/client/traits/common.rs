@@ -1,4 +1,4 @@
-use opc_da_bindings::IOPCCommon;
+use opc_comn_bindings::IOPCCommon;
 
 use crate::utils::{LocalPointer, RemoteArray, RemotePointer};
 

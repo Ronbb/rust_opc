@@ -276,11 +276,32 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "42f5e15c9953c5e4ccceeb2e7382a716482c34515315f7b03532b8b4e8393d2d"
 
 [[package]]
-name = "opc_da"
+name = "opc_ae_bindings"
 version = "0.3.0"
+dependencies = [
+ "windows",
+ "windows-bindgen",
+ "windows-core",
+ "windows-targets 0.53.2",
+]
+
+[[package]]
+name = "opc_comn_bindings"
+version = "0.3.0"
+dependencies = [
+ "windows",
+ "windows-bindgen",
+ "windows-core",
+ "windows-targets 0.53.2",
+]
+
+[[package]]
+name = "opc_da"
+version = "0.3.1"
 dependencies = [
  "actix",
  "globset",
+ "opc_comn_bindings",
  "opc_da_bindings",
  "tokio",
  "windows",
@@ -289,6 +310,16 @@ dependencies = [
 
 [[package]]
 name = "opc_da_bindings"
+version = "0.3.1"
+dependencies = [
+ "windows",
+ "windows-bindgen",
+ "windows-core",
+ "windows-targets 0.53.2",
+]
+
+[[package]]
+name = "opc_hda_bindings"
 version = "0.3.0"
 dependencies = [
  "windows",
