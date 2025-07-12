@@ -14,7 +14,7 @@ use super::{
 #[windows::core::implement(
     // implicit implement IUnknown
     opc_da_bindings::IOPCServer,
-    opc_da_bindings::IOPCCommon,
+    opc_comn_bindings::IOPCCommon,
     windows::Win32::System::Com::IConnectionPointContainer,
     opc_da_bindings::IOPCItemProperties,
     opc_da_bindings::IOPCBrowse,
@@ -122,7 +122,7 @@ impl<T: ServerTrait + 'static> opc_da_bindings::IOPCServer_Impl for Server_Impl<
 // 1.0 N/A
 // 2.0 required
 // 3.0 required
-impl<T: ServerTrait + 'static> opc_da_bindings::IOPCCommon_Impl for Server_Impl<T> {
+impl<T: ServerTrait + 'static> opc_comn_bindings::IOPCCommon_Impl for Server_Impl<T> {
     fn SetLocaleID(&self, locale_id: u32) -> windows::core::Result<()> {
         self.set_locale_id(locale_id)
     }

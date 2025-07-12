@@ -6,13 +6,13 @@
 use windows::core::Interface as _;
 
 use super::{
+    ClientTrait,
     traits::{
         AsyncIo2Trait, AsyncIoTrait, BrowseServerAddressSpaceTrait, CommonTrait,
         ConnectionPointContainerTrait, DataObjectTrait, GroupStateMgtTrait, ItemMgtTrait,
         ItemPropertiesTrait, PublicGroupStateMgtTrait, ServerPublicGroupsTrait, ServerTrait,
         SyncIoTrait,
     },
-    ClientTrait,
 };
 
 /// Client for OPC DA 2.0 servers.
@@ -33,7 +33,7 @@ impl ClientTrait<Server> for Client {
 /// - `IOPCBrowseServerAddressSpace` for browsing the address space
 pub struct Server {
     pub(crate) server: opc_da_bindings::IOPCServer,
-    pub(crate) common: opc_da_bindings::IOPCCommon,
+    pub(crate) common: opc_comn_bindings::IOPCCommon,
     pub(crate) connection_point_container: windows::Win32::System::Com::IConnectionPointContainer,
     pub(crate) item_properties: opc_da_bindings::IOPCItemProperties,
     pub(crate) server_public_groups: Option<opc_da_bindings::IOPCServerPublicGroups>,
@@ -62,7 +62,7 @@ impl ServerTrait<Group> for Server {
 }
 
 impl CommonTrait for Server {
-    fn interface(&self) -> windows::core::Result<&opc_da_bindings::IOPCCommon> {
+    fn interface(&self) -> windows::core::Result<&opc_comn_bindings::IOPCCommon> {
         Ok(&self.common)
     }
 }
