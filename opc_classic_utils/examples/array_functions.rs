@@ -153,10 +153,11 @@ fn demonstrate_real_world_opc_scenario() {
 
     // Client prepares item IDs for batch read
     let item_ids = ["Item1", "Item2", "Item3", "Item4", "Item5"];
-    let item_id_ptrs: Vec<*mut u16> = item_ids
+    let item_id_wstrings: Vec<CallerAllocatedWString> = item_ids
         .iter()
-        .map(|id| CallerAllocatedWString::from_str(id).unwrap().as_ptr())
+        .map(|id| CallerAllocatedWString::from_str(id).unwrap())
         .collect();
+    let item_id_ptrs: Vec<*mut u16> = item_id_wstrings.iter().map(|ws| ws.as_ptr()).collect();
 
     let item_id_array = CallerAllocatedPtrArray::from_ptr_slice(&item_id_ptrs).unwrap();
     println!(

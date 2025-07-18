@@ -256,11 +256,11 @@ fn test_caller_allocated_array_access() {
 }
 
 #[test]
-fn test_callee_allocated_array_no_free() {
-    // This test verifies that CalleeAllocatedArray frees memory
+fn test_callee_allocated_array_frees_container() {
+    // This test verifies that CalleeAllocatedArray frees the container memory
     // In a real scenario, this would be memory allocated by the callee
     let _array: CalleeAllocatedArray<i32> = CalleeAllocatedArray::from_raw(std::ptr::null_mut(), 0);
-    // When _array goes out of scope, it should call CoTaskMemFree
+    // When _array goes out of scope, it should call CoTaskMemFree on the container
 }
 
 #[test]
@@ -327,12 +327,12 @@ fn test_caller_allocated_ptr_array_access() {
 }
 
 #[test]
-fn test_callee_allocated_ptr_array_no_free() {
-    // This test verifies that CalleeAllocatedPtrArray frees memory
+fn test_callee_allocated_ptr_array_frees_all() {
+    // This test verifies that CalleeAllocatedPtrArray frees both container and elements
     // In a real scenario, this would be memory allocated by the callee
     let _array: CalleeAllocatedPtrArray<i32> =
         CalleeAllocatedPtrArray::from_raw(std::ptr::null_mut(), 0);
-    // When _array goes out of scope, it should call CoTaskMemFree
+    // When _array goes out of scope, it should call CoTaskMemFree on both container and elements
 }
 
 #[test]
