@@ -708,6 +708,27 @@ impl<T> Clone for CallerAllocatedArray<T> {
 ///
 /// This is used for output array parameters where the callee (COM function) allocates memory
 /// and the caller is responsible for freeing it using `CoTaskMemFree`.
+///
+/// # Memory Management
+/// - **Only frees the array container itself**
+/// - **Does NOT free individual array elements**
+/// - Use this when the callee returns an array of values (not pointers)
+///
+/// # Typical Use Cases
+/// - OPC server returning an array of data values
+/// - COM function returning an array of structures
+/// - Any scenario where you receive a contiguous array of data
+///
+/// # Example
+/// ```rust
+/// use opc_classic_utils::memory::CalleeAllocatedArray;
+/// use std::ptr;
+///
+/// // Server returns: [42.0, 84.0, 126.0] as *mut f64
+/// let ptr = ptr::null_mut::<f64>(); // In real code, this would be from COM
+/// let values = CalleeAllocatedArray::from_raw(ptr, 3);
+/// // When values goes out of scope, only the array is freed
+/// ```
 #[derive(Debug)]
 pub struct CalleeAllocatedArray<T> {
     ptr: *mut T,
@@ -1037,6 +1058,33 @@ impl<T> Clone for CallerAllocatedPtrArray<T> {
 ///
 /// This is used for output pointer array parameters where the callee (COM function) allocates memory
 /// and the caller is responsible for freeing it using `CoTaskMemFree`.
+///
+/// # Memory Management
+/// - **Frees the array container itself**
+/// - **ALSO frees each individual pointer in the array**
+/// - Use this when the callee returns an array of pointers to allocated memory
+///
+/// # Typical Use Cases
+/// - OPC server returning an array of string pointers
+/// - COM function returning an array of object pointers
+/// - Any scenario where you receive an array of pointers to allocated memory
+///
+/// # Example
+/// ```rust
+/// use opc_classic_utils::memory::CalleeAllocatedPtrArray;
+/// use std::ptr;
+///
+/// // Server returns: [ptr1, ptr2, ptr3] where each ptr points to allocated memory
+/// let ptr = ptr::null_mut::<*mut u16>(); // In real code, this would be from COM
+/// let string_ptrs = CalleeAllocatedPtrArray::from_raw(ptr, 3);
+/// // When string_ptrs goes out of scope:
+/// // 1. Each pointer in the array is freed
+/// // 2. The array itself is freed
+/// ```
+///
+/// # ⚠️ Important Difference from CalleeAllocatedArray
+/// - `CalleeAllocatedArray<T>`: Only frees the array container
+/// - `CalleeAllocatedPtrArray<T>`: Frees both the array AND each pointer in it
 #[derive(Debug)]
 pub struct CalleeAllocatedPtrArray<T> {
     ptr: *mut *mut T,
