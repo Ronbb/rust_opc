@@ -12,16 +12,8 @@ default-target = "x86_64-pc-windows-msvc"
 targets = []
 
 [dependencies]
-actix = { workspace = true }
-globset = { workspace = true }
 opc_classic_utils = { workspace = true }
 opc_comn_bindings = { workspace = true }
 opc_da_bindings = { workspace = true }
-tokio = { workspace = true }
 windows = { workspace = true }
 windows-core = { workspace = true }
-
-[features]
-default = ["unstable_client", "unstable_server"]
-unstable_client = []
-unstable_server = []
