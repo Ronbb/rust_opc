@@ -132,18 +132,29 @@ fn test_pointer_dereference() {
     // Test dereferencing pointers
     let value = 123i32;
     let mut caller_ptr = CallerAllocatedPtr::from_value(&value).unwrap();
-    let callee_ptr = CalleeAllocatedPtr::from_raw(caller_ptr.as_ptr());
+    // Don't create a CalleeAllocatedPtr from CallerAllocatedPtr - it would cause double-free
 
     // Test as_ref
     unsafe {
         assert_eq!(caller_ptr.as_ref().unwrap(), &123);
-        assert_eq!(callee_ptr.as_ref().unwrap(), &123);
     }
 
     // Test as_mut
     unsafe {
         *caller_ptr.as_mut().unwrap() = 456;
         assert_eq!(*caller_ptr.as_ptr(), 456);
+    }
+}
+
+#[test]
+fn test_callee_allocated_ptr_dereference() {
+    // Test dereferencing CalleeAllocatedPtr with separate memory
+    let value = 789i32;
+    let callee_ptr = CalleeAllocatedPtr::from_value(&value).unwrap();
+
+    // Test as_ref
+    unsafe {
+        assert_eq!(callee_ptr.as_ref().unwrap(), &789);
     }
 }
 

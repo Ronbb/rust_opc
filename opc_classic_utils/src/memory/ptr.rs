@@ -156,6 +156,24 @@ impl<T> CalleeAllocatedPtr<T> {
         Self { ptr }
     }
 
+    /// Creates a new `CalleeAllocatedPtr` from a value, allocating memory
+    ///
+    /// This allocates memory using `CoTaskMemAlloc` and copies the value into it.
+    pub fn from_value(value: &T) -> Result<Self, windows::core::Error>
+    where
+        T: Copy,
+    {
+        let size = std::mem::size_of::<T>();
+        let ptr = unsafe { windows::Win32::System::Com::CoTaskMemAlloc(size) };
+        if ptr.is_null() {
+            return Err(windows::core::Error::from_win32());
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(value, ptr.cast(), 1);
+        }
+        Ok(unsafe { Self::new(ptr.cast()) })
+    }
+
     /// Returns the raw pointer without transferring ownership
     pub fn as_ptr(&self) -> *mut T {
         self.ptr
