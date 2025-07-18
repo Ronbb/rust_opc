@@ -152,7 +152,7 @@ fn demonstrate_real_world_opc_scenario() {
     println!("\n1. Simulating OPC client preparing batch read request:");
 
     // Client prepares item IDs for batch read
-    let item_ids = vec!["Item1", "Item2", "Item3", "Item4", "Item5"];
+    let item_ids = ["Item1", "Item2", "Item3", "Item4", "Item5"];
     let item_id_ptrs: Vec<*mut u16> = item_ids
         .iter()
         .map(|id| CallerAllocatedWString::from_str(id).unwrap().as_ptr())
