@@ -7,8 +7,10 @@
 //! 1. Caller allocates, callee frees (e.g., input parameters)
 //! 2. Callee allocates, caller frees (e.g., output parameters)
 
+use std::ffi::{OsStr, OsString};
+use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr;
-use windows::Win32::System::Com::CoTaskMemFree;
+use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 use windows::core::PCWSTR;
 
 /// A smart pointer for COM memory that the **caller allocates and callee frees**
@@ -38,6 +40,32 @@ impl<T> CallerAllocatedPtr<T> {
         Self { ptr }
     }
 
+    /// Allocates memory using `CoTaskMemAlloc` and creates a `CallerAllocatedPtr`
+    ///
+    /// This allocates memory that will be freed by the callee (COM function).
+    /// The caller is responsible for ensuring the callee will free this memory.
+    pub fn allocate() -> Result<Self, windows::core::Error> {
+        let ptr = unsafe { CoTaskMemAlloc(std::mem::size_of::<T>()) };
+        if ptr.is_null() {
+            return Err(windows::core::Error::from_win32());
+        }
+        Ok(unsafe { Self::new(ptr.cast()) })
+    }
+
+    /// Allocates memory and initializes it with a copy of the given value
+    ///
+    /// This creates a copy of the value in COM-allocated memory.
+    pub fn from_value(value: &T) -> Result<Self, windows::core::Error>
+    where
+        T: Copy,
+    {
+        let ptr = Self::allocate()?;
+        unsafe {
+            *ptr.as_ptr() = *value;
+        }
+        Ok(ptr)
+    }
+
     /// Returns the raw pointer without transferring ownership
     pub fn as_ptr(&self) -> *mut T {
         self.ptr
@@ -55,6 +83,32 @@ impl<T> CallerAllocatedPtr<T> {
     /// Checks if the pointer is null
     pub fn is_null(&self) -> bool {
         self.ptr.is_null()
+    }
+
+    /// Dereferences the pointer if it's not null
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to initialized data.
+    pub unsafe fn as_ref(&self) -> Option<&T> {
+        if self.ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { &*self.ptr })
+        }
+    }
+
+    /// Mutably dereferences the pointer if it's not null
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to initialized data.
+    pub unsafe fn as_mut(&mut self) -> Option<&mut T> {
+        if self.ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { &mut *self.ptr })
+        }
     }
 }
 
@@ -84,7 +138,6 @@ impl<T> Clone for CallerAllocatedPtr<T> {
 ///
 /// This is used for output parameters where the callee (COM function) allocates memory
 /// and the caller is responsible for freeing it using `CoTaskMemFree`.
-/// This wrapper automatically frees the memory when dropped.
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct CalleeAllocatedPtr<T> {
@@ -126,6 +179,32 @@ impl<T> CalleeAllocatedPtr<T> {
     /// Checks if the pointer is null
     pub fn is_null(&self) -> bool {
         self.ptr.is_null()
+    }
+
+    /// Dereferences the pointer if it's not null
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to initialized data.
+    pub unsafe fn as_ref(&self) -> Option<&T> {
+        if self.ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { &*self.ptr })
+        }
+    }
+
+    /// Mutably dereferences the pointer if it's not null
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to initialized data.
+    pub unsafe fn as_mut(&mut self) -> Option<&mut T> {
+        if self.ptr.is_null() {
+            None
+        } else {
+            Some(unsafe { &mut *self.ptr })
+        }
     }
 }
 
@@ -189,6 +268,75 @@ impl CallerAllocatedWString {
         }
     }
 
+    /// Allocates memory using `CoTaskMemAlloc` and creates a `CallerAllocatedWString`
+    ///
+    /// This allocates memory for a wide string that will be freed by the callee.
+    pub fn allocate(len: usize) -> Result<Self, windows::core::Error> {
+        let size = (len + 1) * std::mem::size_of::<u16>(); // +1 for null terminator
+        let ptr = unsafe { CoTaskMemAlloc(size) };
+        if ptr.is_null() {
+            return Err(windows::core::Error::from_win32());
+        }
+        Ok(unsafe { Self::new(ptr.cast()) })
+    }
+
+    /// Creates a `CallerAllocatedWString` from a Rust string
+    pub fn from_string(s: String) -> Result<Self, windows::core::Error> {
+        use std::str::FromStr;
+        Self::from_str(&s)
+    }
+
+    /// Creates a `CallerAllocatedWString` from an `OsStr`
+    pub fn from_os_str(os_str: &OsStr) -> Result<Self, windows::core::Error> {
+        let wide_string: Vec<u16> = os_str.encode_wide().chain(std::iter::once(0)).collect();
+        let len = wide_string.len() - 1; // Exclude null terminator for allocation
+
+        let ptr = Self::allocate(len)?;
+        unsafe {
+            std::ptr::copy_nonoverlapping(wide_string.as_ptr(), ptr.as_ptr(), wide_string.len());
+        }
+        Ok(ptr)
+    }
+
+    /// Converts the wide string to a Rust string slice
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to a null-terminated wide string.
+    pub unsafe fn to_string(&self) -> Option<String> {
+        if self.ptr.is_null() {
+            return None;
+        }
+
+        let mut len = 0;
+        while unsafe { *self.ptr.add(len) } != 0 {
+            len += 1;
+        }
+
+        let slice = unsafe { std::slice::from_raw_parts(self.ptr, len) };
+        let os_string = OsString::from_wide(slice);
+        Some(os_string.to_string_lossy().into_owned())
+    }
+
+    /// Converts the wide string to an `OsString`
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to a null-terminated wide string.
+    pub unsafe fn to_os_string(&self) -> Option<OsString> {
+        if self.ptr.is_null() {
+            return None;
+        }
+
+        let mut len = 0;
+        while unsafe { *self.ptr.add(len) } != 0 {
+            len += 1;
+        }
+
+        let slice = unsafe { std::slice::from_raw_parts(self.ptr, len) };
+        Some(OsString::from_wide(slice))
+    }
+
     /// Returns the raw pointer without transferring ownership
     pub fn as_ptr(&self) -> *mut u16 {
         self.ptr
@@ -233,6 +381,24 @@ impl Clone for CallerAllocatedWString {
     }
 }
 
+impl std::str::FromStr for CallerAllocatedWString {
+    type Err = windows::core::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let wide_string: Vec<u16> = OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let len = wide_string.len() - 1; // Exclude null terminator for allocation
+
+        let ptr = Self::allocate(len)?;
+        unsafe {
+            std::ptr::copy_nonoverlapping(wide_string.as_ptr(), ptr.as_ptr(), wide_string.len());
+        }
+        Ok(ptr)
+    }
+}
+
 /// A smart pointer for wide string pointers that the **callee allocates and caller frees**
 ///
 /// This is used for output string parameters where the callee allocates memory
@@ -264,6 +430,45 @@ impl CalleeAllocatedWString {
         Self {
             ptr: pcwstr.as_ptr() as *mut u16,
         }
+    }
+
+    /// Converts the wide string to a Rust string slice
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to a null-terminated wide string.
+    pub unsafe fn to_string(&self) -> Option<String> {
+        if self.ptr.is_null() {
+            return None;
+        }
+
+        let mut len = 0;
+        while unsafe { *self.ptr.add(len) } != 0 {
+            len += 1;
+        }
+
+        let slice = unsafe { std::slice::from_raw_parts(self.ptr, len) };
+        let os_string = OsString::from_wide(slice);
+        Some(os_string.to_string_lossy().into_owned())
+    }
+
+    /// Converts the wide string to an `OsString`
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to a null-terminated wide string.
+    pub unsafe fn to_os_string(&self) -> Option<OsString> {
+        if self.ptr.is_null() {
+            return None;
+        }
+
+        let mut len = 0;
+        while unsafe { *self.ptr.add(len) } != 0 {
+            len += 1;
+        }
+
+        let slice = unsafe { std::slice::from_raw_parts(self.ptr, len) };
+        Some(OsString::from_wide(slice))
     }
 
     /// Returns the raw pointer without transferring ownership
@@ -317,6 +522,7 @@ impl Clone for CalleeAllocatedWString {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::str::FromStr;
 
     #[test]
     fn test_caller_allocated_ptr_null() {
@@ -378,5 +584,129 @@ mod tests {
 
         let callee_wstring = CalleeAllocatedWString::from_raw(wstring_ptr);
         assert_eq!(callee_wstring.as_ptr(), wstring_ptr);
+    }
+
+    #[test]
+    fn test_caller_allocated_ptr_allocate() {
+        // Test allocation of caller-allocated pointer
+        let ptr = CallerAllocatedPtr::<i32>::allocate().unwrap();
+        assert!(!ptr.is_null());
+        // Memory will be freed by callee, not by our wrapper
+    }
+
+    #[test]
+    fn test_caller_allocated_ptr_from_value() {
+        // Test creating pointer from value
+        let value = 42i32;
+        let ptr = CallerAllocatedPtr::from_value(&value).unwrap();
+        assert!(!ptr.is_null());
+
+        // Verify the value was copied correctly
+        unsafe {
+            assert_eq!(*ptr.as_ptr(), 42);
+        }
+    }
+
+    #[test]
+    fn test_caller_allocated_wstring_from_str() {
+        // Test creating wide string from Rust string
+        use std::str::FromStr;
+        let test_string = "Hello, World!";
+        let wstring = CallerAllocatedWString::from_str(test_string).unwrap();
+        assert!(!wstring.is_null());
+
+        // Verify the string was converted correctly
+        unsafe {
+            let converted = wstring.to_string().unwrap();
+            assert_eq!(converted, test_string);
+        }
+    }
+
+    #[test]
+    fn test_caller_allocated_wstring_from_string() {
+        // Test creating wide string from String
+        let test_string = String::from("Test String");
+        let wstring = CallerAllocatedWString::from_string(test_string.clone()).unwrap();
+        assert!(!wstring.is_null());
+
+        // Verify the string was converted correctly
+        unsafe {
+            let converted = wstring.to_string().unwrap();
+            assert_eq!(converted, test_string);
+        }
+    }
+
+    #[test]
+    fn test_caller_allocated_wstring_from_os_str() {
+        // Test creating wide string from OsStr
+        let test_string = OsStr::new("OS String Test");
+        let wstring = CallerAllocatedWString::from_os_str(test_string).unwrap();
+        assert!(!wstring.is_null());
+
+        // Verify the string was converted correctly
+        unsafe {
+            let converted = wstring.to_os_string().unwrap();
+            assert_eq!(converted, test_string);
+        }
+    }
+
+    #[test]
+    fn test_pointer_dereference() {
+        // Test dereferencing pointers
+        let value = 123i32;
+        let mut caller_ptr = CallerAllocatedPtr::from_value(&value).unwrap();
+        let callee_ptr = CalleeAllocatedPtr::from_raw(caller_ptr.as_ptr());
+
+        // Test as_ref
+        unsafe {
+            assert_eq!(caller_ptr.as_ref().unwrap(), &123);
+            assert_eq!(callee_ptr.as_ref().unwrap(), &123);
+        }
+
+        // Test as_mut
+        unsafe {
+            *caller_ptr.as_mut().unwrap() = 456;
+            assert_eq!(*caller_ptr.as_ptr(), 456);
+        }
+    }
+
+    #[test]
+    fn test_null_pointer_dereference() {
+        // Test dereferencing null pointers
+        let caller_ptr = CallerAllocatedPtr::<i32>::default();
+        let callee_ptr = CalleeAllocatedPtr::<i32>::default();
+
+        unsafe {
+            assert!(caller_ptr.as_ref().is_none());
+            assert!(callee_ptr.as_ref().is_none());
+        }
+    }
+
+    #[test]
+    fn test_wstring_null_conversion() {
+        // Test converting null wide strings
+        let caller_wstring = CallerAllocatedWString::default();
+        let callee_wstring = CalleeAllocatedWString::default();
+
+        unsafe {
+            assert!(caller_wstring.to_string().is_none());
+            assert!(callee_wstring.to_string().is_none());
+            assert!(caller_wstring.to_os_string().is_none());
+            assert!(callee_wstring.to_os_string().is_none());
+        }
+    }
+
+    #[test]
+    fn test_from_str_trait() {
+        // Test the FromStr trait implementation
+        let test_string = "Test FromStr Trait";
+        let wstring = CallerAllocatedWString::from_str(test_string).unwrap();
+        assert!(!wstring.is_null());
+
+        // Verify the string was converted correctly
+        unsafe {
+            let converted = wstring.to_string().unwrap();
+            assert_eq!(converted, test_string);
+        }
     }
 }
