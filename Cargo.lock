@@ -286,6 +286,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "opc_classic_utils"
+version = "0.3.0"
+dependencies = [
+ "windows",
+ "windows-core",
+]
+
+[[package]]
 name = "opc_comn_bindings"
 version = "0.3.0"
 dependencies = [
@@ -301,6 +309,7 @@ version = "0.3.1"
 dependencies = [
  "actix",
  "globset",
+ "opc_classic_utils",
  "opc_comn_bindings",
  "opc_da_bindings",
  "tokio",
