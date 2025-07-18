@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
   "opc_ae_bindings",
+  "opc_classic_utils",
   "opc_comn_bindings",
   "opc_da",
   "opc_da_bindings",
@@ -11,6 +12,7 @@ members = [
 [workspace.dependencies]
 actix = "0.13.5"
 globset = "0.4.16"
+opc_classic_utils = { version = "0.3.0", path = "opc_classic_utils" }
 opc_comn_bindings = { version = "0.3.0", path = "opc_comn_bindings" }
 opc_da_bindings = { version = "0.3.1", path = "opc_da_bindings" }
 tokio = { version = "1.46.1", features = ["full", "rt-multi-thread"] }

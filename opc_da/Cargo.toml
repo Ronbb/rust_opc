@@ -14,6 +14,7 @@ targets = []
 [dependencies]
 actix = { workspace = true }
 globset = { workspace = true }
+opc_classic_utils = { workspace = true }
 opc_comn_bindings = { workspace = true }
 opc_da_bindings = { workspace = true }
 tokio = { workspace = true }
