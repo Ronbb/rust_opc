@@ -146,6 +146,12 @@ impl Default for CallerAllocatedWString {
 }
 
 impl Clone for CallerAllocatedWString {
+    /// Creates a shallow copy of the pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that only one instance is passed to functions
+    /// that will free the memory, to avoid double-free errors.
     fn clone(&self) -> Self {
         Self { ptr: self.ptr }
     }
@@ -284,6 +290,12 @@ impl Default for CalleeAllocatedWString {
 }
 
 impl Clone for CalleeAllocatedWString {
+    /// Creates a shallow copy of the pointer.
+    ///
+    /// # Safety
+    ///
+    /// This creates two instances that will both attempt to free the same memory
+    /// when dropped, potentially causing double-free errors. Use with extreme caution.
     fn clone(&self) -> Self {
         Self { ptr: self.ptr }
     }

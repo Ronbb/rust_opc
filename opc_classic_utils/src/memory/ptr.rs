@@ -117,6 +117,12 @@ impl<T> Default for CallerAllocatedPtr<T> {
 }
 
 impl<T> Clone for CallerAllocatedPtr<T> {
+    /// Creates a shallow copy of the pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that only one instance is passed to functions
+    /// that will free the memory, to avoid double-free errors.
     fn clone(&self) -> Self {
         Self { ptr: self.ptr }
     }
@@ -212,11 +218,5 @@ impl<T> Default for CalleeAllocatedPtr<T> {
         Self {
             ptr: ptr::null_mut(),
         }
-    }
-}
-
-impl<T> Clone for CalleeAllocatedPtr<T> {
-    fn clone(&self) -> Self {
-        Self { ptr: self.ptr }
     }
 }

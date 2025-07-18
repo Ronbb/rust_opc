@@ -180,6 +180,12 @@ impl<T> Default for CallerAllocatedPtrArray<T> {
 }
 
 impl<T> Clone for CallerAllocatedPtrArray<T> {
+    /// Creates a shallow copy of the pointer.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure that only one instance is passed to functions
+    /// that will free the memory, to avoid double-free errors.
     fn clone(&self) -> Self {
         Self {
             ptr: self.ptr,
@@ -355,15 +361,6 @@ impl<T> Default for CalleeAllocatedPtrArray<T> {
         Self {
             ptr: ptr::null_mut(),
             len: 0,
-        }
-    }
-}
-
-impl<T> Clone for CalleeAllocatedPtrArray<T> {
-    fn clone(&self) -> Self {
-        Self {
-            ptr: self.ptr,
-            len: self.len,
         }
     }
 }
