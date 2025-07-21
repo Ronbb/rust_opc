@@ -15,5 +15,6 @@ targets = []
 opc_classic_utils = { workspace = true }
 opc_comn_bindings = { workspace = true }
 opc_da_bindings = { workspace = true }
+thiserror = { workspace = true }
 windows = { workspace = true }
 windows-core = { workspace = true }
