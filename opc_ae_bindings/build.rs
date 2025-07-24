@@ -13,7 +13,6 @@ fn main() {
         "--filter",
         "OPCAE",
         "--flat",
-        "--implement",
     ])
     .unwrap();
 }
