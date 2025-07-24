@@ -13,7 +13,6 @@ fn main() {
         "--filter",
         "OPCCOMN",
         "--flat",
-        "--implement",
     ])
     .unwrap();
 }

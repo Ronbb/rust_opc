@@ -13,7 +13,6 @@ fn main() {
         "--filter",
         "OPCHDA",
         "--flat",
-        "--implement",
     ])
     .unwrap();
 }
