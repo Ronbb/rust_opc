@@ -16,7 +16,6 @@ targets = []
 [dependencies]
 windows = { workspace = true }
 windows-core = { workspace = true }
-windows-targets = { workspace = true }
 
 [build-dependencies]
 windows-bindgen = { workspace = true }

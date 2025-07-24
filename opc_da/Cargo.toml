@@ -5,7 +5,7 @@ edition = "2024"
 description = "OPC Data Access"
 repository = "https://github.com/Ronbb/rust_opc"
 license = "MIT"
-keywords = ["da", "opc"]
+keywords = ["da", "opc", "opcda"]
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"

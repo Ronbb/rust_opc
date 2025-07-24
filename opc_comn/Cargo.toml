@@ -1,21 +1,19 @@
 [package]
-name = "opc_da_bindings"
+name = "opc_comn"
 version = "0.3.1"
 edition = "2024"
-description = "OPC Data Access bindings"
-readme = "README.md"
+description = "OPC Common"
 repository = "https://github.com/Ronbb/rust_opc"
 license = "MIT"
-keywords = ["bindings", "da", "opc", "opcda"]
-exclude = [".metadata/*", ".windows/*", "build.rs"]
+keywords = ["comn", "opc", "opccomn"]
 
 [package.metadata.docs.rs]
 default-target = "x86_64-pc-windows-msvc"
 targets = []
 
 [dependencies]
+opc_classic_utils = { workspace = true }
+opc_comn_bindings = { workspace = true }
+thiserror = { workspace = true }
 windows = { workspace = true }
 windows-core = { workspace = true }
-
-[build-dependencies]
-windows-bindgen = { workspace = true }

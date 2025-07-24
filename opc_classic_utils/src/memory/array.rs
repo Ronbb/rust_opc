@@ -162,9 +162,10 @@ impl<T> CallerAllocatedArray<T> {
 impl<T> Drop for CallerAllocatedArray<T> {
     fn drop(&mut self) {
         // Do NOT free the memory - the callee is responsible for this
-        // Just clear the pointer to prevent use-after-free
-        self.ptr = ptr::null_mut();
+        // Just clear the length to prevent use-after-free
+        // Keep the pointer intact for the callee to use
         self.len = 0;
+        // Note: We don't clear self.ptr because the callee needs it
     }
 }
 
@@ -344,4 +345,67 @@ impl<T> Default for CalleeAllocatedArray<T> {
             len: 0,
         }
     }
+}
+
+/// Writes an array to a caller-allocated pointer using COM memory management
+///
+/// This macro simplifies writing arrays to caller-allocated pointers by creating
+/// a `CallerAllocatedArray` from a slice and writing its pointer to the target.
+///
+/// # Arguments
+///
+/// * `$ptr` - A raw pointer (`*mut *mut T`) that points to caller-allocated memory
+/// * `$value` - A slice (`&[T]`) containing the array data to write
+///
+/// # Returns
+///
+/// Returns `Result<(), windows::core::Error>`:
+/// * `Ok(())` - Array was successfully written
+/// * `Err(...)` - Memory allocation failed or pointer is invalid
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// * `$ptr` is a valid pointer to caller-allocated memory
+/// * The memory pointed to by `$ptr` is properly initialized
+/// * The callee (COM function) will be responsible for freeing the array memory
+/// * The array elements are `Copy` types
+///
+/// # Memory Management
+///
+/// This macro:
+/// 1. Allocates memory using `CoTaskMemAlloc` for the array data
+/// 2. Copies the slice data into the allocated memory
+/// 3. Writes the pointer to the allocated memory to `$ptr`
+/// 4. The callee is responsible for freeing the memory using `CoTaskMemFree`
+///
+/// # Example
+///
+/// ```rust
+/// use opc_classic_utils::write_caller_allocated_array;
+///
+/// let mut array_ptr: *mut u32 = std::ptr::null_mut();
+/// let data = vec![1u32, 2u32, 3u32, 4u32, 5u32];
+///
+/// // Write the array to the caller-allocated pointer
+/// write_caller_allocated_array!(&mut array_ptr, &data)?;
+///
+/// // The array_ptr now points to COM-allocated memory containing the data
+/// // The callee (COM function) will be responsible for freeing this memory
+/// # Ok::<(), windows::core::Error>(())
+/// ```
+///
+/// # Typical Use Cases
+///
+/// * Passing arrays to COM function calls
+/// * OPC Classic API array parameter passing
+/// * Setting up caller-allocated array output parameters
+#[macro_export]
+macro_rules! write_caller_allocated_array {
+    ($ptr:expr, $value:expr) => {
+        opc_classic_utils::write_caller_allocated_ptr!(
+            $ptr,
+            opc_classic_utils::CallerAllocatedArray::from_slice($value)?.as_ptr()
+        )
+    };
 }

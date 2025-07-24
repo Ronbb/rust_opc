@@ -2,7 +2,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::{OsStrExt, OsStringExt};
 use std::ptr;
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
-use windows::core::PCWSTR;
+use windows::core::{PCWSTR, PWSTR};
 
 /// A smart pointer for wide string pointers that the **caller allocates and callee frees**
 ///
@@ -128,12 +128,18 @@ impl CallerAllocatedWString {
     pub fn as_pcwstr(&self) -> PCWSTR {
         PCWSTR(self.ptr)
     }
+
+    /// Converts to a `PWSTR` for use with Windows APIs
+    pub fn as_pwstr(&self) -> PWSTR {
+        PWSTR(self.ptr)
+    }
 }
 
 impl Drop for CallerAllocatedWString {
     fn drop(&mut self) {
         // Do NOT free the memory - the callee is responsible for this
-        self.ptr = ptr::null_mut();
+        // Keep the pointer intact for the callee to use
+        // Note: We don't clear self.ptr because the callee needs it
     }
 }
 
@@ -208,6 +214,12 @@ impl CalleeAllocatedWString {
         }
     }
 
+    /// Creates a `CalleeAllocatedWString` from a Rust string
+    pub fn from_string(s: String) -> Result<Self, windows::core::Error> {
+        use std::str::FromStr;
+        Self::from_str(&s)
+    }
+
     /// Converts the wide string to a Rust string slice
     ///
     /// # Safety
@@ -268,6 +280,11 @@ impl CalleeAllocatedWString {
     pub fn as_pcwstr(&self) -> PCWSTR {
         PCWSTR(self.ptr)
     }
+
+    /// Converts to a `PWSTR` for use with Windows APIs
+    pub fn as_pwstr(&self) -> PWSTR {
+        PWSTR(self.ptr)
+    }
 }
 
 impl Drop for CalleeAllocatedWString {
@@ -299,4 +316,82 @@ impl Clone for CalleeAllocatedWString {
     fn clone(&self) -> Self {
         Self { ptr: self.ptr }
     }
+}
+
+impl std::str::FromStr for CalleeAllocatedWString {
+    type Err = windows::core::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let wide_string: Vec<u16> = OsStr::new(s)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let len = wide_string.len() - 1; // Exclude null terminator for allocation
+        let ptr = unsafe { CoTaskMemAlloc(len * std::mem::size_of::<u16>()) };
+        if ptr.is_null() {
+            return Err(windows::core::Error::from_win32());
+        }
+        unsafe {
+            std::ptr::copy_nonoverlapping(wide_string.as_ptr(), ptr.cast(), wide_string.len());
+        }
+        Ok(unsafe { Self::new(ptr.cast()) })
+    }
+}
+
+/// Allocates a callee-allocated wide string from a Rust string
+///
+/// This macro simplifies creating callee-allocated wide strings by converting
+/// a Rust string to a `CalleeAllocatedWString` and returning its `PWSTR` representation.
+///
+/// # Arguments
+///
+/// * `$s` - A string expression (`String`, `&str`, or any type that can be converted to `String`)
+///
+/// # Returns
+///
+/// Returns `Result<PWSTR, windows::core::Error>`:
+/// * `Ok(PWSTR)` - Successfully allocated wide string pointer
+/// * `Err(...)` - Memory allocation failed
+///
+/// # Memory Management
+///
+/// This macro:
+/// 1. Converts the input string to a wide string (UTF-16)
+/// 2. Allocates memory using `CoTaskMemAlloc` for the wide string
+/// 3. Copies the wide string data into the allocated memory
+/// 4. Returns a `PWSTR` pointing to the allocated memory
+/// 5. The caller is responsible for freeing the memory using `CoTaskMemFree`
+///
+/// # Example
+///
+/// ```rust
+/// use opc_classic_utils::alloc_callee_wstring;
+/// use windows_core::PWSTR;
+///
+/// // Allocate a wide string from a Rust string
+/// let wide_string: PWSTR = alloc_callee_wstring!("Hello, World!")?;
+///
+/// // Use the wide string with Windows APIs
+/// // The caller is responsible for freeing the memory when done
+/// unsafe {
+///     // Use wide_string with Windows API calls
+///     // ...
+///     // Free the memory when done
+///     windows::Win32::System::Com::CoTaskMemFree(Some(wide_string.0.cast()));
+/// }
+/// # Ok::<(), windows::core::Error>(())
+/// ```
+///
+/// # Typical Use Cases
+///
+/// * Creating wide strings for Windows API calls
+/// * OPC Classic API string parameter passing
+/// * Converting Rust strings to COM-allocated wide strings
+/// * Setting up callee-allocated string output parameters
+#[macro_export]
+macro_rules! alloc_callee_wstring {
+    ($s:expr) => {{
+        use std::str::FromStr;
+        opc_classic_utils::CalleeAllocatedWString::from_str(&$s).map(|s| s.as_pwstr())
+    }};
 }

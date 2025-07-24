@@ -3,6 +3,7 @@ resolver = "2"
 members = [
   "opc_ae_bindings",
   "opc_classic_utils",
+  "opc_comn",
   "opc_comn_bindings",
   "opc_da",
   "opc_da_bindings",
@@ -11,6 +12,7 @@ members = [
 
 [workspace.dependencies]
 opc_classic_utils = { path = "opc_classic_utils" }
+opc_comn = { path = "opc_comn" }
 opc_comn_bindings = { path = "opc_comn_bindings" }
 opc_da_bindings = { path = "opc_da_bindings" }
 opc_hda_bindings = { path = "opc_hda_bindings" }
@@ -26,7 +28,6 @@ windows = { version = "0.61.3", features = [
 ] }
 windows-bindgen = "0.62.1"
 windows-core = "0.61.2"
-windows-targets = "0.53.2"
 
 [profile.dev.build-override]
 debug = true

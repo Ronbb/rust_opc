@@ -103,8 +103,8 @@ impl<T> CallerAllocatedPtr<T> {
 impl<T> Drop for CallerAllocatedPtr<T> {
     fn drop(&mut self) {
         // Do NOT free the memory - the callee is responsible for this
-        // Just clear the pointer to prevent use-after-free
-        self.ptr = ptr::null_mut();
+        // Keep the pointer intact for the callee to use
+        // Note: We don't clear self.ptr because the callee needs it
     }
 }
 
@@ -237,4 +237,59 @@ impl<T> Default for CalleeAllocatedPtr<T> {
             ptr: ptr::null_mut(),
         }
     }
+}
+
+/// Writes a value to a caller-allocated pointer using COM memory management
+///
+/// This macro simplifies writing values to caller-allocated pointers by wrapping
+/// the raw pointer in a `CallerAllocatedPtr` and safely writing the value.
+///
+/// # Arguments
+///
+/// * `$ptr` - A raw pointer (`*mut T`) that points to caller-allocated memory
+/// * `$value` - The value to write to the pointer
+///
+/// # Returns
+///
+/// Returns `Result<(), windows::core::Error>`:
+/// * `Ok(())` - Value was successfully written
+/// * `Err(E_INVALIDARG)` - The pointer is null or invalid
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// * `$ptr` is a valid pointer to caller-allocated memory
+/// * The memory pointed to by `$ptr` is properly initialized
+/// * The callee (COM function) will be responsible for freeing the memory
+///
+/// # Example
+///
+/// ```rust
+/// use opc_classic_utils::write_caller_allocated_ptr;
+///
+/// let mut count: u32 = 0;
+/// let count_ptr = &mut count as *mut u32;
+///
+/// // Write a value to the caller-allocated pointer
+/// write_caller_allocated_ptr!(count_ptr, 42u32)?;
+/// assert_eq!(count, 42);
+/// # Ok::<(), windows::core::Error>(())
+/// ```
+///
+/// # Typical Use Cases
+///
+/// * Writing input parameters to COM function calls
+/// * Setting up caller-allocated output parameters
+/// * OPC Classic API parameter passing
+#[macro_export]
+macro_rules! write_caller_allocated_ptr {
+    ($ptr:expr, $value:expr) => {
+        unsafe {
+            let mut ptr = opc_classic_utils::CallerAllocatedPtr::from_raw($ptr);
+            let value = $value;
+            ptr.as_mut()
+                .ok_or(windows::Win32::Foundation::E_INVALIDARG)
+                .map(|ptr| *ptr = value)
+        }
+    };
 }

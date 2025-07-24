@@ -87,6 +87,41 @@ let server_output = server_method(&client_input);
 | `CallerAllocatedWString` | Input strings | Caller allocates, callee frees |
 | `CalleeAllocatedWString` | Output strings | Callee allocates, caller frees |
 
+## Convenience Macros
+
+The library provides several convenience macros to simplify common operations:
+
+### `write_caller_allocated_ptr!`
+Writes a value to a caller-allocated pointer with proper error handling:
+
+```rust
+use opc_classic_utils::write_caller_allocated_ptr;
+
+let mut count: u32 = 0;
+let count_ptr = &mut count as *mut u32;
+write_caller_allocated_ptr!(count_ptr, 42u32)?;
+```
+
+### `write_caller_allocated_array!`
+Writes an array to a caller-allocated pointer:
+
+```rust
+use opc_classic_utils::write_caller_allocated_array;
+
+let mut array_ptr: *mut u32 = std::ptr::null_mut();
+let data = vec![1u32, 2u32, 3u32];
+write_caller_allocated_array!(&mut array_ptr, &data)?;
+```
+
+### `alloc_callee_wstring!`
+Allocates a callee-allocated wide string from a Rust string:
+
+```rust
+use opc_classic_utils::alloc_callee_wstring;
+
+let error_string_ptr = alloc_callee_wstring!("Error message")?;
+```
+
 ## Benefits
 
 - **Prevents Memory Leaks**: Automatic cleanup for callee-allocated memory
