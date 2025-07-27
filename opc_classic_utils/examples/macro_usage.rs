@@ -20,7 +20,7 @@ fn main() -> windows::core::Result<()> {
 
         // Using the macro to write to a caller-allocated pointer
         write_caller_allocated_ptr!(count_ptr, 42u32)?;
-        println!("   Written value: {}", count);
+        println!("   Written value: {count}");
     }
 
     // Example 2: Using write_caller_allocated_array! macro
@@ -32,7 +32,7 @@ fn main() -> windows::core::Result<()> {
         let data = vec![1u32, 2u32, 3u32, 4u32, 5u32];
         write_caller_allocated_array!(&mut array_ptr, &data)?;
 
-        println!("   Array pointer: {:?}", array_ptr);
+        println!("   Array pointer: {array_ptr:?}");
         println!("   Array is not null: {}", !array_ptr.is_null());
     }
 
@@ -44,7 +44,7 @@ fn main() -> windows::core::Result<()> {
         // Using the macro to allocate a callee-allocated wide string
         let wide_string_ptr = alloc_callee_wstring!(error_message)?;
 
-        println!("   Wide string pointer: {:?}", wide_string_ptr);
+        println!("   Wide string pointer: {wide_string_ptr:?}");
     }
 
     // Example 4: Simulating OPC Common interface usage
@@ -63,8 +63,8 @@ fn main() -> windows::core::Result<()> {
         // Write array using macro
         write_caller_allocated_array!(&mut locale_ids_ptr, &available_locale_ids)?;
 
-        println!("   Available locale count: {}", count);
-        println!("   Locale IDs pointer: {:?}", locale_ids_ptr);
+        println!("   Available locale count: {count}");
+        println!("   Locale IDs pointer: {locale_ids_ptr:?}");
     }
 
     // Example 5: Error handling with macros
@@ -74,8 +74,8 @@ fn main() -> windows::core::Result<()> {
         let hresult = windows::Win32::Foundation::E_POINTER;
         let error_string_ptr = alloc_callee_wstring!("Pointer is invalid")?;
 
-        println!("   HRESULT: {:?}", hresult);
-        println!("   Error string pointer: {:?}", error_string_ptr);
+        println!("   HRESULT: {hresult:?}");
+        println!("   Error string pointer: {error_string_ptr:?}");
     }
 
     println!("\n=== All examples completed successfully! ===");

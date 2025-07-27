@@ -57,12 +57,6 @@ impl CallerAllocatedWString {
         Ok(unsafe { Self::new(ptr.cast()) })
     }
 
-    /// Creates a `CallerAllocatedWString` from a Rust string
-    pub fn from_string(s: String) -> Result<Self, windows::core::Error> {
-        use std::str::FromStr;
-        Self::from_str(&s)
-    }
-
     /// Creates a `CallerAllocatedWString` from an `OsStr`
     pub fn from_os_str(os_str: &OsStr) -> Result<Self, windows::core::Error> {
         let wide_string: Vec<u16> = os_str.encode_wide().chain(std::iter::once(0)).collect();
@@ -185,6 +179,14 @@ impl std::str::FromStr for CallerAllocatedWString {
             std::ptr::copy_nonoverlapping(wide_string.as_ptr(), ptr.as_ptr(), wide_string.len());
         }
         Ok(ptr)
+    }
+}
+
+impl TryFrom<PCWSTR> for CallerAllocatedWString {
+    type Error = windows::core::Error;
+
+    fn try_from(value: PCWSTR) -> Result<Self, Self::Error> {
+        Ok(Self::from_pcwstr(value))
     }
 }
 

@@ -34,9 +34,9 @@ fn demonstrate_transparent_repr() {
     let caller_ptr = CallerAllocatedPtr::from_raw(raw_ptr);
     let callee_ptr = CalleeAllocatedPtr::from_raw(raw_ptr);
 
-    println!("   Raw pointer: {:?}", raw_ptr);
-    println!("   CallerAllocatedPtr: {:?}", caller_ptr.as_ptr());
-    println!("   CalleeAllocatedPtr: {:?}", callee_ptr.as_ptr());
+    println!("   Raw pointer: {raw_ptr:?}");
+    println!("   CallerAllocatedPtr: {caller_ptr:?}");
+    println!("   CalleeAllocatedPtr: {callee_ptr:?}");
 
     // All pointers should be identical due to transparent repr
     assert_eq!(raw_ptr, caller_ptr.as_ptr());
@@ -51,11 +51,11 @@ fn demonstrate_transparent_repr() {
 
     // For input parameters (caller-allocated)
     let input_ptr = CallerAllocatedPtr::from_raw(std::ptr::null_mut::<i32>());
-    println!("   Input pointer created: {:?}", input_ptr.as_ptr());
+    println!("   Input pointer created: {input_ptr:?}");
 
     // For output parameters (callee-allocated)
     let output_ptr = CalleeAllocatedPtr::from_raw(std::ptr::null_mut::<i32>());
-    println!("   Output pointer created: {:?}", output_ptr.as_ptr());
+    println!("   Output pointer created: {output_ptr:?}");
 
     println!("   ✓ Wrapper types are FFI-compatible");
 

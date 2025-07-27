@@ -100,20 +100,6 @@ fn test_caller_allocated_wstring_from_str() {
 }
 
 #[test]
-fn test_caller_allocated_wstring_from_string() {
-    // Test creating wide string from String
-    let test_string = String::from("Test String");
-    let wstring = CallerAllocatedWString::from_string(test_string.clone()).unwrap();
-    assert!(!wstring.is_null());
-
-    // Verify the string was converted correctly
-    unsafe {
-        let converted = wstring.to_string_lossy().unwrap();
-        assert_eq!(converted, test_string);
-    }
-}
-
-#[test]
 fn test_caller_allocated_wstring_from_os_str() {
     // Test creating wide string from OsStr
     let test_string = std::ffi::OsStr::new("OS String Test");

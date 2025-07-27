@@ -20,7 +20,7 @@ fn demonstrate_pointer_convenience_functions() {
     // Create a pointer from a simple value
     let int_value = 42;
     let int_ptr = CallerAllocatedPtr::from_value(&int_value).unwrap();
-    println!("   Created pointer from int: {:?}", int_value);
+    println!("   Created pointer from int: {int_value:?}");
 
     // Create a pointer from a struct
     let struct_value = TestStruct {
@@ -28,7 +28,7 @@ fn demonstrate_pointer_convenience_functions() {
         value: std::f64::consts::PI,
     };
     let struct_ptr = CallerAllocatedPtr::from_value(&struct_value).unwrap();
-    println!("   Created pointer from struct: {:?}", struct_value);
+    println!("   Created pointer from struct: {struct_value:?}");
 
     // Verify the values were copied correctly
     unsafe {
@@ -58,14 +58,14 @@ fn demonstrate_pointer_convenience_functions() {
     // Use as_ref for read-only access
     unsafe {
         let ref_value = ptr.as_ref().unwrap();
-        println!("   Read value through as_ref: {}", ref_value);
+        println!("   Read value through as_ref: {ref_value}");
     }
 
     // Use as_mut for mutable access
     unsafe {
         let mut_value = ptr.as_mut().unwrap();
         *mut_value = 456;
-        println!("   Modified value through as_mut: {}", mut_value);
+        println!("   Modified value through as_mut: {mut_value}");
     }
 
     // Verify the change
@@ -85,34 +85,25 @@ fn demonstrate_string_convenience_functions() {
     use std::str::FromStr;
     let str_slice = "Hello, World!";
     let wstring1 = CallerAllocatedWString::from_str(str_slice).unwrap();
-    println!("   Created from &str: '{}'", str_slice);
-
-    // From String
-    let owned_string = String::from("Owned String");
-    let wstring2 = CallerAllocatedWString::from_string(owned_string.clone()).unwrap();
-    println!("   Created from String: '{}'", owned_string);
+    println!("   Created from &str: '{str_slice}'");
 
     // From OsStr
     use std::ffi::OsStr;
     let os_string = OsStr::new("OS String");
-    let wstring3 = CallerAllocatedWString::from_os_str(os_string).unwrap();
-    println!("   Created from OsStr: '{:?}'", os_string);
+    let wstring2 = CallerAllocatedWString::from_os_str(os_string).unwrap();
+    println!("   Created from OsStr: '{os_string:?}'");
 
     println!("\n2. Converting wide strings back to Rust strings:");
 
     // Convert back to String
     unsafe {
         let converted1 = wstring1.to_string_lossy().unwrap();
-        println!("   Converted back to String: '{}'", converted1);
+        println!("   Converted back to String: '{converted1}'");
         assert_eq!(converted1, str_slice);
 
-        let converted2 = wstring2.to_string_lossy().unwrap();
-        println!("   Converted back to String: '{}'", converted2);
-        assert_eq!(converted2, owned_string);
-
-        let converted3 = wstring3.to_os_string().unwrap();
-        println!("   Converted back to OsString: '{:?}'", converted3);
-        assert_eq!(converted3, os_string);
+        let converted2 = wstring2.to_os_string().unwrap();
+        println!("   Converted back to OsString: '{converted2:?}'");
+        assert_eq!(converted2, os_string);
     }
 
     println!("   ✓ All string conversions work correctly");
@@ -150,8 +141,8 @@ fn demonstrate_real_world_scenario() {
         let name = server_name.to_string_lossy().unwrap();
         let count = *item_count.as_ptr();
         println!("   Server received:");
-        println!("   - Server name: '{}'", name);
-        println!("   - Item count: {}", count);
+        println!("   - Server name: '{name}'");
+        println!("   - Item count: {count}");
     }
 
     println!("\n3. Simulating server returning output parameters:");
@@ -163,8 +154,8 @@ fn demonstrate_real_world_scenario() {
     // In a real scenario, the server would allocate this memory
     // and return pointers to the client
     println!("   Server would return:");
-    println!("   - Result message: '{}'", result_string);
-    println!("   - Result code: {}", result_code);
+    println!("   - Result message: '{result_string}'");
+    println!("   - Result code: {result_code}");
 
     println!("\n4. Client would receive and process output:");
 
