@@ -38,6 +38,13 @@ impl CallerAllocatedWString {
         }
     }
 
+    /// Creates a new `CallerAllocatedWString` from a `PWSTR`
+    pub fn from_pwstr(pwstr: PWSTR) -> Self {
+        Self {
+            ptr: pwstr.as_ptr(),
+        }
+    }
+
     /// Allocates memory using `CoTaskMemAlloc` and creates a `CallerAllocatedWString`
     ///
     /// This allocates memory for a wide string that will be freed by the callee.

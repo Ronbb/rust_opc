@@ -159,10 +159,7 @@ impl<T> CalleeAllocatedPtr<T> {
     /// Creates a new `CalleeAllocatedPtr` from a value, allocating memory
     ///
     /// This allocates memory using `CoTaskMemAlloc` and copies the value into it.
-    pub fn from_value(value: &T) -> Result<Self, windows::core::Error>
-    where
-        T: Copy,
-    {
+    pub fn from_value(value: &T) -> Result<Self, windows::core::Error> {
         let size = std::mem::size_of::<T>();
         let ptr = unsafe { windows::Win32::System::Com::CoTaskMemAlloc(size) };
         if ptr.is_null() {

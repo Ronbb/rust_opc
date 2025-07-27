@@ -409,3 +409,70 @@ macro_rules! write_caller_allocated_array {
         )
     };
 }
+
+/// Copies data directly to a caller-allocated array
+///
+/// This macro simplifies copying data directly to a caller-allocated array
+/// without allocating new memory. It's used when the caller has already
+/// allocated the array and we just need to copy data into it.
+///
+/// # Arguments
+///
+/// * `$dst` - A raw pointer (`*mut T`) to the destination array
+/// * `$src` - A slice (`&[T]`) containing the source data
+///
+/// # Returns
+///
+/// Returns `Result<(), windows::core::Error>`:
+/// * `Ok(())` - Data was successfully copied
+/// * `Err(E_INVALIDARG)` - The destination pointer is null
+///
+/// # Safety
+///
+/// The caller must ensure that:
+/// * `$dst` is a valid pointer to caller-allocated memory
+/// * The destination array has sufficient space for the source data
+/// * The array elements are `Copy` types
+///
+/// # Example
+///
+/// ```rust
+/// use opc_classic_utils::copy_to_caller_array;
+///
+/// let mut array: [u32; 5] = [0; 5];
+/// let data = vec![1u32, 2u32, 3u32, 4u32, 5u32];
+///
+/// // Copy data directly to the caller-allocated array
+/// copy_to_caller_array!(array.as_mut_ptr(), &data)?;
+/// assert_eq!(array, [1, 2, 3, 4, 5]);
+/// # Ok::<(), windows::core::Error>(())
+/// ```
+///
+/// # Typical Use Cases
+///
+/// * Copying data to caller-allocated output parameters
+/// * OPC Classic API array output parameters
+/// * Direct memory copying without allocation
+#[macro_export]
+macro_rules! copy_to_caller_array {
+    ($dst:expr, $src:expr) => {
+        unsafe {
+            let mut dst_ptr = opc_classic_utils::CallerAllocatedArray::from_raw($dst, $src.len());
+            if dst_ptr.is_null() {
+                return Err(windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "Destination pointer is null",
+                ));
+            }
+            if let Some(dst_slice) = dst_ptr.as_mut_slice() {
+                dst_slice.copy_from_slice($src);
+                Ok(())
+            } else {
+                Err(windows::core::Error::new(
+                    windows::Win32::Foundation::E_INVALIDARG,
+                    "Failed to get mutable slice",
+                ))
+            }
+        }
+    };
+}

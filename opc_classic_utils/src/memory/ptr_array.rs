@@ -1,6 +1,8 @@
 use std::ptr;
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 
+use crate::CalleeAllocatedPtr;
+
 /// A smart pointer for COM memory pointer arrays that the **caller allocates and callee frees**
 ///
 /// This is used for input pointer array parameters where the caller allocates memory
@@ -247,6 +249,56 @@ impl<T> CalleeAllocatedPtrArray<T> {
     /// This is safe when the pointer is null, as `CoTaskMemFree` handles null pointers.
     pub fn from_raw(ptr: *mut *mut T, len: usize) -> Self {
         Self { ptr, len }
+    }
+
+    /// Creates a new `CalleeAllocatedPtrArray` from a slice
+    pub fn from_slice(slice: &[T]) -> Result<Self, windows::core::Error> {
+        if slice.is_empty() {
+            return Ok(Self {
+                ptr: ptr::null_mut(),
+                len: 0,
+            });
+        }
+        let array = Self::allocate(slice.len())?;
+
+        // convert items to CalleeAllocatedPtr write to array
+        for (i, item) in slice.iter().enumerate() {
+            let item_ptr = CalleeAllocatedPtr::from_value(item)?;
+            if item_ptr.is_null() {
+                return Err(windows::core::Error::from_win32());
+            }
+            unsafe { *array.ptr.add(i) = item_ptr.as_ptr() };
+        }
+
+        Ok(array)
+    }
+
+    /// Allocates memory for a pointer array using `CoTaskMemAlloc` and creates a `CalleeAllocatedPtrArray`
+    ///
+    /// This allocates memory that will be freed by the caller (COM function).
+    /// The callee is responsible for ensuring the caller will free this memory.
+    pub fn allocate(len: usize) -> Result<Self, windows::core::Error> {
+        if len == 0 {
+            return Ok(Self {
+                ptr: ptr::null_mut(),
+                len: 0,
+            });
+        }
+
+        let size = std::mem::size_of::<*mut T>()
+            .checked_mul(len)
+            .ok_or_else(|| {
+                windows::core::Error::new(
+                    windows::core::HRESULT::from_win32(0x80070057), // E_INVALIDARG
+                    "Pointer array size overflow",
+                )
+            })?;
+
+        let ptr = unsafe { CoTaskMemAlloc(size) };
+        if ptr.is_null() {
+            return Err(windows::core::Error::from_win32());
+        }
+        Ok(unsafe { Self::new(ptr.cast(), len) })
     }
 
     /// Returns the raw pointer without transferring ownership
