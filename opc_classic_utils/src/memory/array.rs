@@ -83,11 +83,9 @@ impl<T> CallerAllocatedArray<T> {
     /// Returns the raw pointer and transfers ownership to the caller
     ///
     /// After calling this method, the `CallerAllocatedArray` will not manage the memory.
-    pub fn into_raw(mut self) -> (*mut T, usize) {
+    pub fn into_raw(self) -> (*mut T, usize) {
         let ptr = self.ptr;
         let len = self.len;
-        self.ptr = ptr::null_mut();
-        self.len = 0;
         (ptr, len)
     }
 
@@ -250,11 +248,9 @@ impl<T> CalleeAllocatedArray<T> {
     /// Returns the raw pointer and transfers ownership to the caller
     ///
     /// After calling this method, the `CalleeAllocatedArray` will not free the memory.
-    pub fn into_raw(mut self) -> (*mut T, usize) {
+    pub fn into_raw(self) -> (*mut T, usize) {
         let ptr = self.ptr;
         let len = self.len;
-        self.ptr = ptr::null_mut();
-        self.len = 0;
         (ptr, len)
     }
 

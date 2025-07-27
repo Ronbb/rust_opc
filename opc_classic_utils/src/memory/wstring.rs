@@ -114,10 +114,8 @@ impl CallerAllocatedWString {
     }
 
     /// Returns the raw pointer and transfers ownership to the caller
-    pub fn into_raw(mut self) -> *mut u16 {
-        let ptr = self.ptr;
-        self.ptr = ptr::null_mut();
-        ptr
+    pub fn into_raw(self) -> *mut u16 {
+        self.ptr
     }
 
     /// Checks if the pointer is null
@@ -274,10 +272,8 @@ impl CalleeAllocatedWString {
     }
 
     /// Returns the raw pointer and transfers ownership to the caller
-    pub fn into_raw(mut self) -> *mut u16 {
-        let ptr = self.ptr;
-        self.ptr = ptr::null_mut();
-        ptr
+    pub fn into_raw(self) -> *mut u16 {
+        self.ptr
     }
 
     /// Checks if the pointer is null

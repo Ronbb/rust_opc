@@ -62,10 +62,8 @@ impl<T> CallerAllocatedPtr<T> {
     /// Returns the raw pointer and transfers ownership to the caller
     ///
     /// After calling this method, the `CallerAllocatedPtr` will not manage the memory.
-    pub fn into_raw(mut self) -> *mut T {
-        let ptr = self.ptr;
-        self.ptr = ptr::null_mut();
-        ptr
+    pub fn into_raw(self) -> *mut T {
+        self.ptr
     }
 
     /// Checks if the pointer is null
@@ -179,10 +177,8 @@ impl<T> CalleeAllocatedPtr<T> {
     /// Returns the raw pointer and transfers ownership to the caller
     ///
     /// After calling this method, the `CalleeAllocatedPtr` will not free the memory.
-    pub fn into_raw(mut self) -> *mut T {
-        let ptr = self.ptr;
-        self.ptr = ptr::null_mut();
-        ptr
+    pub fn into_raw(self) -> *mut T {
+        self.ptr
     }
 
     /// Checks if the pointer is null

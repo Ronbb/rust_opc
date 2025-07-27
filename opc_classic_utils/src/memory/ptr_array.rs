@@ -84,11 +84,9 @@ impl<T> CallerAllocatedPtrArray<T> {
     /// Returns the raw pointer and transfers ownership to the caller
     ///
     /// After calling this method, the `CallerAllocatedPtrArray` will not manage the memory.
-    pub fn into_raw(mut self) -> (*mut *mut T, usize) {
+    pub fn into_raw(self) -> (*mut *mut T, usize) {
         let ptr = self.ptr;
         let len = self.len;
-        self.ptr = ptr::null_mut();
-        self.len = 0;
         (ptr, len)
     }
 
@@ -167,8 +165,6 @@ impl<T> Drop for CallerAllocatedPtrArray<T> {
     fn drop(&mut self) {
         // Do NOT free the memory - the callee is responsible for this
         // Just clear the pointer to prevent use-after-free
-        self.ptr = ptr::null_mut();
-        self.len = 0;
     }
 }
 
@@ -309,11 +305,9 @@ impl<T> CalleeAllocatedPtrArray<T> {
     /// Returns the raw pointer and transfers ownership to the caller
     ///
     /// After calling this method, the `CalleeAllocatedPtrArray` will not free the memory.
-    pub fn into_raw(mut self) -> (*mut *mut T, usize) {
+    pub fn into_raw(self) -> (*mut *mut T, usize) {
         let ptr = self.ptr;
         let len = self.len;
-        self.ptr = ptr::null_mut();
-        self.len = 0;
         (ptr, len)
     }
 

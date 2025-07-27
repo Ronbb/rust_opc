@@ -1,6 +1,5 @@
-use windows_core::*;
 use opc_da_bindings::*;
-use opc_classic_utils::*;
+use windows_core::*;
 
 #[windows::core::implement(IOPCDataCallback)]
 pub struct OPCDataCallback<T>(T)
@@ -21,21 +20,11 @@ impl<T: traits::OPCDataCallback> IOPCDataCallback_Impl for OPCDataCallback_Impl<
         pfttimestamps: *const windows::Win32::Foundation::FILETIME,
         perrors: *const HRESULT,
     ) -> Result<()> {
-        let client_items = unsafe {
-            std::slice::from_raw_parts(phclientitems, dwcount as usize)
-        };
-        let values = unsafe {
-            std::slice::from_raw_parts(pvvalues, dwcount as usize)
-        };
-        let qualities = unsafe {
-            std::slice::from_raw_parts(pwqualities, dwcount as usize)
-        };
-        let timestamps = unsafe {
-            std::slice::from_raw_parts(pfttimestamps, dwcount as usize)
-        };
-        let errors = unsafe {
-            std::slice::from_raw_parts(perrors, dwcount as usize)
-        };
+        let client_items = unsafe { std::slice::from_raw_parts(phclientitems, dwcount as usize) };
+        let values = unsafe { std::slice::from_raw_parts(pvvalues, dwcount as usize) };
+        let qualities = unsafe { std::slice::from_raw_parts(pwqualities, dwcount as usize) };
+        let timestamps = unsafe { std::slice::from_raw_parts(pfttimestamps, dwcount as usize) };
+        let errors = unsafe { std::slice::from_raw_parts(perrors, dwcount as usize) };
 
         self.0.on_data_change(
             dwtransid,
@@ -63,21 +52,11 @@ impl<T: traits::OPCDataCallback> IOPCDataCallback_Impl for OPCDataCallback_Impl<
         pfttimestamps: *const windows::Win32::Foundation::FILETIME,
         perrors: *const HRESULT,
     ) -> Result<()> {
-        let client_items = unsafe {
-            std::slice::from_raw_parts(phclientitems, dwcount as usize)
-        };
-        let values = unsafe {
-            std::slice::from_raw_parts(pvvalues, dwcount as usize)
-        };
-        let qualities = unsafe {
-            std::slice::from_raw_parts(pwqualities, dwcount as usize)
-        };
-        let timestamps = unsafe {
-            std::slice::from_raw_parts(pfttimestamps, dwcount as usize)
-        };
-        let errors = unsafe {
-            std::slice::from_raw_parts(perrors, dwcount as usize)
-        };
+        let client_items = unsafe { std::slice::from_raw_parts(phclientitems, dwcount as usize) };
+        let values = unsafe { std::slice::from_raw_parts(pvvalues, dwcount as usize) };
+        let qualities = unsafe { std::slice::from_raw_parts(pwqualities, dwcount as usize) };
+        let timestamps = unsafe { std::slice::from_raw_parts(pfttimestamps, dwcount as usize) };
+        let errors = unsafe { std::slice::from_raw_parts(perrors, dwcount as usize) };
 
         self.0.on_read_complete(
             dwtransid,
@@ -101,12 +80,8 @@ impl<T: traits::OPCDataCallback> IOPCDataCallback_Impl for OPCDataCallback_Impl<
         pclienthandles: *const u32,
         perrors: *const HRESULT,
     ) -> Result<()> {
-        let client_items = unsafe {
-            std::slice::from_raw_parts(pclienthandles, dwcount as usize)
-        };
-        let errors = unsafe {
-            std::slice::from_raw_parts(perrors, dwcount as usize)
-        };
+        let client_items = unsafe { std::slice::from_raw_parts(pclienthandles, dwcount as usize) };
+        let errors = unsafe { std::slice::from_raw_parts(perrors, dwcount as usize) };
 
         self.0.on_write_complete(
             dwtransid,
@@ -138,7 +113,7 @@ pub mod traits {
             timestamps: Vec<windows::Win32::Foundation::FILETIME>,
             errors: Vec<HRESULT>,
         ) -> Result<()>;
-        
+
         fn on_read_complete(
             &self,
             transaction_id: u32,
@@ -151,7 +126,7 @@ pub mod traits {
             timestamps: Vec<windows::Win32::Foundation::FILETIME>,
             errors: Vec<HRESULT>,
         ) -> Result<()>;
-        
+
         fn on_write_complete(
             &self,
             transaction_id: u32,
@@ -160,7 +135,7 @@ pub mod traits {
             client_items: Vec<u32>,
             errors: Vec<HRESULT>,
         ) -> Result<()>;
-        
+
         fn on_cancel_complete(&self, transaction_id: u32, group: u32) -> Result<()>;
     }
-} 
+}
