@@ -164,7 +164,7 @@ fn test_wstring_null_conversion() {
 
     unsafe {
         assert!(caller_wstring.to_string_lossy().is_none());
-        assert!(callee_wstring.to_string().is_none());
+        assert!(callee_wstring.to_string_lossy().is_none());
         assert!(caller_wstring.to_os_string().is_none());
         assert!(callee_wstring.to_os_string().is_none());
     }

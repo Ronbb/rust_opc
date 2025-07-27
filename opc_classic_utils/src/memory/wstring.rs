@@ -227,20 +227,24 @@ impl CalleeAllocatedWString {
         Self::from_str(&s)
     }
 
+    /// Null
+    pub fn null() -> Self {
+        Self {
+            ptr: ptr::null_mut(),
+        }
+    }
+
     /// Converts the wide string to a Rust string slice
     ///
     /// # Safety
     ///
     /// The caller must ensure the pointer is valid and points to a null-terminated wide string.
-    pub unsafe fn to_string(&self) -> Option<String> {
+    pub unsafe fn to_string_lossy(&self) -> Option<String> {
         if self.ptr.is_null() {
             return None;
         }
 
-        let mut len = 0;
-        while unsafe { *self.ptr.add(len) } != 0 {
-            len += 1;
-        }
+        let len = unsafe { self.as_pcwstr().len() };
 
         let slice = unsafe { std::slice::from_raw_parts(self.ptr, len) };
         let os_string = OsString::from_wide(slice);
@@ -257,13 +261,27 @@ impl CalleeAllocatedWString {
             return None;
         }
 
-        let mut len = 0;
-        while unsafe { *self.ptr.add(len) } != 0 {
-            len += 1;
-        }
+        let len = unsafe { self.as_pcwstr().len() };
 
         let slice = unsafe { std::slice::from_raw_parts(self.ptr, len) };
         Some(OsString::from_wide(slice))
+    }
+
+    /// Converts the wide string to a Rust string
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the pointer is valid and points to a null-terminated wide string.
+    pub unsafe fn to_string(&self) -> windows::core::Result<Option<String>> {
+        if self.ptr.is_null() {
+            return Ok(None);
+        }
+
+        let len = unsafe { self.as_pcwstr().len() };
+
+        let slice = unsafe { std::slice::from_raw_parts(self.ptr, len) };
+        let string = String::from_utf16(slice)?;
+        Ok(Some(string))
     }
 
     /// Returns the raw pointer without transferring ownership
@@ -286,9 +304,19 @@ impl CalleeAllocatedWString {
         PCWSTR(self.ptr)
     }
 
+    /// Converts to a `PCWSTR` for use with Windows APIs
+    pub fn as_pcwstr_mut_ptr(&mut self) -> *mut PCWSTR {
+        &mut self.ptr as *mut *mut u16 as *mut PCWSTR
+    }
+
     /// Converts to a `PWSTR` for use with Windows APIs
     pub fn as_pwstr(&self) -> PWSTR {
         PWSTR(self.ptr)
+    }
+
+    /// Converts to a `PWSTR` for use with Windows APIs
+    pub fn as_pwstr_mut_ptr(&mut self) -> *mut PWSTR {
+        &mut self.ptr as *mut *mut u16 as *mut PWSTR
     }
 }
 
