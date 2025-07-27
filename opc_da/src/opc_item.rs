@@ -22,12 +22,12 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
             .map(|item| traits::ItemDefinition {
                 access_path: unsafe {
                     CallerAllocatedWString::from_pwstr(item.szAccessPath)
-                        .to_string()
+                        .to_string_lossy()
                         .unwrap_or_default()
                 },
                 item_id: unsafe {
                     CallerAllocatedWString::from_pwstr(item.szItemID)
-                        .to_string()
+                        .to_string_lossy()
                         .unwrap_or_default()
                 },
                 active: item.bActive.as_bool(),
@@ -75,7 +75,7 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
                         String::new()
                     } else {
                         CallerAllocatedWString::from_pcwstr(PCWSTR(item.szAccessPath.0))
-                            .to_string()
+                            .to_string_lossy()
                             .unwrap_or_default()
                     }
                 },
@@ -84,7 +84,7 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
                         String::new()
                     } else {
                         CallerAllocatedWString::from_pcwstr(PCWSTR(item.szItemID.0))
-                            .to_string()
+                            .to_string_lossy()
                             .unwrap_or_default()
                     }
                 },

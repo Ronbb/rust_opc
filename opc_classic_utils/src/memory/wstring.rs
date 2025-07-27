@@ -80,7 +80,7 @@ impl CallerAllocatedWString {
     /// # Safety
     ///
     /// The caller must ensure the pointer is valid and points to a null-terminated wide string.
-    pub unsafe fn to_string(&self) -> Option<String> {
+    pub unsafe fn to_string_lossy(&self) -> Option<String> {
         if self.ptr.is_null() {
             return None;
         }

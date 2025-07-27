@@ -108,7 +108,7 @@ impl<T: traits::OPCGroup + traits::OPCGroupStateMgt2> IOPCGroupStateMgt_Impl for
     fn SetName(&self, szname: &PCWSTR) -> Result<()> {
         let name = unsafe {
             CallerAllocatedWString::from_pcwstr(*szname)
-                .to_string()
+                .to_string_lossy()
                 .ok_or(windows::Win32::Foundation::E_POINTER)
         }?;
 
@@ -118,7 +118,7 @@ impl<T: traits::OPCGroup + traits::OPCGroupStateMgt2> IOPCGroupStateMgt_Impl for
     fn CloneGroup(&self, szname: &PCWSTR, riid: *const GUID) -> Result<IUnknown> {
         let name = unsafe {
             CallerAllocatedWString::from_pcwstr(*szname)
-                .to_string()
+                .to_string_lossy()
                 .ok_or(windows::Win32::Foundation::E_POINTER)
         }?;
 

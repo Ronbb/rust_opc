@@ -27,7 +27,7 @@ impl<T: traits::OPCBrowse> IOPCBrowse_Impl for OPCBrowse_Impl<T> {
         let item_ids: Vec<String> = item_ids.iter().map(|pcwstr| {
             unsafe {
                 CallerAllocatedWString::from_pcwstr(*pcwstr)
-                    .to_string()
+                    .to_string_lossy()
                     .unwrap_or_default()
             }
         }).collect();
@@ -61,17 +61,17 @@ impl<T: traits::OPCBrowse> IOPCBrowse_Impl for OPCBrowse_Impl<T> {
     ) -> Result<()> {
         let item_id = unsafe {
             CallerAllocatedWString::from_pcwstr(*szitemid)
-                .to_string()
+                .to_string_lossy()
                 .unwrap_or_default()
         };
         let element_name_filter = unsafe {
             CallerAllocatedWString::from_pcwstr(*szelementnamefilter)
-                .to_string()
+                .to_string_lossy()
                 .unwrap_or_default()
         };
         let vendor_filter = unsafe {
             CallerAllocatedWString::from_pcwstr(*szvendorfilter)
-                .to_string()
+                .to_string_lossy()
                 .unwrap_or_default()
         };
         let property_ids = unsafe {

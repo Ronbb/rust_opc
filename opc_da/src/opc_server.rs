@@ -1,6 +1,6 @@
-use windows_core::*;
-use opc_da_bindings::*;
 use opc_classic_utils::*;
+use opc_da_bindings::*;
+use windows_core::*;
 
 #[windows::core::implement(IOPCServer)]
 pub struct OPCServer<T>(T)
@@ -24,16 +24,16 @@ impl<T: traits::OPCServer> IOPCServer_Impl for OPCServer_Impl<T> {
     ) -> Result<()> {
         let name = unsafe {
             CallerAllocatedWString::from_pcwstr(*szname)
-                .to_string()
+                .to_string_lossy()
                 .ok_or(windows::Win32::Foundation::E_POINTER)
         }?;
-        
+
         let time_bias = if !ptimebias.is_null() {
             Some(unsafe { *ptimebias })
         } else {
             None
         };
-        
+
         let percent_deadband = if !ppercentdeadband.is_null() {
             Some(unsafe { *ppercentdeadband })
         } else {
@@ -57,22 +57,14 @@ impl<T: traits::OPCServer> IOPCServer_Impl for OPCServer_Impl<T> {
         Ok(())
     }
 
-    fn GetErrorString(
-        &self,
-        dwerror: HRESULT,
-        dwlocale: u32,
-    ) -> Result<PWSTR> {
+    fn GetErrorString(&self, dwerror: HRESULT, dwlocale: u32) -> Result<PWSTR> {
         alloc_callee_wstring!(self.0.get_error_string(dwerror, dwlocale)?)
     }
 
-    fn GetGroupByName(
-        &self,
-        szname: &PCWSTR,
-        riid: *const GUID,
-    ) -> Result<IUnknown> {
+    fn GetGroupByName(&self, szname: &PCWSTR, riid: *const GUID) -> Result<IUnknown> {
         let name = unsafe {
             CallerAllocatedWString::from_pcwstr(*szname)
-                .to_string()
+                .to_string_lossy()
                 .ok_or(windows::Win32::Foundation::E_POINTER)
         }?;
 
@@ -85,11 +77,7 @@ impl<T: traits::OPCServer> IOPCServer_Impl for OPCServer_Impl<T> {
         Ok(ptr.into_raw())
     }
 
-    fn RemoveGroup(
-        &self,
-        hservergroup: u32,
-        bforce: BOOL,
-    ) -> Result<()> {
+    fn RemoveGroup(&self, hservergroup: u32, bforce: BOOL) -> Result<()> {
         self.0.remove_group(hservergroup, bforce.as_bool())
     }
 
@@ -117,27 +105,19 @@ pub mod traits {
             percent_deadband: Option<f32>,
             locale_id: u32,
         ) -> Result<(u32, u32, IUnknown)>;
-        
-        fn get_error_string(
-            &self,
-            error: HRESULT,
-            locale: u32,
-        ) -> Result<String>;
-        
-        fn get_group_by_name(
-            &self,
-            name: String,
-            riid: *const GUID,
-        ) -> Result<IUnknown>;
-        
+
+        fn get_error_string(&self, error: HRESULT, locale: u32) -> Result<String>;
+
+        fn get_group_by_name(&self, name: String, riid: *const GUID) -> Result<IUnknown>;
+
         fn get_status(&self) -> Result<tagOPCSERVERSTATUS>;
-        
+
         fn remove_group(&self, server_group: u32, force: bool) -> Result<()>;
-        
+
         fn create_group_enumerator(
             &self,
             scope: tagOPCENUMSCOPE,
             riid: *const GUID,
         ) -> Result<IUnknown>;
     }
-} 
+}

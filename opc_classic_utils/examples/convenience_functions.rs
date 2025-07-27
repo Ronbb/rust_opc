@@ -102,11 +102,11 @@ fn demonstrate_string_convenience_functions() {
 
     // Convert back to String
     unsafe {
-        let converted1 = wstring1.to_string().unwrap();
+        let converted1 = wstring1.to_string_lossy().unwrap();
         println!("   Converted back to String: '{}'", converted1);
         assert_eq!(converted1, str_slice);
 
-        let converted2 = wstring2.to_string().unwrap();
+        let converted2 = wstring2.to_string_lossy().unwrap();
         println!("   Converted back to String: '{}'", converted2);
         assert_eq!(converted2, owned_string);
 
@@ -121,7 +121,7 @@ fn demonstrate_string_convenience_functions() {
 
     let null_wstring = CallerAllocatedWString::default();
     unsafe {
-        let result = null_wstring.to_string();
+        let result = null_wstring.to_string_lossy();
         assert!(result.is_none());
         println!("   Null string correctly returns None");
     }
@@ -147,7 +147,7 @@ fn demonstrate_real_world_scenario() {
 
     // Server would use these parameters
     unsafe {
-        let name = server_name.to_string().unwrap();
+        let name = server_name.to_string_lossy().unwrap();
         let count = *item_count.as_ptr();
         println!("   Server received:");
         println!("   - Server name: '{}'", name);

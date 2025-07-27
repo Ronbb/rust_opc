@@ -94,7 +94,7 @@ fn test_caller_allocated_wstring_from_str() {
 
     // Verify the string was converted correctly
     unsafe {
-        let converted = wstring.to_string().unwrap();
+        let converted = wstring.to_string_lossy().unwrap();
         assert_eq!(converted, test_string);
     }
 }
@@ -108,7 +108,7 @@ fn test_caller_allocated_wstring_from_string() {
 
     // Verify the string was converted correctly
     unsafe {
-        let converted = wstring.to_string().unwrap();
+        let converted = wstring.to_string_lossy().unwrap();
         assert_eq!(converted, test_string);
     }
 }
@@ -177,7 +177,7 @@ fn test_wstring_null_conversion() {
     let callee_wstring = CalleeAllocatedWString::default();
 
     unsafe {
-        assert!(caller_wstring.to_string().is_none());
+        assert!(caller_wstring.to_string_lossy().is_none());
         assert!(callee_wstring.to_string().is_none());
         assert!(caller_wstring.to_os_string().is_none());
         assert!(callee_wstring.to_os_string().is_none());
@@ -193,7 +193,7 @@ fn test_from_str_trait() {
 
     // Verify the string was converted correctly
     unsafe {
-        let converted = wstring.to_string().unwrap();
+        let converted = wstring.to_string_lossy().unwrap();
         assert_eq!(converted, test_string);
     }
 }
