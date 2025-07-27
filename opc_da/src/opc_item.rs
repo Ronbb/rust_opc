@@ -47,12 +47,10 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
         let (results, errors) = self.0.add_items(item_defs)?;
 
         // Allocate and write results
-        let results_ptr = CalleeAllocatedPtrArray::from_slice(&results)?;
-        unsafe { *ppaddresults = results_ptr.as_ptr() };
+        copy_to_caller_array!(ppaddresults, &results);
 
         // Allocate and write errors
-        let errors_ptr = CalleeAllocatedPtrArray::from_slice(&errors)?;
-        unsafe { *pperrors = errors_ptr.as_ptr() };
+        copy_to_caller_array!(pperrors, &errors)?;
 
         Ok(())
     }
@@ -105,12 +103,10 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
         let (results, errors) = self.0.validate_items(item_defs, bblobupdate.as_bool())?;
 
         // Allocate and write results
-        let results_ptr = CalleeAllocatedPtrArray::from_slice(&results)?;
-        unsafe { *ppvalidationresults = results_ptr.into_raw() };
+        copy_to_caller_array!(ppvalidationresults, &results);
 
         // Allocate and write errors
-        let errors_ptr = CalleeAllocatedPtrArray::from_slice(&errors)?;
-        unsafe { *pperrors = errors_ptr.into_raw() };
+        copy_to_caller_array!(pperrors, &errors);
 
         Ok(())
     }
@@ -126,8 +122,7 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
         let errors = self.0.remove_items(server_handles.to_vec())?;
 
         // Allocate and write errors
-        let errors_ptr = CalleeAllocatedPtrArray::from_slice(&errors)?;
-        unsafe { *pperrors = errors_ptr.into_raw() };
+        copy_to_caller_array!(pperrors, &errors);
 
         Ok(())
     }
@@ -146,8 +141,7 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
             .set_active_state(server_handles.to_vec(), bactive.as_bool())?;
 
         // Allocate and write errors
-        let errors_ptr = CalleeAllocatedPtrArray::from_slice(&errors)?;
-        unsafe { *pperrors = errors_ptr.into_raw() };
+        copy_to_caller_array!(pperrors, &errors);
 
         Ok(())
     }
@@ -167,8 +161,7 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
             .set_client_handles(server_handles.to_vec(), client_handles.to_vec())?;
 
         // Allocate and write errors
-        let errors_ptr = CalleeAllocatedPtrArray::from_slice(&errors)?;
-        unsafe { *pperrors = errors_ptr.into_raw() };
+        copy_to_caller_array!(pperrors, &errors);
 
         Ok(())
     }
@@ -189,8 +182,7 @@ impl<T: traits::OPCItem> IOPCItemMgt_Impl for OPCItem_Impl<T> {
             .set_datatypes(server_handles.to_vec(), requested_datatypes.to_vec())?;
 
         // Allocate and write errors
-        let errors_ptr = CalleeAllocatedPtrArray::from_slice(&errors)?;
-        unsafe { *pperrors = errors_ptr.into_raw() };
+        copy_to_caller_array!(pperrors, &errors);
 
         Ok(())
     }

@@ -52,7 +52,7 @@ impl<T: traits::OPCServer> IOPCServer_Impl for OPCServer_Impl<T> {
 
         write_caller_allocated_ptr!(phservergroup, server_group)?;
         write_caller_allocated_ptr!(previsedupdaterate, revised_update_rate)?;
-        *ppunk = group_interface;
+        ppunk.write(Some(group_interface))?;
 
         Ok(())
     }

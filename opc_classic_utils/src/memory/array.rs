@@ -457,15 +457,17 @@ macro_rules! write_caller_allocated_array {
 macro_rules! copy_to_caller_array {
     ($dst:expr, $src:expr) => {
         unsafe {
-            let mut dst_ptr = opc_classic_utils::CallerAllocatedArray::from_raw($dst, $src.len());
+            let src = $src;
+            let mut dst_ptr = opc_classic_utils::CallerAllocatedArray::allocate(src.len())?;
             if dst_ptr.is_null() {
                 return Err(windows::core::Error::new(
                     windows::Win32::Foundation::E_INVALIDARG,
                     "Destination pointer is null",
                 ));
             }
+            *$dst = dst_ptr.as_ptr();
             if let Some(dst_slice) = dst_ptr.as_mut_slice() {
-                dst_slice.copy_from_slice($src);
+                dst_slice.copy_from_slice(src);
                 Ok(())
             } else {
                 Err(windows::core::Error::new(
