@@ -594,20 +594,35 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
             let mut has_error = false;
             for result in returned {
                 match result.result {
-                    Ok(sample) => {
-                        states
-                            .push(tagOPCITEMSTATE {
-                                hClient: sample.client_handle.0,
-                                ftTimeStamp: timestamp_to_abi(sample.timestamp),
-                                wQuality: sample.quality,
-                                wReserved: 0,
-                                vDataValue: value_to_abi(&sample.value)?,
-                            })
-                            .map_err(|_| code_error(E_UNEXPECTED))?;
-                        item_errors
-                            .push(HRESULT(0))
-                            .map_err(|_| code_error(E_UNEXPECTED))?;
-                    }
+                    Ok(sample) => match value_to_abi(&sample.value) {
+                        Ok(value) => {
+                            states
+                                .push(tagOPCITEMSTATE {
+                                    hClient: sample.client_handle.0,
+                                    ftTimeStamp: timestamp_to_abi(sample.timestamp),
+                                    wQuality: sample.quality,
+                                    wReserved: 0,
+                                    vDataValue: value,
+                                })
+                                .map_err(|_| code_error(E_UNEXPECTED))?;
+                            item_errors
+                                .push(HRESULT(0))
+                                .map_err(|_| code_error(E_UNEXPECTED))?;
+                        }
+                        Err(error) => {
+                            // A value that cannot be represented by the DA
+                            // VARIANT ABI affects only this item. Keep both
+                            // task-memory arrays aligned and let the client
+                            // inspect the per-item HRESULT.
+                            has_error = true;
+                            states
+                                .push(tagOPCITEMSTATE::default())
+                                .map_err(|_| code_error(E_UNEXPECTED))?;
+                            item_errors
+                                .push(error_code_to_abi(error.code()))
+                                .map_err(|_| code_error(E_UNEXPECTED))?;
+                        }
+                    },
                     Err(error) => {
                         has_error = true;
                         states
@@ -1009,7 +1024,10 @@ mod tests {
     struct TestService {
         group_handles: Arc<Mutex<Vec<(u32, bool)>>>,
     }
-    struct TestGroup;
+    #[derive(Default)]
+    struct TestGroup {
+        read_values: Vec<Value>,
+    }
     struct TestCommon;
 
     #[test]
@@ -1075,7 +1093,7 @@ mod tests {
                 .lock()
                 .map_err(|_| Error::unexpected("test group-handle log is poisoned"))?
                 .push((server_handle, false));
-            Ok(Arc::new(TestGroup))
+            Ok(Arc::new(TestGroup::default()))
         }
 
         fn remove_group(&self, server_handle: u32, _force: bool) -> Result<()> {
@@ -1157,12 +1175,17 @@ mod tests {
         ) -> Result<Vec<ServerItemResult<ServerSample>>> {
             Ok(handles
                 .iter()
-                .map(|_| {
+                .enumerate()
+                .map(|(index, _)| {
                     ServerItemResult::success(ServerSample {
                         client_handle: ClientItemHandle(7),
                         timestamp: Timestamp::default(),
                         quality: 192,
-                        value: Value::I32(42),
+                        value: self
+                            .read_values
+                            .get(index)
+                            .cloned()
+                            .unwrap_or(Value::I32(42)),
                     })
                 })
                 .collect())
@@ -1248,7 +1271,7 @@ mod tests {
         assert_eq!(*group_handles.lock().unwrap(), [(1, true)]);
     }
 
-    fn test_group_io() -> IOPCSyncIO {
+    fn test_group_io_with_read_values(read_values: Vec<Value>) -> IOPCSyncIO {
         let state = GroupState {
             update_rate: 1_000,
             active: true,
@@ -1259,7 +1282,11 @@ mod tests {
             client_handle: 0,
             server_handle: 1,
         };
-        DaGroupAdapter::new(Arc::new(TestGroup), state).into()
+        DaGroupAdapter::new(Arc::new(TestGroup { read_values }), state).into()
+    }
+
+    fn test_group_io() -> IOPCSyncIO {
+        test_group_io_with_read_values(Vec::new())
     }
 
     fn unsupported_variant() -> VARIANT {
@@ -1324,6 +1351,55 @@ mod tests {
                 HRESULT(ErrorCode::TYPE_MISMATCH.raw()),
                 HRESULT(ErrorCode::TYPE_MISMATCH.raw())
             ]
+        );
+    }
+
+    #[test]
+    fn read_reports_unsupported_values_per_item() {
+        let io = test_group_io_with_read_values(vec![
+            Value::I32(1),
+            Value::Bytes(vec![1, 2]),
+            Value::I32(3),
+        ]);
+        let handles = [10, 11, 12];
+        let mut states = opc_classic_utils::CoTaskMemArrayOut::new(3, DropElements);
+        let mut errors = opc_classic_utils::CoTaskMemArrayOut::new(3, NoCleanup);
+
+        let call = unsafe {
+            (Interface::vtable(&io).Read)(
+                Interface::as_raw(&io),
+                crate::OPC_DS_CACHE,
+                handles.len() as u32,
+                handles.as_ptr(),
+                states.as_mut_ptr(),
+                errors.as_mut_ptr(),
+            )
+        };
+
+        assert_eq!(call, windows::Win32::Foundation::S_FALSE);
+        let states = unsafe { states.into_array() }.unwrap();
+        let errors = unsafe { errors.into_array() }.unwrap();
+        assert_eq!(
+            errors.as_slice(),
+            [
+                HRESULT(0),
+                HRESULT(ErrorCode::TYPE_MISMATCH.raw()),
+                HRESULT(0)
+            ]
+        );
+        assert_eq!(
+            value_from_abi(&states.as_slice()[0].vDataValue).unwrap(),
+            Value::I32(1)
+        );
+        assert_eq!(states.as_slice()[1].hClient, 0);
+        assert_eq!(states.as_slice()[1].wQuality, 0);
+        assert_eq!(
+            value_from_abi(&states.as_slice()[1].vDataValue).unwrap(),
+            Value::Empty
+        );
+        assert_eq!(
+            value_from_abi(&states.as_slice()[2].vDataValue).unwrap(),
+            Value::I32(3)
         );
     }
 
