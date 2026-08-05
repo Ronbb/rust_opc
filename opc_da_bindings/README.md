@@ -10,4 +10,6 @@ inside the private ABI layer.
 The generated bindings were made crate-private in 0.4.0. Code that imported
 `opc_da_bindings::IOPC*` or `tagOPC*` symbols must migrate to the safe
 client/server facades or maintain its own ABI layer. `DaServer::new_with_common`
-composes a DA service and OPC Common service on one COM identity.
+composes a DA service and OPC Common service on one COM identity. The 0.4.0
+`DaService::add_group` contract also receives the adapter-assigned server handle;
+the same handle is passed back to `remove_group`.

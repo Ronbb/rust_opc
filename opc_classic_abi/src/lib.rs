@@ -7,6 +7,10 @@
 
 const E_POINTER: windows_core::HRESULT = windows_core::HRESULT(0x8000_4003_u32 as i32);
 
+// This mirrors the narrow interface shape emitted by windows-bindgen. The
+// generated output itself uses these windows-core macros; keeping the single
+// interface here lets us harden its out-parameter thunks without exposing the
+// full generated OPC Common ABI to the domain crates.
 windows_core::imp::define_interface!(
     IOPCCommon,
     IOPCCommon_Vtbl,
@@ -75,6 +79,7 @@ impl IOPCCommon_Vtbl {
             }
 
             unsafe {
+                locale.write(0);
                 let this = &*((this as *const *const ()).offset(OFFSET) as *const Identity);
                 match IOPCCommon_Impl::GetLocaleID(this) {
                     Ok(value) => {
@@ -94,7 +99,13 @@ impl IOPCCommon_Vtbl {
             count: *mut u32,
             locales: *mut *mut u32,
         ) -> windows_core::HRESULT {
+            if count.is_null() || locales.is_null() {
+                return E_POINTER;
+            }
+
             unsafe {
+                count.write(0);
+                locales.write(core::ptr::null_mut());
                 let this = &*((this as *const *const ()).offset(OFFSET) as *const Identity);
                 IOPCCommon_Impl::QueryAvailableLocaleIDs(this, count, locales).into()
             }
@@ -110,6 +121,7 @@ impl IOPCCommon_Vtbl {
             }
 
             unsafe {
+                output.write(windows_core::PWSTR::null());
                 let this = &*((this as *const *const ()).offset(OFFSET) as *const Identity);
                 match IOPCCommon_Impl::GetErrorString(this, error) {
                     Ok(value) => {

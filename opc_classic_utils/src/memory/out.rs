@@ -73,17 +73,6 @@ impl<T, C: Cleanup<T>> CoTaskMemArrayOut<T, C> {
         self.len = Some(len);
     }
 
-    /// Compatibility alias for callers that already validate the count before
-    /// adoption. New code should prefer [`Self::commit_len`] to make the trust
-    /// transition explicit.
-    ///
-    /// # Safety
-    ///
-    /// Same requirements as [`Self::commit_len`].
-    pub unsafe fn set_len(&mut self, len: usize) {
-        unsafe { self.commit_len(len) };
-    }
-
     /// Transfers the returned allocation into the final array owner.
     ///
     /// # Safety
@@ -284,9 +273,7 @@ mod tests {
 
         let mut output = CoTaskMemArrayOut::<CountDrop, _>::new_reported(DropElements);
         unsafe { output.as_mut_ptr().write(ptr) };
-        // Exercise the compatibility setter used by older callers; new
-        // reported-length call sites use `into_array_with_len` instead.
-        unsafe { output.set_len(len) };
+        unsafe { output.commit_len(len) };
         let array = unsafe { output.into_array() }.unwrap();
         assert_eq!(drops.load(Ordering::Relaxed), 0);
 

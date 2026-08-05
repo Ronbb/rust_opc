@@ -103,9 +103,47 @@ pub trait DaGroupService: Send + Sync + 'static {
 
 pub trait DaService: Send + Sync + 'static {
     fn status(&self) -> Result<ServerStatus>;
-    fn add_group(&self, options: GroupOptions) -> Result<Arc<dyn DaGroupService>>;
+    /// Creates a group associated with the server handle assigned by this
+    /// adapter. The same handle is later supplied to [`Self::remove_group`].
+    fn add_group(
+        &self,
+        server_handle: u32,
+        options: GroupOptions,
+    ) -> Result<Arc<dyn DaGroupService>>;
     fn remove_group(&self, server_handle: u32, force: bool) -> Result<()>;
     fn error_string(&self, error: ErrorCode, locale: u32) -> Result<String>;
+}
+
+struct PendingGroup<'service> {
+    service: &'service dyn DaService,
+    server_handle: u32,
+    committed: bool,
+}
+
+impl<'service> PendingGroup<'service> {
+    fn new(service: &'service dyn DaService, server_handle: u32) -> Self {
+        Self {
+            service,
+            server_handle,
+            committed: false,
+        }
+    }
+
+    fn commit(&mut self) {
+        self.committed = true;
+    }
+}
+
+impl Drop for PendingGroup<'_> {
+    fn drop(&mut self) {
+        if !self.committed {
+            // A group created by the application service must not survive a
+            // later adapter failure (unsupported IID, poisoned state, OOM,
+            // or failed output transfer). Never allow cleanup panics to cross
+            // this second ABI boundary while the primary error is unwinding.
+            let _ = catch_ffi(|| self.service.remove_group(self.server_handle, true));
+        }
+    }
 }
 
 #[derive(Clone)]
@@ -243,6 +281,8 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
             // the required null initialization and later transfer the
             // successful interface. Keep the wrapper for that final transfer
             // and use its documented transparent layout only for initialization.
+            // `transmute_copy(&output)` copies the contained caller-slot pointer,
+            // not the address of this local wrapper.
             let output_ptr: *mut *mut core::ffi::c_void =
                 unsafe { std::mem::transmute_copy(&output) };
             unsafe { initialize_output(output_ptr)? };
@@ -263,8 +303,9 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
                 percent_deadband: unsafe { percent_deadband.as_ref().copied() },
                 locale,
             };
-            let service = self.service.add_group(options.clone())?;
             let handle = next_nonzero(&self.next_group_handle)?;
+            let service = self.service.add_group(handle, options.clone())?;
+            let mut pending = PendingGroup::new(self.service.as_ref(), handle);
             let state = GroupState {
                 update_rate: options.requested_update_rate,
                 active: options.active,
@@ -296,6 +337,7 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
                 },
             );
             debug_assert!(previous.is_none(), "group handles never collide");
+            pending.commit();
             Ok(())
         })
     }
@@ -600,8 +642,16 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
             unsafe { initialize_output(errors)? };
             let handles = unsafe { borrow_input(handles, count)? };
             let values = unsafe { borrow_input(values, count)? };
-            let mut owned = Vec::with_capacity(count as usize);
-            let mut conversion_errors = Vec::with_capacity(count as usize);
+            let count = count as usize;
+            let mut owned = Vec::new();
+            owned
+                .try_reserve_exact(count)
+                .map_err(|_| code_error(E_OUTOFMEMORY))?;
+            let mut conversion_errors = Vec::new();
+            conversion_errors
+                .try_reserve_exact(count)
+                .map_err(|_| code_error(E_OUTOFMEMORY))?;
+            let mut item_errors = CoTaskMemArrayBuilder::new(count, NoCleanup)?;
             for (handle, value) in handles.iter().zip(values) {
                 match value_from_abi(value) {
                     Ok(value) => {
@@ -619,14 +669,27 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
             };
             ensure_batch_len(returned.len(), owned.len())?;
             let mut returned = returned.into_iter();
-            let mut merged = Vec::with_capacity(count as usize);
+            let mut has_error = false;
             for conversion_error in conversion_errors {
-                match conversion_error {
-                    Some(code) => merged.push(ServerItemResult::failure(code)),
-                    None => merged.push(returned.next().ok_or_else(|| code_error(E_UNEXPECTED))?),
-                }
+                let (code, failed) = match conversion_error {
+                    Some(code) => (code, true),
+                    None => match returned
+                        .next()
+                        .ok_or_else(|| code_error(E_UNEXPECTED))?
+                        .result
+                    {
+                        Ok(()) => (ErrorCode::OK, false),
+                        Err(code) => (code, true),
+                    },
+                };
+                has_error |= failed;
+                item_errors
+                    .push(HRESULT(code.raw()))
+                    .map_err(|_| code_error(E_UNEXPECTED))?;
             }
-            write_unit_results(merged, count as usize, errors)
+            let item_errors = item_errors.finish()?;
+            unsafe { errors.write(item_errors.into_raw_parts().0) };
+            batch_status(has_error)
         })
     }
 }
@@ -943,9 +1006,29 @@ mod tests {
     use crate::client::{DaClient, GroupOptions, ServerState};
     use windows::Win32::System::Variant::VT_DISPATCH;
 
-    struct TestService;
+    struct TestService {
+        group_handles: Arc<Mutex<Vec<(u32, bool)>>>,
+    }
     struct TestGroup;
     struct TestCommon;
+
+    #[test]
+    fn out_ref_transparent_layout_targets_the_caller_slot() {
+        let mut slot: Option<IUnknown> = None;
+        let slot_address = std::ptr::from_mut(&mut slot);
+        let output = OutRef::<IUnknown>::from(&mut slot);
+
+        // SAFETY: windows-core 0.62 defines OutRef as repr(transparent) over
+        // the caller's ABI pointer. This is the same conversion AddGroup uses
+        // to initialize a one-shot OutRef without consuming it.
+        let raw: *mut *mut core::ffi::c_void = unsafe { std::mem::transmute_copy(&output) };
+        assert_eq!(raw.cast::<Option<IUnknown>>(), slot_address);
+        unsafe { raw.write(std::ptr::null_mut()) };
+
+        let returned: IUnknown = test_group_io().cast().unwrap();
+        output.write(Some(returned)).unwrap();
+        assert!(slot.is_some());
+    }
 
     impl CommonService for TestCommon {
         fn set_locale(&self, _locale: u32) -> Result<()> {
@@ -983,11 +1066,28 @@ mod tests {
             })
         }
 
-        fn add_group(&self, _options: GroupOptions) -> Result<Arc<dyn DaGroupService>> {
+        fn add_group(
+            &self,
+            server_handle: u32,
+            _options: GroupOptions,
+        ) -> Result<Arc<dyn DaGroupService>> {
+            self.group_handles
+                .lock()
+                .map_err(|_| Error::unexpected("test group-handle log is poisoned"))?
+                .push((server_handle, false));
             Ok(Arc::new(TestGroup))
         }
 
-        fn remove_group(&self, _server_handle: u32, _force: bool) -> Result<()> {
+        fn remove_group(&self, server_handle: u32, _force: bool) -> Result<()> {
+            let mut handles = self
+                .group_handles
+                .lock()
+                .map_err(|_| Error::unexpected("test group-handle log is poisoned"))?;
+            let entry = handles
+                .iter_mut()
+                .find(|(created, _)| *created == server_handle)
+                .ok_or_else(|| Error::invalid_argument("group handle was not created"))?;
+            entry.1 = true;
             Ok(())
         }
 
@@ -1083,7 +1183,13 @@ mod tests {
     #[test]
     fn client_and_server_adapters_round_trip_owned_values() {
         let apartment = opc_classic_utils::ComApartment::mta().unwrap();
-        let server = DaServer::new_with_common(Arc::new(TestService), Arc::new(TestCommon));
+        let group_handles = Arc::new(Mutex::new(Vec::new()));
+        let server = DaServer::new_with_common(
+            Arc::new(TestService {
+                group_handles: group_handles.clone(),
+            }),
+            Arc::new(TestCommon),
+        );
         let client = DaClient::from_object(&apartment, &server.object()).unwrap();
 
         assert_eq!(client.common().unwrap().locale().unwrap(), 1_033);
@@ -1102,6 +1208,44 @@ mod tests {
         assert_eq!(values[0].as_ref().unwrap().quality, 192);
         assert_eq!(values[0].as_ref().unwrap().value, Value::I32(42));
         group.close(false).unwrap();
+        assert_eq!(*group_handles.lock().unwrap(), [(1, true)]);
+    }
+
+    #[test]
+    fn add_group_rolls_back_the_service_when_the_requested_iid_is_unsupported() {
+        let group_handles = Arc::new(Mutex::new(Vec::new()));
+        let server = DaServer::new(Arc::new(TestService {
+            group_handles: group_handles.clone(),
+        }));
+        let raw: IOPCServer = crate::abi::interface_from_object(&server.object()).unwrap();
+        let name = opc_classic_utils::WideCString::try_from("rollback").unwrap();
+        let unsupported = GUID::from_values(0x1234_5678, 0xabcd, 0xef01, [1, 2, 3, 4, 5, 6, 7, 8]);
+        let mut server_handle = u32::MAX;
+        let mut revised_update_rate = u32::MAX;
+        let mut group = None;
+
+        let error = unsafe {
+            raw.AddGroup(
+                PCWSTR(name.as_ptr()),
+                true,
+                1_000,
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+                0,
+                &mut server_handle,
+                &mut revised_update_rate,
+                &unsupported,
+                &mut group,
+            )
+        }
+        .unwrap_err();
+
+        assert_eq!(error.code(), windows::Win32::Foundation::E_NOINTERFACE);
+        assert!(group.is_none());
+        assert_eq!(server_handle, 0);
+        assert_eq!(revised_update_rate, 0);
+        assert_eq!(*group_handles.lock().unwrap(), [(1, true)]);
     }
 
     fn test_group_io() -> IOPCSyncIO {
