@@ -1,10 +1,10 @@
 use std::marker::PhantomData;
 use std::rc::Rc;
 
+use opc_classic_types::{Error, ErrorCode, Result};
 use windows::Win32::System::Com::{
     COINIT, COINIT_APARTMENTTHREADED, COINIT_MULTITHREADED, CoInitializeEx, CoUninitialize,
 };
-use windows_core::Error;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ApartmentModel {
@@ -22,23 +22,27 @@ pub struct ComApartment {
 }
 
 impl ComApartment {
-    pub fn initialize(model: ApartmentModel) -> Result<Self, Error> {
+    pub fn initialize(model: ApartmentModel) -> Result<Self> {
         let coinit: COINIT = match model {
             ApartmentModel::SingleThreaded => COINIT_APARTMENTTHREADED,
             ApartmentModel::MultiThreaded => COINIT_MULTITHREADED,
         };
-        unsafe { CoInitializeEx(None, coinit) }.ok()?;
+        unsafe { CoInitializeEx(None, coinit) }
+            .ok()
+            .map_err(|error| {
+                Error::from_code(ErrorCode::from_raw(error.code().0)).with_message(error.message())
+            })?;
         Ok(Self {
             model,
             _thread_bound: PhantomData,
         })
     }
 
-    pub fn sta() -> Result<Self, Error> {
+    pub fn sta() -> Result<Self> {
         Self::initialize(ApartmentModel::SingleThreaded)
     }
 
-    pub fn mta() -> Result<Self, Error> {
+    pub fn mta() -> Result<Self> {
         Self::initialize(ApartmentModel::MultiThreaded)
     }
 

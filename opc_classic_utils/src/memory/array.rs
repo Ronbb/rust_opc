@@ -2,10 +2,8 @@ use std::marker::PhantomData;
 use std::mem::{ManuallyDrop, MaybeUninit};
 use std::ptr::{self, NonNull};
 
-use windows::Win32::Foundation::{E_INVALIDARG, E_OUTOFMEMORY, E_POINTER};
+use opc_classic_types::{Error, Result};
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
-use windows_core::Error;
-use windows_core::PWSTR;
 
 /// Describes how initialized elements inside a `CoTaskMem` allocation are released.
 ///
@@ -60,12 +58,12 @@ pub struct FreePwstrElements;
 
 // SAFETY: OPC string arrays use one task allocation per non-null string and one
 // task allocation for the pointer array.
-unsafe impl Cleanup<PWSTR> for FreePwstrElements {
-    unsafe fn cleanup(&mut self, ptr: *mut PWSTR, initialized: usize) {
+unsafe impl Cleanup<*mut u16> for FreePwstrElements {
+    unsafe fn cleanup(&mut self, ptr: *mut *mut u16, initialized: usize) {
         for index in 0..initialized {
             let value = unsafe { *ptr.add(index) };
             if !value.is_null() {
-                unsafe { CoTaskMemFree(Some(value.0.cast())) };
+                unsafe { CoTaskMemFree(Some(value.cast())) };
             }
         }
     }
@@ -90,9 +88,9 @@ impl<T, C: Cleanup<T>> CoTaskMemArray<T, C> {
     /// For non-zero `len`, `ptr` must point to `len` initialized `T` values in a
     /// single allocation obtained from `CoTaskMemAlloc`. `cleanup` must match the
     /// ownership contract of every element.
-    pub unsafe fn from_raw_parts(ptr: *mut T, len: usize, cleanup: C) -> Result<Self, Error> {
+    pub unsafe fn from_raw_parts(ptr: *mut T, len: usize, cleanup: C) -> Result<Self> {
         if len != 0 && ptr.is_null() {
-            return Err(Error::from_hresult(E_POINTER));
+            return Err(Error::null_pointer("null task-memory array"));
         }
 
         Ok(Self {
@@ -176,7 +174,7 @@ pub struct CoTaskMemArrayBuilder<T, C: Cleanup<T>> {
 }
 
 impl<T, C: Cleanup<T>> CoTaskMemArrayBuilder<T, C> {
-    pub fn new(capacity: usize, cleanup: C) -> Result<Self, Error> {
+    pub fn new(capacity: usize, cleanup: C) -> Result<Self> {
         if capacity == 0 {
             return Ok(Self {
                 ptr: None,
@@ -189,12 +187,13 @@ impl<T, C: Cleanup<T>> CoTaskMemArrayBuilder<T, C> {
         let bytes = std::mem::size_of::<T>()
             .checked_mul(capacity)
             .filter(|bytes| *bytes != 0)
-            .ok_or_else(|| Error::from_hresult(E_INVALIDARG))?;
+            .ok_or_else(|| Error::invalid_argument("invalid task-memory array size"))?;
         let ptr = unsafe { CoTaskMemAlloc(bytes) }.cast::<MaybeUninit<T>>();
-        let ptr = NonNull::new(ptr).ok_or_else(|| Error::from_hresult(E_OUTOFMEMORY))?;
+        let ptr = NonNull::new(ptr)
+            .ok_or_else(|| Error::out_of_memory("task-memory allocation failed"))?;
         if ptr.as_ptr().addr() % std::mem::align_of::<T>() != 0 {
             unsafe { CoTaskMemFree(Some(ptr.as_ptr().cast())) };
-            return Err(Error::from_hresult(E_INVALIDARG));
+            return Err(Error::invalid_argument("task-memory alignment mismatch"));
         }
 
         Ok(Self {
@@ -205,7 +204,7 @@ impl<T, C: Cleanup<T>> CoTaskMemArrayBuilder<T, C> {
         })
     }
 
-    pub fn push(&mut self, value: T) -> Result<(), T> {
+    pub fn push(&mut self, value: T) -> core::result::Result<(), T> {
         if self.initialized == self.capacity {
             return Err(value);
         }
@@ -221,9 +220,9 @@ impl<T, C: Cleanup<T>> CoTaskMemArrayBuilder<T, C> {
         Ok(())
     }
 
-    pub fn finish(self) -> Result<CoTaskMemArray<T, C>, Error> {
+    pub fn finish(self) -> Result<CoTaskMemArray<T, C>> {
         if self.initialized != self.capacity {
-            return Err(Error::from_hresult(E_INVALIDARG));
+            return Err(Error::invalid_argument("task-memory array is incomplete"));
         }
 
         let this = ManuallyDrop::new(self);
@@ -255,42 +254,61 @@ impl<T, C: Cleanup<T>> Drop for CoTaskMemArrayBuilder<T, C> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    static DROPS: AtomicUsize = AtomicUsize::new(0);
-
     struct CountDrop {
-        _value: u8,
+        drops: Arc<AtomicUsize>,
     }
 
     impl Drop for CountDrop {
         fn drop(&mut self) {
-            DROPS.fetch_add(1, Ordering::Relaxed);
+            self.drops.fetch_add(1, Ordering::Relaxed);
         }
     }
 
     #[test]
     fn builder_rolls_back_initialized_prefix() {
-        DROPS.store(0, Ordering::Relaxed);
+        let drops = Arc::new(AtomicUsize::new(0));
         {
             let mut builder = CoTaskMemArrayBuilder::new(3, DropElements).unwrap();
-            builder.push(CountDrop { _value: 1 }).ok().unwrap();
-            builder.push(CountDrop { _value: 2 }).ok().unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
         }
-        assert_eq!(DROPS.load(Ordering::Relaxed), 2);
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
     }
 
     #[test]
     fn finished_array_drops_all_elements() {
-        DROPS.store(0, Ordering::Relaxed);
+        let drops = Arc::new(AtomicUsize::new(0));
         {
             let mut builder = CoTaskMemArrayBuilder::new(2, DropElements).unwrap();
-            builder.push(CountDrop { _value: 1 }).ok().unwrap();
-            builder.push(CountDrop { _value: 2 }).ok().unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
             let array = builder.finish().unwrap();
             assert_eq!(array.len(), 2);
         }
-        assert_eq!(DROPS.load(Ordering::Relaxed), 2);
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
     }
 
     #[test]

@@ -2,66 +2,140 @@ use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 
+use opc_classic_types::{ClassContext, ComObject, Error, ErrorCode, Guid, Result};
 use windows::Win32::Foundation::{CLASS_E_NOAGGREGATION, E_POINTER, E_UNEXPECTED};
 use windows::Win32::System::Com::{
-    CLSCTX, CLSCTX_LOCAL_SERVER, CoRegisterClassObject, CoRevokeClassObject, IClassFactory,
-    IClassFactory_Impl, REGCLS, REGCLS_MULTIPLEUSE,
+    CLSCTX, CoRegisterClassObject, CoRevokeClassObject, IClassFactory, IClassFactory_Impl,
+    REGCLS_MULTIPLEUSE,
 };
-use windows_core::{Error, GUID, IUnknown, Interface, Ref, Result};
+use windows_core::{Error as AbiError, GUID, IUnknown, Ref, Result as AbiResult};
 
 use crate::ComApartment;
 
-/// Prevents Rust unwinding from crossing a COM ABI boundary.
+/// Prevents Rust unwinding from crossing a foreign-function boundary.
 pub fn catch_ffi<T>(f: impl FnOnce() -> Result<T>) -> Result<T> {
-    catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| Err(Error::from_hresult(E_UNEXPECTED)))
+    catch_unwind(AssertUnwindSafe(f)).unwrap_or_else(|_| {
+        Err(Error::new(
+            opc_classic_types::ErrorKind::Panic,
+            ErrorCode::UNEXPECTED,
+            "panic in OPC callback",
+        ))
+    })
 }
 
-/// Validates and borrows a COM input array for the duration of the current call.
+/// Runs an ABI closure without allowing a panic to cross COM.
+pub fn catch_abi<T, E>(
+    f: impl FnOnce() -> core::result::Result<T, E>,
+    panic_error: E,
+) -> core::result::Result<T, E> {
+    catch_unwind(AssertUnwindSafe(f)).unwrap_or(Err(panic_error))
+}
+
+/// Validates and borrows a foreign input array for the current call.
 ///
 /// # Safety
 ///
 /// A non-zero length requires `ptr` to point to that many initialized values,
-/// and the returned slice must not outlive the COM method invocation.
+/// and the returned slice must not outlive the invocation.
 pub unsafe fn borrow_input<'call, T>(ptr: *const T, len: u32) -> Result<&'call [T]> {
     if len == 0 {
         return Ok(&[]);
     }
     if ptr.is_null() {
-        return Err(Error::from_hresult(windows::Win32::Foundation::E_POINTER));
+        return Err(Error::null_pointer("null OPC input array"));
     }
     Ok(unsafe { std::slice::from_raw_parts(ptr, len as usize) })
 }
 
-/// Validates a required COM output pointer and initializes it with `Default`.
+/// Validates and zero-initializes a required foreign output pointer.
 ///
 /// # Safety
 ///
-/// `out` must be writable when non-null and valid for a single `T`.
+/// `out` must be writable when non-null and valid for one `T`.
 pub unsafe fn initialize_output<T: Default>(out: *mut T) -> Result<()> {
     if out.is_null() {
-        return Err(Error::from_hresult(windows::Win32::Foundation::E_POINTER));
+        return Err(Error::null_pointer("null OPC output pointer"));
     }
     unsafe { out.write(T::default()) };
     Ok(())
 }
 
-type Activator = dyn Fn() -> Result<IUnknown> + Send + Sync + 'static;
+type Activator = dyn Fn() -> Result<ComObject> + Send + Sync + 'static;
 
-/// A Rust-backed COM class factory.
-///
-/// The activator returns the identity `IUnknown` for a fresh object. The factory
-/// performs aggregation checks and `QueryInterface` for the requested interface.
 #[windows_core::implement(IClassFactory)]
-pub struct ClassFactory {
+struct ClassFactoryAdapter {
     activate: Arc<Activator>,
     server_locks: Arc<AtomicU32>,
 }
 
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl IClassFactory_Impl for ClassFactoryAdapter_Impl {
+    fn CreateInstance(
+        &self,
+        outer: Ref<IUnknown>,
+        iid: *const GUID,
+        output: *mut *mut core::ffi::c_void,
+    ) -> AbiResult<()> {
+        catch_abi(
+            || {
+                if output.is_null() || iid.is_null() {
+                    return Err(AbiError::from_hresult(E_POINTER));
+                }
+                unsafe { output.write(core::ptr::null_mut()) };
+                if !outer.is_null() {
+                    return Err(AbiError::from_hresult(CLASS_E_NOAGGREGATION));
+                }
+                let object = (self.activate)().map_err(to_abi_error)?;
+                let iid = unsafe { &*iid };
+                let iid = Guid::new(iid.data1, iid.data2, iid.data3, iid.data4);
+                let requested = object.query_interface(&iid).map_err(to_abi_error)?;
+                unsafe { output.write(requested.into_raw()) };
+                Ok(())
+            },
+            AbiError::from_hresult(E_UNEXPECTED),
+        )
+    }
+
+    fn LockServer(&self, lock: windows_core::BOOL) -> AbiResult<()> {
+        catch_abi(
+            || {
+                let update = if lock.as_bool() {
+                    self.server_locks
+                        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                            count.checked_add(1)
+                        })
+                } else {
+                    self.server_locks
+                        .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                            count.checked_sub(1)
+                        })
+                };
+                update
+                    .map(|_| ())
+                    .map_err(|_| AbiError::from_hresult(E_UNEXPECTED))
+            },
+            AbiError::from_hresult(E_UNEXPECTED),
+        )
+    }
+}
+
+/// A Rust-backed COM class factory whose public API contains only project-owned
+/// and standard-library types.
+pub struct ClassFactory {
+    inner: IClassFactory,
+    server_locks: Arc<AtomicU32>,
+}
+
 impl ClassFactory {
-    pub fn new(activate: impl Fn() -> Result<IUnknown> + Send + Sync + 'static) -> Self {
-        Self {
+    pub fn new(activate: impl Fn() -> Result<ComObject> + Send + Sync + 'static) -> Self {
+        let server_locks = Arc::new(AtomicU32::new(0));
+        let adapter = ClassFactoryAdapter {
             activate: Arc::new(activate),
-            server_locks: Arc::new(AtomicU32::new(0)),
+            server_locks: server_locks.clone(),
+        };
+        Self {
+            inner: adapter.into(),
+            server_locks,
         }
     }
 
@@ -70,51 +144,7 @@ impl ClassFactory {
     }
 }
 
-#[allow(clippy::not_unsafe_ptr_arg_deref)]
-impl IClassFactory_Impl for ClassFactory_Impl {
-    fn CreateInstance(
-        &self,
-        outer: Ref<IUnknown>,
-        iid: *const GUID,
-        output: *mut *mut core::ffi::c_void,
-    ) -> Result<()> {
-        catch_ffi(|| {
-            unsafe { initialize_output(output)? };
-            if !outer.is_null() {
-                return Err(Error::from_hresult(CLASS_E_NOAGGREGATION));
-            }
-            let iid = unsafe { iid.as_ref() }.ok_or_else(|| Error::from_hresult(E_POINTER))?;
-            let object = (self.activate)()?;
-            unsafe { object.query(iid, output) }.ok()
-        })
-    }
-
-    fn LockServer(&self, lock: windows_core::BOOL) -> Result<()> {
-        catch_ffi(|| {
-            if lock.as_bool() {
-                return self
-                    .server_locks
-                    .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                        count.checked_add(1)
-                    })
-                    .map(|_| ())
-                    .map_err(|_| Error::from_hresult(E_UNEXPECTED));
-            }
-
-            self.server_locks
-                .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
-                    count.checked_sub(1)
-                })
-                .map(|_| ())
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))
-        })
-    }
-}
-
-/// A class-object registration that is revoked when dropped.
-///
-/// Borrowing the apartment makes the registration thread-bound and prevents COM
-/// from being uninitialized before `CoRevokeClassObject` runs.
+/// A class-object registration revoked on drop and bound to its COM apartment.
 pub struct LocalClassRegistration<'apartment> {
     cookie: Option<u32>,
     _factory: IClassFactory,
@@ -124,36 +154,43 @@ pub struct LocalClassRegistration<'apartment> {
 impl<'apartment> LocalClassRegistration<'apartment> {
     pub fn register(
         apartment: &'apartment ComApartment,
-        class_id: &GUID,
+        class_id: &Guid,
         factory: ClassFactory,
     ) -> Result<Self> {
-        Self::register_with(
-            apartment,
-            class_id,
-            factory.into(),
-            CLSCTX_LOCAL_SERVER,
-            REGCLS_MULTIPLEUSE,
-        )
+        Self::register_in_context(apartment, class_id, factory, ClassContext::LOCAL_SERVER)
     }
 
-    pub fn register_with(
+    pub fn register_in_context(
         apartment: &'apartment ComApartment,
-        class_id: &GUID,
-        factory: IClassFactory,
-        context: CLSCTX,
-        flags: REGCLS,
+        class_id: &Guid,
+        factory: ClassFactory,
+        context: ClassContext,
     ) -> Result<Self> {
-        let cookie = unsafe { CoRegisterClassObject(class_id, &factory, context, flags) }?;
+        let class_id = GUID::from_values(
+            class_id.data1,
+            class_id.data2,
+            class_id.data3,
+            class_id.data4,
+        );
+        let cookie = unsafe {
+            CoRegisterClassObject(
+                &class_id,
+                &factory.inner,
+                CLSCTX(context.bits()),
+                REGCLS_MULTIPLEUSE,
+            )
+        }
+        .map_err(from_abi_error)?;
         Ok(Self {
             cookie: Some(cookie),
-            _factory: factory,
+            _factory: factory.inner,
             _apartment: apartment,
         })
     }
 
     pub fn revoke(mut self) -> Result<()> {
         if let Some(cookie) = self.cookie.take() {
-            unsafe { CoRevokeClassObject(cookie) }
+            unsafe { CoRevokeClassObject(cookie) }.map_err(from_abi_error)
         } else {
             Ok(())
         }
@@ -166,4 +203,12 @@ impl Drop for LocalClassRegistration<'_> {
             let _ = unsafe { CoRevokeClassObject(cookie) };
         }
     }
+}
+
+fn to_abi_error(error: Error) -> AbiError {
+    AbiError::from_hresult(windows_core::HRESULT(error.code().raw()))
+}
+
+fn from_abi_error(error: AbiError) -> Error {
+    Error::from_code(ErrorCode::from_raw(error.code().0)).with_message(error.message())
 }

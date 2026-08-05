@@ -5,15 +5,21 @@ use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use opc_classic_types::{ComObject, Error, ErrorCode, Result, Timestamp, Value, ValueType};
 use opc_classic_utils::server::{borrow_input, catch_ffi, initialize_output};
 use opc_classic_utils::{Cleanup, CoTaskMemArrayBuilder, DropElements, NoCleanup, OwnedPwstr};
-use windows::Win32::Foundation::{
-    E_INVALIDARG, E_NOTIMPL, E_OUTOFMEMORY, E_POINTER, E_UNEXPECTED, FILETIME, S_FALSE,
-};
+use windows::Win32::Foundation::{E_INVALIDARG, E_NOTIMPL, E_OUTOFMEMORY, E_POINTER, E_UNEXPECTED};
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 use windows::Win32::System::Variant::VARIANT;
-use windows_core::{Error, GUID, HRESULT, IUnknown, Interface, OutRef, PCWSTR, PWSTR, Result};
+use windows_core::{
+    Error as AbiError, GUID, HRESULT, IUnknown, Interface, OutRef, PCWSTR, PWSTR,
+    Result as AbiResult,
+};
 
+use crate::abi::{
+    error_code_from_abi, error_code_to_abi, object_from_interface, timestamp_to_abi, to_abi_error,
+    value_from_abi, value_to_abi,
+};
 use crate::client::{
     ClientItemHandle, DataSource, GroupOptions, GroupState, ItemSpec, ServerItemHandle,
     ServerStatus,
@@ -27,22 +33,22 @@ use crate::{
 #[derive(Clone, Debug)]
 pub struct ServerSample {
     pub client_handle: ClientItemHandle,
-    pub timestamp: FILETIME,
+    pub timestamp: Timestamp,
     pub quality: u16,
-    pub value: VARIANT,
+    pub value: Value,
 }
 
 #[derive(Clone, Debug)]
 pub struct ServerAddedItem {
     pub server_handle: ServerItemHandle,
-    pub canonical_data_type: u16,
+    pub canonical_data_type: ValueType,
     pub access_rights: u32,
     pub blob: Vec<u8>,
 }
 
 #[derive(Clone, Debug)]
 pub struct ServerItemResult<T> {
-    pub result: std::result::Result<T, HRESULT>,
+    pub result: std::result::Result<T, ErrorCode>,
 }
 
 impl<T> ServerItemResult<T> {
@@ -50,7 +56,7 @@ impl<T> ServerItemResult<T> {
         Self { result: Ok(value) }
     }
 
-    pub fn failure(code: HRESULT) -> Self {
+    pub fn failure(code: ErrorCode) -> Self {
         Self { result: Err(code) }
     }
 }
@@ -81,7 +87,7 @@ pub trait DaGroupService: Send + Sync + 'static {
 
     fn set_data_types(
         &self,
-        handles: &[(ServerItemHandle, u16)],
+        handles: &[(ServerItemHandle, ValueType)],
     ) -> Result<Vec<ServerItemResult<()>>>;
 
     fn read(
@@ -90,14 +96,14 @@ pub trait DaGroupService: Send + Sync + 'static {
         handles: &[ServerItemHandle],
     ) -> Result<Vec<ServerItemResult<ServerSample>>>;
 
-    fn write(&self, values: &[(ServerItemHandle, VARIANT)]) -> Result<Vec<ServerItemResult<()>>>;
+    fn write(&self, values: &[(ServerItemHandle, Value)]) -> Result<Vec<ServerItemResult<()>>>;
 }
 
 pub trait DaService: Send + Sync + 'static {
     fn status(&self) -> Result<ServerStatus>;
     fn add_group(&self, options: GroupOptions) -> Result<Arc<dyn DaGroupService>>;
     fn remove_group(&self, server_handle: u32, force: bool) -> Result<()>;
-    fn error_string(&self, error: HRESULT, locale: u32) -> Result<String>;
+    fn error_string(&self, error: ErrorCode, locale: u32) -> Result<String>;
 }
 
 #[derive(Clone)]
@@ -106,15 +112,36 @@ struct GroupEntry {
     object: IUnknown,
 }
 
+#[derive(Clone)]
+pub struct DaServer {
+    inner: IOPCServer,
+    service: Arc<dyn DaService>,
+}
+
+impl DaServer {
+    pub fn new(service: Arc<dyn DaService>) -> Self {
+        let inner: IOPCServer = DaServerAdapter::new(service.clone()).into();
+        Self { inner, service }
+    }
+
+    pub fn service(&self) -> Arc<dyn DaService> {
+        self.service.clone()
+    }
+
+    pub fn object(&self) -> ComObject {
+        object_from_interface(&self.inner)
+    }
+}
+
 #[windows_core::implement(IOPCServer)]
-pub struct DaServerAdapter {
+struct DaServerAdapter {
     service: Arc<dyn DaService>,
     groups: Mutex<HashMap<u32, GroupEntry>>,
     next_group_handle: AtomicU32,
 }
 
 impl DaServerAdapter {
-    pub fn new(service: Arc<dyn DaService>) -> Self {
+    fn new(service: Arc<dyn DaService>) -> Self {
         Self {
             service,
             groups: Mutex::new(HashMap::new()),
@@ -138,16 +165,29 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
         revised_update_rate: *mut u32,
         iid: *const GUID,
         output: OutRef<IUnknown>,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
             unsafe {
                 initialize_output(server_handle)?;
                 initialize_output(revised_update_rate)?;
             }
-            if iid.is_null() || output.is_null() {
-                return Err(Error::from_hresult(E_POINTER));
+            if output.is_null() {
+                return Err(code_error(E_POINTER));
             }
-            let name = unsafe { name.to_string() }?;
+            // SAFETY: `OutRef<IUnknown>` is a transparent wrapper over the ABI
+            // output pointer. Initialize it without consuming `output`, which
+            // is needed again for the successful interface transfer.
+            let output_ptr: *mut *mut core::ffi::c_void =
+                unsafe { std::mem::transmute_copy(&output) };
+            unsafe { initialize_output(output_ptr)? };
+            if iid.is_null() {
+                return Err(code_error(E_POINTER));
+            }
+            if name.is_null() {
+                return Err(Error::null_pointer("null group name"));
+            }
+            let name = unsafe { name.to_string() }
+                .map_err(|_| Error::invalid_argument("invalid UTF-16 group name"))?;
             let options = GroupOptions {
                 name: name.clone(),
                 active: active.as_bool(),
@@ -173,7 +213,7 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
             let requested = query_interface(&group, unsafe { &*iid })?;
             self.groups
                 .lock()
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))?
+                .map_err(|_| code_error(E_UNEXPECTED))?
                 .insert(
                     handle,
                     GroupEntry {
@@ -181,7 +221,9 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
                         object: group,
                     },
                 );
-            output.write(Some(requested))?;
+            output
+                .write(Some(requested))
+                .map_err(crate::abi::from_abi_error)?;
             unsafe {
                 server_handle.write(handle);
                 revised_update_rate.write(requested_update_rate);
@@ -190,62 +232,67 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
         })
     }
 
-    fn GetErrorString(&self, error: HRESULT, locale: u32) -> Result<PWSTR> {
-        catch_ffi(|| {
-            let value = self.service.error_string(error, locale)?;
-            Ok(OwnedPwstr::new(value)?.into_raw())
+    fn GetErrorString(&self, error: HRESULT, locale: u32) -> AbiResult<PWSTR> {
+        serve(|| {
+            let value = self
+                .service
+                .error_string(error_code_from_abi(error), locale)?;
+            Ok(PWSTR(OwnedPwstr::new(value)?.into_raw()))
         })
     }
 
-    fn GetGroupByName(&self, name: &PCWSTR, iid: *const GUID) -> Result<IUnknown> {
-        catch_ffi(|| {
+    fn GetGroupByName(&self, name: &PCWSTR, iid: *const GUID) -> AbiResult<IUnknown> {
+        serve(|| {
             if iid.is_null() {
-                return Err(Error::from_hresult(E_POINTER));
+                return Err(code_error(E_POINTER));
             }
-            let name = unsafe { name.to_string() }?;
-            let groups = self
-                .groups
-                .lock()
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+            if name.is_null() {
+                return Err(Error::null_pointer("null group name"));
+            }
+            let name = unsafe { name.to_string() }
+                .map_err(|_| Error::invalid_argument("invalid UTF-16 group name"))?;
+            let groups = self.groups.lock().map_err(|_| code_error(E_UNEXPECTED))?;
             let group = groups
                 .values()
                 .find(|group| group.name == name)
-                .ok_or_else(|| Error::from_hresult(E_INVALIDARG))?;
+                .ok_or_else(|| code_error(E_INVALIDARG))?;
             query_interface(&group.object, unsafe { &*iid })
         })
     }
 
-    fn GetStatus(&self) -> Result<*mut crate::tagOPCSERVERSTATUS> {
-        catch_ffi(|| {
+    fn GetStatus(&self) -> AbiResult<*mut crate::tagOPCSERVERSTATUS> {
+        serve(|| {
             let status = self.service.status()?;
             let vendor = OwnedPwstr::new(status.vendor_info)?;
             let mut output = CoTaskMemArrayBuilder::new(1, ServerStatusCleanup)?;
-            output
-                .push(crate::tagOPCSERVERSTATUS {
-                    ftStartTime: status.start_time,
-                    ftCurrentTime: status.current_time,
-                    ftLastUpdateTime: status.last_update_time,
-                    dwServerState: status.state,
-                    dwGroupCount: status.group_count,
-                    dwBandWidth: status.bandwidth,
-                    wMajorVersion: status.version.0,
-                    wMinorVersion: status.version.1,
-                    wBuildNumber: status.version.2,
-                    wReserved: 0,
-                    szVendorInfo: vendor.into_raw(),
-                })
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+            let value = crate::tagOPCSERVERSTATUS {
+                ftStartTime: timestamp_to_abi(status.start_time),
+                ftCurrentTime: timestamp_to_abi(status.current_time),
+                ftLastUpdateTime: timestamp_to_abi(status.last_update_time),
+                dwServerState: crate::tagOPCSERVERSTATE(status.state.raw()),
+                dwGroupCount: status.group_count,
+                dwBandWidth: status.bandwidth,
+                wMajorVersion: status.version.0,
+                wMinorVersion: status.version.1,
+                wBuildNumber: status.version.2,
+                wReserved: 0,
+                szVendorInfo: PWSTR(vendor.into_raw()),
+            };
+            if let Err(mut value) = output.push(value) {
+                unsafe { ServerStatusCleanup.cleanup(&mut value, 1) };
+                return Err(code_error(E_UNEXPECTED));
+            }
             let (ptr, _) = output.finish()?.into_raw_parts();
             Ok(ptr)
         })
     }
 
-    fn RemoveGroup(&self, server_handle: u32, force: windows_core::BOOL) -> Result<()> {
-        catch_ffi(|| {
+    fn RemoveGroup(&self, server_handle: u32, force: windows_core::BOOL) -> AbiResult<()> {
+        serve(|| {
             self.service.remove_group(server_handle, force.as_bool())?;
             self.groups
                 .lock()
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))?
+                .map_err(|_| code_error(E_UNEXPECTED))?
                 .remove(&server_handle);
             Ok(())
         })
@@ -255,8 +302,8 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
         &self,
         _scope: tagOPCENUMSCOPE,
         _iid: *const GUID,
-    ) -> Result<IUnknown> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    ) -> AbiResult<IUnknown> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 }
 
@@ -298,8 +345,12 @@ impl IOPCItemMgt_Impl for DaGroupAdapter_Impl {
         items: *const tagOPCITEMDEF,
         results: *mut *mut tagOPCITEMRESULT,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
+            unsafe {
+                initialize_output(results)?;
+                initialize_output(errors)?;
+            }
             let items = decode_item_specs(unsafe { borrow_input(items, count)? })?;
             let values = self.service.add_items(&items)?;
             write_item_results(values, count as usize, results, errors)
@@ -313,8 +364,12 @@ impl IOPCItemMgt_Impl for DaGroupAdapter_Impl {
         update_blob: windows_core::BOOL,
         results: *mut *mut tagOPCITEMRESULT,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
+            unsafe {
+                initialize_output(results)?;
+                initialize_output(errors)?;
+            }
             let items = decode_item_specs(unsafe { borrow_input(items, count)? })?;
             let values = self.service.validate_items(&items, update_blob.as_bool())?;
             write_item_results(values, count as usize, results, errors)
@@ -326,8 +381,9 @@ impl IOPCItemMgt_Impl for DaGroupAdapter_Impl {
         count: u32,
         handles: *const u32,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
+            unsafe { initialize_output(errors)? };
             let handles = decode_handles(unsafe { borrow_input(handles, count)? });
             let values = self.service.remove_items(&handles)?;
             write_unit_results(values, count as usize, errors)
@@ -340,8 +396,9 @@ impl IOPCItemMgt_Impl for DaGroupAdapter_Impl {
         handles: *const u32,
         active: windows_core::BOOL,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
+            unsafe { initialize_output(errors)? };
             let handles = decode_handles(unsafe { borrow_input(handles, count)? });
             let values = self.service.set_active(&handles, active.as_bool())?;
             write_unit_results(values, count as usize, errors)
@@ -354,8 +411,9 @@ impl IOPCItemMgt_Impl for DaGroupAdapter_Impl {
         server_handles: *const u32,
         client_handles: *const u32,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
+            unsafe { initialize_output(errors)? };
             let server_handles = unsafe { borrow_input(server_handles, count)? };
             let client_handles = unsafe { borrow_input(client_handles, count)? };
             let pairs: Vec<_> = server_handles
@@ -374,22 +432,25 @@ impl IOPCItemMgt_Impl for DaGroupAdapter_Impl {
         handles: *const u32,
         data_types: *const u16,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
+            unsafe { initialize_output(errors)? };
             let handles = unsafe { borrow_input(handles, count)? };
             let data_types = unsafe { borrow_input(data_types, count)? };
             let pairs: Vec<_> = handles
                 .iter()
                 .zip(data_types)
-                .map(|(handle, data_type)| (ServerItemHandle(*handle), *data_type))
+                .map(|(handle, data_type)| {
+                    (ServerItemHandle(*handle), ValueType::from_raw(*data_type))
+                })
                 .collect();
             let values = self.service.set_data_types(&pairs)?;
             write_unit_results(values, count as usize, errors)
         })
     }
 
-    fn CreateEnumerator(&self, _iid: *const GUID) -> Result<IUnknown> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    fn CreateEnumerator(&self, _iid: *const GUID) -> AbiResult<IUnknown> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 }
 
@@ -402,8 +463,8 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
         handles: *const u32,
         values: *mut *mut tagOPCITEMSTATE,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
             unsafe {
                 initialize_output(values)?;
                 initialize_output(errors)?;
@@ -413,7 +474,7 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
             } else if source == crate::OPC_DS_DEVICE {
                 DataSource::Device
             } else {
-                return Err(Error::from_hresult(E_INVALIDARG));
+                return Err(code_error(E_INVALIDARG));
             };
             let handles = decode_handles(unsafe { borrow_input(handles, count)? });
             let returned = self.service.read(source, &handles)?;
@@ -427,29 +488,31 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
                         states
                             .push(tagOPCITEMSTATE {
                                 hClient: sample.client_handle.0,
-                                ftTimeStamp: sample.timestamp,
+                                ftTimeStamp: timestamp_to_abi(sample.timestamp),
                                 wQuality: sample.quality,
                                 wReserved: 0,
-                                vDataValue: sample.value,
+                                vDataValue: value_to_abi(&sample.value)?,
                             })
-                            .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                            .map_err(|_| code_error(E_UNEXPECTED))?;
                         item_errors
                             .push(HRESULT(0))
-                            .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                            .map_err(|_| code_error(E_UNEXPECTED))?;
                     }
                     Err(error) => {
                         has_error = true;
                         states
                             .push(tagOPCITEMSTATE::default())
-                            .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                            .map_err(|_| code_error(E_UNEXPECTED))?;
                         item_errors
-                            .push(error)
-                            .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                            .push(error_code_to_abi(error))
+                            .map_err(|_| code_error(E_UNEXPECTED))?;
                     }
                 }
             }
-            let (state_ptr, _) = states.finish()?.into_raw_parts();
-            let (error_ptr, _) = item_errors.finish()?.into_raw_parts();
+            let states = states.finish()?;
+            let item_errors = item_errors.finish()?;
+            let (state_ptr, _) = states.into_raw_parts();
+            let (error_ptr, _) = item_errors.into_raw_parts();
             unsafe {
                 values.write(state_ptr);
                 errors.write(error_ptr);
@@ -464,15 +527,16 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
         handles: *const u32,
         values: *const VARIANT,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
+            unsafe { initialize_output(errors)? };
             let handles = unsafe { borrow_input(handles, count)? };
             let values = unsafe { borrow_input(values, count)? };
             let owned: Vec<_> = handles
                 .iter()
                 .zip(values)
-                .map(|(handle, value)| (ServerItemHandle(*handle), value.clone()))
-                .collect();
+                .map(|(handle, value)| Ok((ServerItemHandle(*handle), value_from_abi(value)?)))
+                .collect::<Result<_>>()?;
             let returned = self.service.write(&owned)?;
             write_unit_results(returned, count as usize, errors)
         })
@@ -491,8 +555,8 @@ impl IOPCGroupStateMgt_Impl for DaGroupAdapter_Impl {
         locale: *mut u32,
         client_handle: *mut u32,
         server_handle: *mut u32,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
             unsafe {
                 initialize_output(update_rate)?;
                 initialize_output(active)?;
@@ -506,13 +570,13 @@ impl IOPCGroupStateMgt_Impl for DaGroupAdapter_Impl {
             let state = self
                 .state
                 .lock()
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))?
+                .map_err(|_| code_error(E_UNEXPECTED))?
                 .clone();
             let name_value = OwnedPwstr::new(state.name)?;
             unsafe {
                 update_rate.write(state.update_rate);
                 active.write(state.active.into());
-                name.write(name_value.into_raw());
+                name.write(PWSTR(name_value.into_raw()));
                 time_bias.write(state.time_bias);
                 percent_deadband.write(state.percent_deadband);
                 locale.write(state.locale);
@@ -532,13 +596,10 @@ impl IOPCGroupStateMgt_Impl for DaGroupAdapter_Impl {
         percent_deadband: *const f32,
         locale: *const u32,
         client_handle: *const u32,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        serve(|| {
             unsafe { initialize_output(revised_update_rate)? };
-            let mut state = self
-                .state
-                .lock()
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+            let mut state = self.state.lock().map_err(|_| code_error(E_UNEXPECTED))?;
             if let Some(value) = unsafe { requested_update_rate.as_ref() } {
                 state.update_rate = *value;
             }
@@ -562,18 +623,22 @@ impl IOPCGroupStateMgt_Impl for DaGroupAdapter_Impl {
         })
     }
 
-    fn SetName(&self, name: &PCWSTR) -> Result<()> {
-        catch_ffi(|| {
+    fn SetName(&self, name: &PCWSTR) -> AbiResult<()> {
+        serve(|| {
+            if name.is_null() {
+                return Err(Error::null_pointer("null group name"));
+            }
             self.state
                 .lock()
-                .map_err(|_| Error::from_hresult(E_UNEXPECTED))?
-                .name = unsafe { name.to_string() }?;
+                .map_err(|_| code_error(E_UNEXPECTED))?
+                .name = unsafe { name.to_string() }
+                .map_err(|_| Error::invalid_argument("invalid UTF-16 group name"))?;
             Ok(())
         })
     }
 
-    fn CloneGroup(&self, _name: &PCWSTR, _iid: *const GUID) -> Result<IUnknown> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    fn CloneGroup(&self, _name: &PCWSTR, _iid: *const GUID) -> AbiResult<IUnknown> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 }
 
@@ -598,7 +663,7 @@ fn decode_item_specs(values: &[tagOPCITEMDEF]) -> Result<Vec<ItemSpec>> {
         .iter()
         .map(|value| {
             if value.dwBlobSize != 0 && value.pBlob.is_null() {
-                return Err(Error::from_hresult(E_INVALIDARG));
+                return Err(code_error(E_INVALIDARG));
             }
             let blob = if value.dwBlobSize == 0 {
                 Vec::new()
@@ -611,7 +676,7 @@ fn decode_item_specs(values: &[tagOPCITEMDEF]) -> Result<Vec<ItemSpec>> {
                 access_path: pwstr_string(value.szAccessPath)?,
                 active: value.bActive.as_bool(),
                 client_handle: ClientItemHandle(value.hClient),
-                requested_data_type: value.vtRequestedDataType,
+                requested_data_type: ValueType::from_raw(value.vtRequestedDataType),
                 blob,
             })
         })
@@ -622,7 +687,7 @@ fn pwstr_string(value: PWSTR) -> Result<String> {
     if value.is_null() {
         Ok(String::new())
     } else {
-        unsafe { value.to_string() }.map_err(|_| Error::from_hresult(E_INVALIDARG))
+        unsafe { value.to_string() }.map_err(|_| Error::invalid_argument("invalid UTF-16 string"))
     }
 }
 
@@ -648,38 +713,51 @@ fn write_item_results(
         match value.result {
             Ok(value) => {
                 let (blob, blob_size) = allocate_blob(&value.blob)?;
-                result_values
-                    .push(tagOPCITEMRESULT {
+                push_item_result(
+                    &mut result_values,
+                    tagOPCITEMRESULT {
                         hServer: value.server_handle.0,
-                        vtCanonicalDataType: value.canonical_data_type,
+                        vtCanonicalDataType: value.canonical_data_type.raw(),
                         wReserved: 0,
                         dwAccessRights: value.access_rights,
                         dwBlobSize: blob_size,
                         pBlob: blob,
-                    })
-                    .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                    },
+                )?;
                 item_errors
                     .push(HRESULT(0))
-                    .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                    .map_err(|_| code_error(E_UNEXPECTED))?;
             }
             Err(error) => {
                 has_error = true;
-                result_values
-                    .push(tagOPCITEMRESULT::default())
-                    .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                push_item_result(&mut result_values, tagOPCITEMRESULT::default())?;
                 item_errors
-                    .push(error)
-                    .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+                    .push(error_code_to_abi(error))
+                    .map_err(|_| code_error(E_UNEXPECTED))?;
             }
         }
     }
-    let (result_ptr, _) = result_values.finish()?.into_raw_parts();
-    let (error_ptr, _) = item_errors.finish()?.into_raw_parts();
+    let result_values = result_values.finish()?;
+    let item_errors = item_errors.finish()?;
+    let (result_ptr, _) = result_values.into_raw_parts();
+    let (error_ptr, _) = item_errors.into_raw_parts();
     unsafe {
         results.write(result_ptr);
         errors.write(error_ptr);
     }
     batch_status(has_error)
+}
+
+fn push_item_result(
+    output: &mut CoTaskMemArrayBuilder<tagOPCITEMRESULT, ItemResultCleanup>,
+    value: tagOPCITEMRESULT,
+) -> Result<()> {
+    if let Err(mut value) = output.push(value) {
+        unsafe { ItemResultCleanup.cleanup(&mut value, 1) };
+        Err(code_error(E_UNEXPECTED))
+    } else {
+        Ok(())
+    }
 }
 
 fn write_unit_results(
@@ -696,12 +774,12 @@ fn write_unit_results(
             Ok(()) => HRESULT(0),
             Err(error) => {
                 has_error = true;
-                error
+                error_code_to_abi(error)
             }
         };
         item_errors
             .push(error)
-            .map_err(|_| Error::from_hresult(E_UNEXPECTED))?;
+            .map_err(|_| code_error(E_UNEXPECTED))?;
     }
     let (error_ptr, _) = item_errors.finish()?.into_raw_parts();
     unsafe { errors.write(error_ptr) };
@@ -712,10 +790,10 @@ fn allocate_blob(value: &[u8]) -> Result<(*mut u8, u32)> {
     if value.is_empty() {
         return Ok((ptr::null_mut(), 0));
     }
-    let len = u32::try_from(value.len()).map_err(|_| Error::from_hresult(E_OUTOFMEMORY))?;
+    let len = u32::try_from(value.len()).map_err(|_| code_error(E_OUTOFMEMORY))?;
     let allocation = unsafe { CoTaskMemAlloc(value.len()) }.cast::<u8>();
     if allocation.is_null() {
-        return Err(Error::from_hresult(E_OUTOFMEMORY));
+        return Err(code_error(E_OUTOFMEMORY));
     }
     unsafe { ptr::copy_nonoverlapping(value.as_ptr(), allocation, value.len()) };
     Ok((allocation, len))
@@ -725,7 +803,7 @@ fn ensure_batch_len(actual: usize, expected: usize) -> Result<()> {
     if actual == expected {
         Ok(())
     } else {
-        Err(Error::from_hresult(E_UNEXPECTED))
+        Err(code_error(E_UNEXPECTED))
     }
 }
 
@@ -733,7 +811,7 @@ fn batch_status(has_error: bool) -> Result<()> {
     if has_error {
         // The generated trampoline converts this `Error` back to its positive
         // success HRESULT, preserving OPC's partial-success status.
-        Err(Error::from_hresult(S_FALSE))
+        Err(Error::from_code(ErrorCode::PARTIAL_SUCCESS))
     } else {
         Ok(())
     }
@@ -742,7 +820,7 @@ fn batch_status(has_error: bool) -> Result<()> {
 fn next_nonzero(counter: &AtomicU32) -> Result<u32> {
     let value = counter.fetch_add(1, Ordering::Relaxed);
     if value == 0 || value == u32::MAX {
-        Err(Error::from_hresult(E_OUTOFMEMORY))
+        Err(code_error(E_OUTOFMEMORY))
     } else {
         Ok(value)
     }
@@ -750,19 +828,28 @@ fn next_nonzero(counter: &AtomicU32) -> Result<u32> {
 
 fn query_interface(object: &IUnknown, iid: &GUID) -> Result<IUnknown> {
     let mut raw = ptr::null_mut();
-    unsafe { object.query(iid, &mut raw) }.ok()?;
-    if raw.is_null() {
-        Err(Error::from_hresult(E_POINTER))
+    let call = unsafe { object.query(iid, &mut raw) };
+    let queried = if raw.is_null() {
+        Err(code_error(E_POINTER))
     } else {
         Ok(unsafe { IUnknown::from_raw(raw) })
-    }
+    };
+    call.ok().map_err(crate::abi::from_abi_error)?;
+    queried
+}
+
+fn serve<T>(f: impl FnOnce() -> Result<T>) -> AbiResult<T> {
+    catch_ffi(f).map_err(to_abi_error)
+}
+
+fn code_error(code: HRESULT) -> Error {
+    Error::from_code(error_code_from_abi(code))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OPC_STATUS_RUNNING;
-    use crate::client::{DaClient, GroupOptions};
+    use crate::client::{DaClient, GroupOptions, ServerState};
 
     struct TestService;
     struct TestGroup;
@@ -770,10 +857,10 @@ mod tests {
     impl DaService for TestService {
         fn status(&self) -> Result<ServerStatus> {
             Ok(ServerStatus {
-                start_time: FILETIME::default(),
-                current_time: FILETIME::default(),
-                last_update_time: FILETIME::default(),
-                state: OPC_STATUS_RUNNING,
+                start_time: Timestamp::default(),
+                current_time: Timestamp::default(),
+                last_update_time: Timestamp::default(),
+                state: ServerState::Running,
                 group_count: 0,
                 bandwidth: 1,
                 version: (1, 2, 3),
@@ -789,7 +876,7 @@ mod tests {
             Ok(())
         }
 
-        fn error_string(&self, _error: HRESULT, _locale: u32) -> Result<String> {
+        fn error_string(&self, _error: ErrorCode, _locale: u32) -> Result<String> {
             Ok("test error".into())
         }
     }
@@ -802,7 +889,7 @@ mod tests {
                 .map(|(index, _)| {
                     ServerItemResult::success(ServerAddedItem {
                         server_handle: ServerItemHandle(index as u32 + 10),
-                        canonical_data_type: 3,
+                        canonical_data_type: ValueType::I32,
                         access_rights: 3,
                         blob: vec![1, 2],
                     })
@@ -840,7 +927,7 @@ mod tests {
 
         fn set_data_types(
             &self,
-            handles: &[(ServerItemHandle, u16)],
+            handles: &[(ServerItemHandle, ValueType)],
         ) -> Result<Vec<ServerItemResult<()>>> {
             Ok(handles
                 .iter()
@@ -858,18 +945,15 @@ mod tests {
                 .map(|_| {
                     ServerItemResult::success(ServerSample {
                         client_handle: ClientItemHandle(7),
-                        timestamp: FILETIME::default(),
+                        timestamp: Timestamp::default(),
                         quality: 192,
-                        value: VARIANT::from(42i32),
+                        value: Value::I32(42),
                     })
                 })
                 .collect())
         }
 
-        fn write(
-            &self,
-            values: &[(ServerItemHandle, VARIANT)],
-        ) -> Result<Vec<ServerItemResult<()>>> {
+        fn write(&self, values: &[(ServerItemHandle, Value)]) -> Result<Vec<ServerItemResult<()>>> {
             Ok(values
                 .iter()
                 .map(|_| ServerItemResult::success(()))
@@ -880,8 +964,8 @@ mod tests {
     #[test]
     fn client_and_server_adapters_round_trip_owned_values() {
         let apartment = opc_classic_utils::ComApartment::mta().unwrap();
-        let raw: IOPCServer = DaServerAdapter::new(Arc::new(TestService)).into();
-        let client = DaClient::from_interface(&apartment, raw);
+        let server = DaServer::new(Arc::new(TestService));
+        let client = DaClient::from_object(&apartment, &server.object()).unwrap();
 
         let status = client.status().unwrap();
         assert_eq!(status.vendor_info, "rust-opc test");
@@ -896,6 +980,7 @@ mod tests {
             .read(DataSource::Cache, &[item.server_handle])
             .unwrap();
         assert_eq!(values[0].as_ref().unwrap().quality, 192);
+        assert_eq!(values[0].as_ref().unwrap().value, Value::I32(42));
         group.close(false).unwrap();
     }
 }

@@ -1,14 +1,19 @@
 use std::marker::PhantomData;
 use std::ptr;
 
-use opc_classic_utils::{Cleanup, CoTaskMemOut, DropElements, NoCleanup, OwnedPwstr, WideCString};
+use opc_classic_types::{Error, Result, ValueType};
+use opc_classic_utils::{
+    Cleanup, CoTaskMemArrayOut, DropElements, NoCleanup, OwnedPwstr, WideCString,
+};
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Variant::VARIANT;
-use windows_core::{Error, HRESULT, IUnknown, Interface, Result};
+use windows_core::{HRESULT, IUnknown, Interface, PCWSTR, Result as AbiResult};
 
-use crate::{
-    IOPCGroupStateMgt, IOPCItemMgt, IOPCSyncIO, tagOPCITEMDEF, tagOPCITEMRESULT, tagOPCITEMSTATE,
+use crate::abi::{
+    error_code_from_abi, from_abi_error, interface_from_object, object_from_interface,
+    value_from_abi, value_to_abi,
 };
+use crate::{IOPCGroupStateMgt, IOPCItemMgt, IOPCSyncIO, tagOPCITEMDEF, tagOPCITEMRESULT};
 
 use super::{
     AddedItem, ClientItemHandle, DataSource, GroupState, ItemError, ItemSpec, Sample,
@@ -63,7 +68,7 @@ impl<'apartment> DaGroup<'apartment> {
     }
 
     pub fn state(&self) -> Result<GroupState> {
-        let state: IOPCGroupStateMgt = self.object.cast()?;
+        let state: IOPCGroupStateMgt = self.interface()?;
         let mut update_rate = 0;
         let mut active = windows_core::BOOL(0);
         let mut name = windows_core::PWSTR::null();
@@ -85,11 +90,17 @@ impl<'apartment> DaGroup<'apartment> {
             )
         };
         let name = unsafe { OwnedPwstr::from_raw(name.0) };
-        call?;
+        call.map_err(from_abi_error)?;
+        let name = if name.is_null() {
+            String::new()
+        } else {
+            unsafe { windows_core::PWSTR(name.as_ptr()).to_string() }
+                .map_err(|_| Error::invalid_argument("invalid UTF-16 group name"))?
+        };
         Ok(GroupState {
             update_rate,
             active: active.as_bool(),
-            name: name.to_string_lossy(),
+            name,
             time_bias,
             percent_deadband,
             locale,
@@ -100,8 +111,8 @@ impl<'apartment> DaGroup<'apartment> {
 
     pub fn set_name(&self, name: &str) -> Result<()> {
         let name = wide(name)?;
-        let state: IOPCGroupStateMgt = self.object.cast()?;
-        unsafe { state.SetName(name.as_pcwstr()) }
+        let state: IOPCGroupStateMgt = self.interface()?;
+        unsafe { state.SetName(PCWSTR(name.as_ptr())) }.map_err(from_abi_error)
     }
 
     pub fn add_items(
@@ -109,7 +120,7 @@ impl<'apartment> DaGroup<'apartment> {
         specs: &[ItemSpec],
     ) -> Result<Vec<std::result::Result<AddedItem, ItemError>>> {
         validate_blob_lengths(specs)?;
-        let item_mgt: IOPCItemMgt = self.object.cast()?;
+        let item_mgt: IOPCItemMgt = self.interface()?;
         let ids = specs
             .iter()
             .map(|spec| wide(&spec.item_id))
@@ -122,20 +133,20 @@ impl<'apartment> DaGroup<'apartment> {
             .iter()
             .zip(ids.iter().zip(paths.iter()))
             .map(|(spec, (id, path))| tagOPCITEMDEF {
-                szAccessPath: windows_core::PWSTR(path.as_pcwstr().0.cast_mut()),
-                szItemID: windows_core::PWSTR(id.as_pcwstr().0.cast_mut()),
+                szAccessPath: windows_core::PWSTR(path.as_ptr().cast_mut()),
+                szItemID: windows_core::PWSTR(id.as_ptr().cast_mut()),
                 bActive: spec.active.into(),
                 hClient: spec.client_handle.0,
                 dwBlobSize: spec.blob.len() as u32,
                 pBlob: blob_ptr(&spec.blob),
-                vtRequestedDataType: spec.requested_data_type,
+                vtRequestedDataType: spec.requested_data_type.raw(),
                 wReserved: 0,
             })
             .collect();
 
         let count = count(definitions.len())?;
-        let mut results = CoTaskMemOut::<tagOPCITEMRESULT>::new();
-        let mut errors = CoTaskMemOut::<HRESULT>::new();
+        let mut results = CoTaskMemArrayOut::new(specs.len(), ItemResultCleanup);
+        let mut errors = CoTaskMemArrayOut::new(specs.len(), NoCleanup);
         let call = unsafe {
             item_mgt.AddItems(
                 count,
@@ -144,9 +155,11 @@ impl<'apartment> DaGroup<'apartment> {
                 errors.as_mut_ptr(),
             )
         };
-        let results = unsafe { results.into_array(specs.len(), ItemResultCleanup) }?;
-        let errors = unsafe { errors.into_array(specs.len(), NoCleanup) }?;
-        call?;
+        let results = unsafe { results.into_array() };
+        let errors = unsafe { errors.into_array() };
+        call.map_err(from_abi_error)?;
+        let results = results?;
+        let errors = errors?;
 
         Ok(results
             .as_slice()
@@ -154,7 +167,9 @@ impl<'apartment> DaGroup<'apartment> {
             .zip(errors.as_slice())
             .map(|(result, error)| {
                 if error.is_err() {
-                    Err(ItemError { code: *error })
+                    Err(ItemError {
+                        code: error_code_from_abi(*error),
+                    })
                 } else {
                     let blob = if result.pBlob.is_null() || result.dwBlobSize == 0 {
                         Vec::new()
@@ -166,7 +181,7 @@ impl<'apartment> DaGroup<'apartment> {
                     };
                     Ok(AddedItem {
                         server_handle: ServerItemHandle(result.hServer),
-                        canonical_data_type: result.vtCanonicalDataType,
+                        canonical_data_type: ValueType::from_raw(result.vtCanonicalDataType),
                         access_rights: result.dwAccessRights,
                         blob,
                     })
@@ -181,7 +196,7 @@ impl<'apartment> DaGroup<'apartment> {
         update_blob: bool,
     ) -> Result<Vec<std::result::Result<AddedItem, ItemError>>> {
         validate_blob_lengths(specs)?;
-        let item_mgt: IOPCItemMgt = self.object.cast()?;
+        let item_mgt: IOPCItemMgt = self.interface()?;
         let ids = specs
             .iter()
             .map(|spec| wide(&spec.item_id))
@@ -194,18 +209,18 @@ impl<'apartment> DaGroup<'apartment> {
             .iter()
             .zip(ids.iter().zip(paths.iter()))
             .map(|(spec, (id, path))| tagOPCITEMDEF {
-                szAccessPath: windows_core::PWSTR(path.as_pcwstr().0.cast_mut()),
-                szItemID: windows_core::PWSTR(id.as_pcwstr().0.cast_mut()),
+                szAccessPath: windows_core::PWSTR(path.as_ptr().cast_mut()),
+                szItemID: windows_core::PWSTR(id.as_ptr().cast_mut()),
                 bActive: spec.active.into(),
                 hClient: spec.client_handle.0,
                 dwBlobSize: spec.blob.len() as u32,
                 pBlob: blob_ptr(&spec.blob),
-                vtRequestedDataType: spec.requested_data_type,
+                vtRequestedDataType: spec.requested_data_type.raw(),
                 wReserved: 0,
             })
             .collect();
-        let mut results = CoTaskMemOut::<tagOPCITEMRESULT>::new();
-        let mut errors = CoTaskMemOut::<HRESULT>::new();
+        let mut results = CoTaskMemArrayOut::new(specs.len(), ItemResultCleanup);
+        let mut errors = CoTaskMemArrayOut::new(specs.len(), NoCleanup);
         let call = unsafe {
             item_mgt.ValidateItems(
                 count(specs.len())?,
@@ -215,16 +230,20 @@ impl<'apartment> DaGroup<'apartment> {
                 errors.as_mut_ptr(),
             )
         };
-        let results = unsafe { results.into_array(specs.len(), ItemResultCleanup) }?;
-        let errors = unsafe { errors.into_array(specs.len(), NoCleanup) }?;
-        call?;
+        let results = unsafe { results.into_array() };
+        let errors = unsafe { errors.into_array() };
+        call.map_err(from_abi_error)?;
+        let results = results?;
+        let errors = errors?;
         Ok(results
             .as_slice()
             .iter()
             .zip(errors.as_slice())
             .map(|(result, error)| {
                 if error.is_err() {
-                    Err(ItemError { code: *error })
+                    Err(ItemError {
+                        code: error_code_from_abi(*error),
+                    })
                 } else {
                     let blob = if result.pBlob.is_null() || result.dwBlobSize == 0 {
                         Vec::new()
@@ -236,7 +255,7 @@ impl<'apartment> DaGroup<'apartment> {
                     };
                     Ok(AddedItem {
                         server_handle: ServerItemHandle(result.hServer),
-                        canonical_data_type: result.vtCanonicalDataType,
+                        canonical_data_type: ValueType::from_raw(result.vtCanonicalDataType),
                         access_rights: result.dwAccessRights,
                         blob,
                     })
@@ -249,10 +268,11 @@ impl<'apartment> DaGroup<'apartment> {
         &self,
         handles: &[ServerItemHandle],
     ) -> Result<Vec<std::result::Result<(), ItemError>>> {
-        let item_mgt: IOPCItemMgt = self.object.cast()?;
+        let item_mgt: IOPCItemMgt = self.interface()?;
         let raw = raw_handles(handles);
+        let count = count(handles.len())?;
         item_errors(handles.len(), |errors| unsafe {
-            item_mgt.RemoveItems(count(handles.len())?, raw.as_ptr(), errors)
+            item_mgt.RemoveItems(count, raw.as_ptr(), errors)
         })
     }
 
@@ -261,10 +281,11 @@ impl<'apartment> DaGroup<'apartment> {
         handles: &[ServerItemHandle],
         active: bool,
     ) -> Result<Vec<std::result::Result<(), ItemError>>> {
-        let item_mgt: IOPCItemMgt = self.object.cast()?;
+        let item_mgt: IOPCItemMgt = self.interface()?;
         let raw = raw_handles(handles);
+        let count = count(handles.len())?;
         item_errors(handles.len(), |errors| unsafe {
-            item_mgt.SetActiveState(count(handles.len())?, raw.as_ptr(), active, errors)
+            item_mgt.SetActiveState(count, raw.as_ptr(), active, errors)
         })
     }
 
@@ -273,10 +294,10 @@ impl<'apartment> DaGroup<'apartment> {
         source: DataSource,
         handles: &[ServerItemHandle],
     ) -> Result<Vec<std::result::Result<Sample, ItemError>>> {
-        let io: IOPCSyncIO = self.object.cast()?;
+        let io: IOPCSyncIO = self.interface()?;
         let raw = raw_handles(handles);
-        let mut values = CoTaskMemOut::<tagOPCITEMSTATE>::new();
-        let mut errors = CoTaskMemOut::<HRESULT>::new();
+        let mut values = CoTaskMemArrayOut::new(handles.len(), DropElements);
+        let mut errors = CoTaskMemArrayOut::new(handles.len(), NoCleanup);
         let call = unsafe {
             io.Read(
                 source.as_abi(),
@@ -286,39 +307,42 @@ impl<'apartment> DaGroup<'apartment> {
                 errors.as_mut_ptr(),
             )
         };
-        let values = unsafe { values.into_array(handles.len(), DropElements) }?;
-        let errors = unsafe { errors.into_array(handles.len(), NoCleanup) }?;
-        call?;
-        Ok(values
+        let values = unsafe { values.into_array() };
+        let errors = unsafe { errors.into_array() };
+        call.map_err(from_abi_error)?;
+        let values = values?;
+        let errors = errors?;
+        values
             .as_slice()
             .iter()
             .zip(errors.as_slice())
             .map(|(value, error)| {
                 if error.is_err() {
-                    Err(ItemError { code: *error })
+                    Ok(Err(ItemError {
+                        code: error_code_from_abi(*error),
+                    }))
                 } else {
-                    Ok(Sample {
+                    Ok(Ok(Sample {
                         client_handle: ClientItemHandle(value.hClient),
-                        timestamp: value.ftTimeStamp,
+                        timestamp: crate::abi::timestamp_from_abi(value.ftTimeStamp),
                         quality: value.wQuality,
-                        value: value.vDataValue.clone(),
-                    })
+                        value: value_from_abi(&value.vDataValue)?,
+                    }))
                 }
             })
-            .collect())
+            .collect()
     }
 
     pub fn write(&self, values: &[WriteValue]) -> Result<Vec<std::result::Result<(), ItemError>>> {
-        let io: IOPCSyncIO = self.object.cast()?;
+        let io: IOPCSyncIO = self.interface()?;
         let handles: Vec<_> = values.iter().map(|value| value.server_handle.0).collect();
-        let variants: Vec<VARIANT> = values.iter().map(|value| value.value.clone()).collect();
+        let count = count(values.len())?;
+        let variants: Vec<VARIANT> = values
+            .iter()
+            .map(|value| value_to_abi(&value.value))
+            .collect::<Result<_>>()?;
         item_errors(values.len(), |errors| unsafe {
-            io.Write(
-                count(values.len())?,
-                handles.as_ptr(),
-                variants.as_ptr(),
-                errors,
-            )
+            io.Write(count, handles.as_ptr(), variants.as_ptr(), errors)
         })
     }
 
@@ -326,13 +350,19 @@ impl<'apartment> DaGroup<'apartment> {
         let handle = self.server_handle.take();
         self.remove_on_drop = false;
         match handle {
-            Some(handle) => unsafe { self.server.RemoveGroup(handle, force) },
+            Some(handle) => {
+                unsafe { self.server.RemoveGroup(handle, force) }.map_err(from_abi_error)
+            }
             None => Ok(()),
         }
     }
 
-    pub fn as_raw(&self) -> &IUnknown {
-        &self.object
+    pub fn object(&self) -> opc_classic_types::ComObject {
+        object_from_interface(&self.object)
+    }
+
+    fn interface<T: Interface>(&self) -> Result<T> {
+        interface_from_object(&self.object())
     }
 }
 
@@ -341,8 +371,8 @@ fn validate_blob_lengths(specs: &[ItemSpec]) -> Result<()> {
         .iter()
         .any(|spec| u32::try_from(spec.blob.len()).is_err())
     {
-        Err(Error::from_hresult(
-            windows::Win32::Foundation::E_INVALIDARG,
+        Err(Error::invalid_argument(
+            "item blob exceeds the OPC size limit",
         ))
     } else {
         Ok(())
@@ -369,18 +399,21 @@ impl Drop for DaGroup<'_> {
 
 fn item_errors(
     len: usize,
-    call: impl FnOnce(*mut *mut HRESULT) -> Result<()>,
+    call: impl FnOnce(*mut *mut HRESULT) -> AbiResult<()>,
 ) -> Result<Vec<std::result::Result<(), ItemError>>> {
-    let mut errors = CoTaskMemOut::<HRESULT>::new();
+    let mut errors = CoTaskMemArrayOut::new(len, NoCleanup);
     let result = call(errors.as_mut_ptr());
-    let errors = unsafe { errors.into_array(len, NoCleanup) }?;
-    result?;
+    let errors = unsafe { errors.into_array() };
+    result.map_err(from_abi_error)?;
+    let errors = errors?;
     Ok(errors
         .as_slice()
         .iter()
         .map(|error| {
             if error.is_err() {
-                Err(ItemError { code: *error })
+                Err(ItemError {
+                    code: error_code_from_abi(*error),
+                })
             } else {
                 Ok(())
             }
@@ -393,10 +426,10 @@ fn raw_handles(handles: &[ServerItemHandle]) -> Vec<u32> {
 }
 
 pub(crate) fn count(len: usize) -> Result<u32> {
-    u32::try_from(len).map_err(|_| Error::from_hresult(windows::Win32::Foundation::E_INVALIDARG))
+    u32::try_from(len).map_err(|_| Error::invalid_argument("batch size exceeds the OPC limit"))
 }
 
 pub(crate) fn wide(value: &str) -> Result<WideCString> {
     WideCString::try_from(value)
-        .map_err(|_| Error::from_hresult(windows::Win32::Foundation::E_INVALIDARG))
+        .map_err(|_| Error::invalid_argument("string contains an interior NUL"))
 }

@@ -5,6 +5,8 @@ Windows. The workspace targets Rust 1.97, edition 2024.
 
 ## Workspace
 
+- `opc_classic_types`: dependency-free public `Guid`, `Timestamp`, `Value`,
+  `ComObject`, and OPC error types.
 - `opc_classic_utils`: COM apartment, task-memory ownership, transactional
   output builders, panic-safe ABI helpers, class factory and local-server class
   registration.
@@ -17,9 +19,10 @@ Windows. The workspace targets Rust 1.97, edition 2024.
 - `opc_hda_bindings`: generated Historical Data Access ABI plus safe metadata,
   handle and raw-read clients and `IOPCHDA_Server`/`IOPCHDA_SyncRead` adapters.
 
-Each bindings crate keeps generated code in `src/bindings.rs`. Application code
-should normally use its `client` or `server` module; the generated symbols are
-still re-exported for unsupported or vendor-specific interfaces.
+Each bindings crate keeps generated code in a private `src/bindings.rs` module.
+Application code uses its `client` or `server` module. Their public signatures
+contain only `opc_classic_types`, `core`, and `std` types; Windows ABI values are
+converted inside private boundary modules.
 
 ## Ownership model
 
@@ -29,7 +32,9 @@ adopted by an explicit owner:
 - `OwnedPwstr` owns one task-allocated string.
 - `CoTaskMemArray<T, C>` owns a task-allocated array and a cleanup policy for
   nested values.
-- `CoTaskMemOut<T>` null-initializes an ABI out pointer before adopting it.
+- `CoTaskMemArrayOut<T, C>` attaches array cleanup before the foreign call, so
+  early failures still release nested values.
+- `CoTaskMemOut<T>` null-initializes a single-allocation out pointer.
 - `CoTaskMemArrayBuilder<T, C>` constructs server outputs transactionally and
   rolls back the initialized prefix after an error or panic.
 
@@ -42,34 +47,46 @@ arrays free each string, and HDA item arrays use method-specific nested cleanup.
 use opc_classic_utils::ComApartment;
 use opc_da_bindings::client::DaClient;
 
-let apartment = ComApartment::mta()?;
-let client = DaClient::connect_prog_id(&apartment, "Vendor.OPC.Server")?;
-let status = client.status()?;
-println!("{}", status.vendor_info);
-# Ok::<(), windows_core::Error>(())
+fn example() -> opc_classic_utils::Result<()> {
+    let apartment = ComApartment::mta()?;
+    let client = DaClient::connect_prog_id(&apartment, "Vendor.OPC.Server")?;
+    let status = client.status()?;
+    println!("{}", status.vendor_info);
+    Ok(())
+}
 ```
 
 ## Minimal local-server activation
 
 ```rust,no_run
-use opc_classic_utils::ComApartment;
+use opc_classic_utils::{ComApartment, ComObject, Guid, Result};
 use opc_classic_utils::server::{ClassFactory, LocalClassRegistration};
-use windows_core::{GUID, IUnknown};
 
-# fn make_server() -> windows_core::Result<IUnknown> { unimplemented!() }
-let apartment = ComApartment::mta()?;
-let class_id = GUID::from_u128(0x12345678_1234_1234_1234_123456789abc);
-let factory = ClassFactory::new(make_server);
-let registration = LocalClassRegistration::register(&apartment, &class_id, factory)?;
+fn make_server() -> Result<ComObject> {
+    unimplemented!()
+}
 
-// Run the application's shutdown/message loop while `registration` is alive.
-registration.revoke()?;
-# Ok::<(), windows_core::Error>(())
+fn example() -> Result<()> {
+    let apartment = ComApartment::mta()?;
+    let class_id = Guid::new(
+        0x1234_5678,
+        0x1234,
+        0x1234,
+        [0x12, 0x34, 0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc],
+    );
+    let factory = ClassFactory::new(make_server);
+    let registration = LocalClassRegistration::register(&apartment, &class_id, factory)?;
+
+    // Run the application's shutdown/message loop while `registration` is alive.
+    registration.revoke()?;
+    Ok(())
+}
 ```
 
-The higher-level adapters intentionally return `E_NOTIMPL` for capabilities not
-represented by their current Rust service traits. The unsafe generated ABI
-remains available when those optional interfaces are needed.
+The higher-level adapters intentionally return the COM equivalent of
+`ErrorCode::NOT_IMPLEMENTED` for capabilities not represented by their current
+Rust service traits. Extend the private ABI boundary when adding another
+interface instead of leaking Windows types into the public facade.
 
 ## License notice
 

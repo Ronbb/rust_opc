@@ -1,11 +1,13 @@
-use windows::Win32::Foundation::FILETIME;
-use windows::Win32::System::Variant::VARIANT;
-use windows_core::HRESULT;
+use opc_classic_types::{ErrorCode, Timestamp, Value, ValueType};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub struct ServerItemHandle(pub(crate) u32);
 
 impl ServerItemHandle {
+    pub const fn from_raw(value: u32) -> Self {
+        Self(value)
+    }
+
     pub fn raw(self) -> u32 {
         self.0
     }
@@ -16,7 +18,7 @@ pub struct ClientItemHandle(pub u32);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ItemError {
-    pub code: HRESULT,
+    pub code: ErrorCode,
 }
 
 impl std::fmt::Display for ItemError {
@@ -33,7 +35,7 @@ pub struct ItemSpec {
     pub access_path: String,
     pub active: bool,
     pub client_handle: ClientItemHandle,
-    pub requested_data_type: u16,
+    pub requested_data_type: ValueType,
     pub blob: Vec<u8>,
 }
 
@@ -44,7 +46,7 @@ impl ItemSpec {
             access_path: String::new(),
             active: true,
             client_handle: ClientItemHandle(client_handle),
-            requested_data_type: 0,
+            requested_data_type: ValueType::EMPTY,
             blob: Vec::new(),
         }
     }
@@ -53,7 +55,7 @@ impl ItemSpec {
 #[derive(Clone, Debug)]
 pub struct AddedItem {
     pub server_handle: ServerItemHandle,
-    pub canonical_data_type: u16,
+    pub canonical_data_type: ValueType,
     pub access_rights: u32,
     pub blob: Vec<u8>,
 }
@@ -61,15 +63,15 @@ pub struct AddedItem {
 #[derive(Clone, Debug)]
 pub struct Sample {
     pub client_handle: ClientItemHandle,
-    pub timestamp: FILETIME,
+    pub timestamp: Timestamp,
     pub quality: u16,
-    pub value: VARIANT,
+    pub value: Value,
 }
 
 #[derive(Clone, Debug)]
 pub struct WriteValue {
     pub server_handle: ServerItemHandle,
-    pub value: VARIANT,
+    pub value: Value,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -126,10 +128,10 @@ pub struct GroupState {
 
 #[derive(Clone, Debug)]
 pub struct ServerStatus {
-    pub start_time: FILETIME,
-    pub current_time: FILETIME,
-    pub last_update_time: FILETIME,
-    pub state: crate::tagOPCSERVERSTATE,
+    pub start_time: Timestamp,
+    pub current_time: Timestamp,
+    pub last_update_time: Timestamp,
+    pub state: ServerState,
     pub group_count: u32,
     pub bandwidth: u32,
     pub version: (u16, u16, u16),
@@ -140,11 +142,49 @@ pub struct ServerStatus {
 pub struct PropertyDescription {
     pub id: u32,
     pub description: String,
-    pub data_type: u16,
+    pub data_type: ValueType,
 }
 
 #[derive(Clone, Debug)]
 pub struct PropertyValue {
     pub id: u32,
-    pub value: VARIANT,
+    pub value: Value,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[non_exhaustive]
+pub enum ServerState {
+    Running,
+    Failed,
+    NoConfiguration,
+    Suspended,
+    Test,
+    CommunicationFault,
+    Unknown(i32),
+}
+
+impl ServerState {
+    pub const fn from_raw(value: i32) -> Self {
+        match value {
+            1 => Self::Running,
+            2 => Self::Failed,
+            3 => Self::NoConfiguration,
+            4 => Self::Suspended,
+            5 => Self::Test,
+            6 => Self::CommunicationFault,
+            value => Self::Unknown(value),
+        }
+    }
+
+    pub const fn raw(self) -> i32 {
+        match self {
+            Self::Running => 1,
+            Self::Failed => 2,
+            Self::NoConfiguration => 3,
+            Self::Suspended => 4,
+            Self::Test => 5,
+            Self::CommunicationFault => 6,
+            Self::Unknown(value) => value,
+        }
+    }
 }

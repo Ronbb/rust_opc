@@ -10,5 +10,6 @@ license = "MIT"
 keywords = ["classic", "opc", "utilities", "utils"]
 
 [dependencies]
+opc_classic_types = { workspace = true }
 windows = { workspace = true }
 windows-core = { workspace = true }

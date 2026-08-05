@@ -2,29 +2,28 @@
 
 use std::marker::PhantomData;
 
+use opc_classic_types::{ClassContext, ComObject, Error, Guid, Result, Timestamp};
 use opc_classic_utils::{
-    Cleanup, CoTaskMemArray, CoTaskMemOut, ComApartment, FreePwstrElements, NoCleanup, OwnedPwstr,
-    WideCString,
+    CoTaskMemArrayOut, CoTaskMemOut, ComApartment, FreePwstrElements, NoCleanup, WideCString,
 };
 use opc_comn_bindings::client::CommonClient;
-use windows::Win32::Foundation::{E_INVALIDARG, E_UNEXPECTED, FILETIME};
-use windows::Win32::System::Com::{
-    CLSCTX, CLSCTX_ALL, CLSIDFromProgID, CoCreateInstance, CoTaskMemFree,
-};
-use windows_core::{Error, GUID, IUnknown, Interface, PCWSTR, Result};
+use windows_core::{BOOL, Interface, PCWSTR, PWSTR, Result as AbiResult};
 
+use crate::abi::{
+    StatusCleanup, class_id_from_prog_id, create_instance, from_abi_error, from_abi_timestamp,
+    interface_from_object, interface_from_raw_owned, object_from_interface,
+};
 use crate::{
-    __MIDL___MIDL_itf_opc_ae_0000_0001_0001, __MIDL___MIDL_itf_opc_ae_0000_0001_0003,
-    __MIDL___MIDL_itf_opc_ae_0000_0001_0005, IOPCEventAreaBrowser, IOPCEventServer,
-    IOPCEventSubscriptionMgt, IOPCEventSubscriptionMgt2,
+    __MIDL___MIDL_itf_opc_ae_0000_0001_0001, AeServerState, BrowseDirection, IOPCEventAreaBrowser,
+    IOPCEventServer, IOPCEventSubscriptionMgt, IOPCEventSubscriptionMgt2,
 };
 
 #[derive(Clone, Debug)]
 pub struct AeServerStatus {
-    pub start_time: FILETIME,
-    pub current_time: FILETIME,
-    pub last_update_time: FILETIME,
-    pub state: __MIDL___MIDL_itf_opc_ae_0000_0001_0003,
+    pub start_time: Timestamp,
+    pub current_time: Timestamp,
+    pub last_update_time: Timestamp,
+    pub state: AeServerState,
     pub version: (u16, u16, u16),
     pub vendor_info: String,
 }
@@ -58,8 +57,16 @@ pub struct EventSubscription {
 }
 
 impl EventSubscription {
-    pub fn as_raw(&self) -> &IOPCEventSubscriptionMgt {
-        &self.inner
+    pub fn from_object(object: &ComObject) -> Result<Self> {
+        Ok(Self {
+            inner: interface_from_object(object)?,
+            revised_buffer_time: 0,
+            revised_max_size: 0,
+        })
+    }
+
+    pub fn object(&self) -> ComObject {
+        object_from_interface(&self.inner)
     }
 
     pub fn set_filter(
@@ -71,38 +78,45 @@ impl EventSubscription {
         areas: &[&str],
         sources: &[&str],
     ) -> Result<()> {
-        let areas = areas
+        let area_strings = areas
             .iter()
             .map(|area| wide(area))
             .collect::<Result<Vec<_>>>()?;
-        let sources = sources
+        let source_strings = sources
             .iter()
             .map(|source| wide(source))
             .collect::<Result<Vec<_>>>()?;
-        let areas: Vec<_> = areas.iter().map(WideCString::as_pcwstr).collect();
-        let sources: Vec<_> = sources.iter().map(WideCString::as_pcwstr).collect();
+        let area_pointers: Vec<_> = area_strings
+            .iter()
+            .map(|value| PCWSTR(value.as_ptr()))
+            .collect();
+        let source_pointers: Vec<_> = source_strings
+            .iter()
+            .map(|value| PCWSTR(value.as_ptr()))
+            .collect();
         unsafe {
             self.inner.SetFilter(
                 event_type,
                 categories,
                 low_severity,
                 high_severity,
-                &areas,
-                &sources,
+                &area_pointers,
+                &source_pointers,
             )
         }
+        .map_err(from_abi_error)
     }
 
     pub fn filter(&self) -> Result<EventFilter> {
         let mut event_type = 0;
         let mut category_count = 0;
-        let mut categories = CoTaskMemOut::<u32>::new();
+        let mut categories = CoTaskMemArrayOut::new(0, NoCleanup);
         let mut low_severity = 0;
         let mut high_severity = 0;
         let mut area_count = 0;
-        let mut areas = CoTaskMemOut::<windows_core::PWSTR>::new();
+        let mut areas = CoTaskMemArrayOut::new(0, FreePwstrElements);
         let mut source_count = 0;
-        let mut sources = CoTaskMemOut::<windows_core::PWSTR>::new();
+        let mut sources = CoTaskMemArrayOut::new(0, FreePwstrElements);
         let call = unsafe {
             self.inner.GetFilter(
                 &mut event_type,
@@ -111,15 +125,23 @@ impl EventSubscription {
                 &mut low_severity,
                 &mut high_severity,
                 &mut area_count,
-                areas.as_mut_ptr(),
+                areas.as_mut_ptr().cast::<*mut PWSTR>(),
                 &mut source_count,
-                sources.as_mut_ptr(),
+                sources.as_mut_ptr().cast::<*mut PWSTR>(),
             )
         };
-        let categories = unsafe { categories.into_array(category_count as usize, NoCleanup) }?;
-        let areas = unsafe { areas.into_array(area_count as usize, FreePwstrElements) }?;
-        let sources = unsafe { sources.into_array(source_count as usize, FreePwstrElements) }?;
-        call?;
+        unsafe {
+            categories.set_len(category_count as usize);
+            areas.set_len(area_count as usize);
+            sources.set_len(source_count as usize);
+        }
+        let categories = unsafe { categories.into_array() };
+        let areas = unsafe { areas.into_array() };
+        let sources = unsafe { sources.into_array() };
+        call.map_err(from_abi_error)?;
+        let categories = categories?;
+        let areas = areas?;
+        let sources = sources?;
         Ok(EventFilter {
             event_type,
             categories: categories.as_slice().to_vec(),
@@ -128,42 +150,44 @@ impl EventSubscription {
             areas: areas
                 .as_slice()
                 .iter()
-                .map(|value| pwstr_string(*value))
+                .map(|value| pwstr_string(PWSTR(*value)))
                 .collect(),
             sources: sources
                 .as_slice()
                 .iter()
-                .map(|value| pwstr_string(*value))
+                .map(|value| pwstr_string(PWSTR(*value)))
                 .collect(),
         })
     }
 
     pub fn select_returned_attributes(&self, category: u32, attributes: &[u32]) -> Result<()> {
-        unsafe { self.inner.SelectReturnedAttributes(category, attributes) }
+        unsafe { self.inner.SelectReturnedAttributes(category, attributes) }.map_err(from_abi_error)
     }
 
     pub fn returned_attributes(&self, category: u32) -> Result<Vec<u32>> {
         let mut count = 0;
-        let mut values = CoTaskMemOut::<u32>::new();
+        let mut values = CoTaskMemArrayOut::new(0, NoCleanup);
         let call = unsafe {
             self.inner
                 .GetReturnedAttributes(category, &mut count, values.as_mut_ptr())
         };
-        let values = unsafe { values.into_array(count as usize, NoCleanup) }?;
-        call?;
+        unsafe { values.set_len(count as usize) };
+        let values = unsafe { values.into_array() };
+        call.map_err(from_abi_error)?;
+        let values = values?;
         Ok(values.as_slice().to_vec())
     }
 
     pub fn refresh(&self, connection: u32) -> Result<()> {
-        unsafe { self.inner.Refresh(connection) }
+        unsafe { self.inner.Refresh(connection) }.map_err(from_abi_error)
     }
 
     pub fn cancel_refresh(&self, connection: u32) -> Result<()> {
-        unsafe { self.inner.CancelRefresh(connection) }
+        unsafe { self.inner.CancelRefresh(connection) }.map_err(from_abi_error)
     }
 
     pub fn state(&self) -> Result<SubscriptionState> {
-        let mut active = windows_core::BOOL(0);
+        let mut active = BOOL(0);
         let mut buffer_time = 0;
         let mut max_size = 0;
         let mut client_handle = 0;
@@ -173,8 +197,9 @@ impl EventSubscription {
                 &mut buffer_time,
                 &mut max_size,
                 &mut client_handle,
-            )?
-        };
+            )
+        }
+        .map_err(from_abi_error)?;
         Ok(SubscriptionState {
             active: active.as_bool(),
             buffer_time,
@@ -195,13 +220,14 @@ impl EventSubscription {
                 state.client_handle,
                 &mut revised_buffer_time,
                 &mut revised_max_size,
-            )?
-        };
+            )
+        }
+        .map_err(from_abi_error)?;
         Ok((revised_buffer_time, revised_max_size))
     }
 
     pub fn keep_alive(&self) -> Result<KeepAlive> {
-        let inner: IOPCEventSubscriptionMgt2 = self.inner.cast()?;
+        let inner = interface_from_object(&self.object())?;
         Ok(KeepAlive { inner })
     }
 }
@@ -230,12 +256,22 @@ pub struct KeepAlive {
 }
 
 impl KeepAlive {
+    pub fn from_object(object: &ComObject) -> Result<Self> {
+        Ok(Self {
+            inner: interface_from_object(object)?,
+        })
+    }
+
+    pub fn object(&self) -> ComObject {
+        object_from_interface(&self.inner)
+    }
+
     pub fn set(&self, requested: u32) -> Result<u32> {
-        unsafe { self.inner.SetKeepAlive(requested) }
+        unsafe { self.inner.SetKeepAlive(requested) }.map_err(from_abi_error)
     }
 
     pub fn get(&self) -> Result<u32> {
-        unsafe { self.inner.GetKeepAlive() }
+        unsafe { self.inner.GetKeepAlive() }.map_err(from_abi_error)
     }
 }
 
@@ -245,25 +281,54 @@ pub struct EventAreaBrowser {
 }
 
 impl EventAreaBrowser {
-    pub fn browse_position(
-        &self,
-        direction: __MIDL___MIDL_itf_opc_ae_0000_0001_0001,
-        name: &str,
-    ) -> Result<()> {
+    pub fn from_object(object: &ComObject) -> Result<Self> {
+        Ok(Self {
+            inner: interface_from_object(object)?,
+        })
+    }
+
+    pub fn object(&self) -> ComObject {
+        object_from_interface(&self.inner)
+    }
+
+    pub fn browse_position(&self, direction: BrowseDirection, name: &str) -> Result<()> {
         let name = wide(name)?;
-        unsafe { self.inner.ChangeBrowsePosition(direction, name.as_pcwstr()) }
+        let direction = __MIDL___MIDL_itf_opc_ae_0000_0001_0001(direction.raw());
+        unsafe {
+            self.inner
+                .ChangeBrowsePosition(direction, PCWSTR(name.as_ptr()))
+        }
+        .map_err(from_abi_error)
     }
 
     pub fn qualified_area_name(&self, name: &str) -> Result<String> {
         let name = wide(name)?;
-        let value = unsafe { self.inner.GetQualifiedAreaName(name.as_pcwstr()) }?;
-        Ok(unsafe { OwnedPwstr::from_raw(value.0) }.to_string_lossy())
+        let mut value = CoTaskMemOut::<u16>::new();
+        let call = unsafe {
+            (Interface::vtable(&self.inner).GetQualifiedAreaName)(
+                Interface::as_raw(&self.inner),
+                PCWSTR(name.as_ptr()),
+                value.as_mut_ptr().cast(),
+            )
+        };
+        let value = unsafe { value.into_pwstr() };
+        call.ok().map_err(from_abi_error)?;
+        Ok(value.to_string_lossy())
     }
 
     pub fn qualified_source_name(&self, name: &str) -> Result<String> {
         let name = wide(name)?;
-        let value = unsafe { self.inner.GetQualifiedSourceName(name.as_pcwstr()) }?;
-        Ok(unsafe { OwnedPwstr::from_raw(value.0) }.to_string_lossy())
+        let mut value = CoTaskMemOut::<u16>::new();
+        let call = unsafe {
+            (Interface::vtable(&self.inner).GetQualifiedSourceName)(
+                Interface::as_raw(&self.inner),
+                PCWSTR(name.as_ptr()),
+                value.as_mut_ptr().cast(),
+            )
+        };
+        let value = unsafe { value.into_pwstr() };
+        call.ok().map_err(from_abi_error)?;
+        Ok(value.to_string_lossy())
     }
 }
 
@@ -272,154 +337,152 @@ pub struct AeClient<'apartment> {
     _apartment: PhantomData<&'apartment ComApartment>,
 }
 
-struct StatusCleanup;
-
-// SAFETY: The status owns one task-allocated vendor string.
-unsafe impl Cleanup<__MIDL___MIDL_itf_opc_ae_0000_0001_0005> for StatusCleanup {
-    unsafe fn cleanup(
-        &mut self,
-        ptr: *mut __MIDL___MIDL_itf_opc_ae_0000_0001_0005,
-        initialized: usize,
-    ) {
-        for index in 0..initialized {
-            let value = unsafe { &mut *ptr.add(index) };
-            if !value.szVendorInfo.is_null() {
-                unsafe { CoTaskMemFree(Some(value.szVendorInfo.0.cast())) };
-                value.szVendorInfo = windows_core::PWSTR::null();
-            }
-        }
-    }
-}
-
 impl<'apartment> AeClient<'apartment> {
     pub fn connect_prog_id(apartment: &'apartment ComApartment, prog_id: &str) -> Result<Self> {
-        let prog_id = wide(prog_id)?;
-        let class_id = unsafe { CLSIDFromProgID(prog_id.as_pcwstr()) }?;
-        Self::connect_class_id(apartment, &class_id, CLSCTX_ALL)
+        let class_id = class_id_from_prog_id(prog_id)?;
+        Self::connect_class_id(apartment, &class_id, ClassContext::ALL)
     }
 
     pub fn connect_class_id(
         _apartment: &'apartment ComApartment,
-        class_id: &GUID,
-        context: CLSCTX,
+        class_id: &Guid,
+        context: ClassContext,
     ) -> Result<Self> {
-        let inner = unsafe { CoCreateInstance(class_id, None::<&IUnknown>, context) }?;
+        let inner = create_instance(*class_id, context)?;
         Ok(Self {
             inner,
             _apartment: PhantomData,
         })
     }
 
-    pub fn from_interface(apartment: &'apartment ComApartment, inner: IOPCEventServer) -> Self {
-        let _ = apartment;
-        Self {
-            inner,
+    pub fn from_object(_apartment: &'apartment ComApartment, object: &ComObject) -> Result<Self> {
+        Ok(Self {
+            inner: interface_from_object(object)?,
             _apartment: PhantomData,
-        }
+        })
+    }
+
+    pub fn object(&self) -> ComObject {
+        object_from_interface(&self.inner)
     }
 
     pub fn common(&self) -> Result<CommonClient> {
-        self.inner.cast().map(CommonClient::new)
+        CommonClient::from_object(&self.object())
     }
 
     pub fn status(&self) -> Result<AeServerStatus> {
-        let ptr = unsafe { self.inner.GetStatus() }?;
-        let status = unsafe { CoTaskMemArray::from_raw_parts(ptr, 1, StatusCleanup) }?;
+        let mut status = CoTaskMemArrayOut::new(1, StatusCleanup);
+        let call = unsafe {
+            (Interface::vtable(&self.inner).GetStatus)(
+                Interface::as_raw(&self.inner),
+                status.as_mut_ptr(),
+            )
+        };
+        let status = unsafe { status.into_array() };
+        call.ok().map_err(from_abi_error)?;
+        let status = status?;
         let value = &status.as_slice()[0];
         Ok(AeServerStatus {
-            start_time: value.ftStartTime,
-            current_time: value.ftCurrentTime,
-            last_update_time: value.ftLastUpdateTime,
-            state: value.dwServerState,
+            start_time: from_abi_timestamp(value.ftStartTime),
+            current_time: from_abi_timestamp(value.ftCurrentTime),
+            last_update_time: from_abi_timestamp(value.ftLastUpdateTime),
+            state: AeServerState::from_raw(value.dwServerState.0)?,
             version: (value.wMajorVersion, value.wMinorVersion, value.wBuildNumber),
             vendor_info: pwstr_string(value.szVendorInfo),
         })
     }
 
     pub fn available_filters(&self) -> Result<u32> {
-        unsafe { self.inner.QueryAvailableFilters() }
+        unsafe { self.inner.QueryAvailableFilters() }.map_err(from_abi_error)
     }
 
     pub fn event_categories(&self, event_type: u32) -> Result<Vec<EventCategory>> {
         let mut count = 0u32;
-        let mut ids = CoTaskMemOut::<u32>::new();
-        let mut descriptions = CoTaskMemOut::<windows_core::PWSTR>::new();
+        let mut ids = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut descriptions = CoTaskMemArrayOut::new(0, FreePwstrElements);
         let call = unsafe {
             self.inner.QueryEventCategories(
                 event_type,
                 &mut count,
                 ids.as_mut_ptr(),
-                descriptions.as_mut_ptr(),
+                descriptions.as_mut_ptr().cast::<*mut PWSTR>(),
             )
         };
         let len = count as usize;
-        let ids = unsafe { ids.into_array(len, NoCleanup) }?;
-        let descriptions = unsafe { descriptions.into_array(len, FreePwstrElements) }?;
-        call?;
+        unsafe {
+            ids.set_len(len);
+            descriptions.set_len(len);
+        }
+        let ids = unsafe { ids.into_array() };
+        let descriptions = unsafe { descriptions.into_array() };
+        call.map_err(from_abi_error)?;
+        let ids = ids?;
+        let descriptions = descriptions?;
         Ok(ids
             .as_slice()
             .iter()
             .zip(descriptions.as_slice())
             .map(|(id, description)| EventCategory {
                 id: *id,
-                description: pwstr_string(*description),
+                description: pwstr_string(PWSTR(*description)),
             })
             .collect())
     }
 
     pub fn condition_names(&self, event_category: u32) -> Result<Vec<String>> {
-        let mut count = 0u32;
-        let mut names = CoTaskMemOut::<windows_core::PWSTR>::new();
-        let call = unsafe {
+        self.query_string_array(|count, output| unsafe {
             self.inner
-                .QueryConditionNames(event_category, &mut count, names.as_mut_ptr())
-        };
-        let names = unsafe { names.into_array(count as usize, FreePwstrElements) }?;
-        call?;
-        Ok(names
-            .as_slice()
-            .iter()
-            .map(|name| pwstr_string(*name))
-            .collect())
+                .QueryConditionNames(event_category, count, output)
+        })
     }
 
     pub fn subcondition_names(&self, condition: &str) -> Result<Vec<String>> {
+        let condition = wide(condition)?;
         self.query_string_array(|count, output| unsafe {
             self.inner
-                .QuerySubConditionNames(wide(condition)?.as_pcwstr(), count, output)
+                .QuerySubConditionNames(PCWSTR(condition.as_ptr()), count, output)
         })
     }
 
     pub fn source_conditions(&self, source: &str) -> Result<Vec<String>> {
+        let source = wide(source)?;
         self.query_string_array(|count, output| unsafe {
             self.inner
-                .QuerySourceConditions(wide(source)?.as_pcwstr(), count, output)
+                .QuerySourceConditions(PCWSTR(source.as_ptr()), count, output)
         })
     }
 
     pub fn event_attributes(&self, event_category: u32) -> Result<Vec<EventAttribute>> {
         let mut count = 0u32;
-        let mut ids = CoTaskMemOut::<u32>::new();
-        let mut descriptions = CoTaskMemOut::<windows_core::PWSTR>::new();
-        let mut types = CoTaskMemOut::<u16>::new();
+        let mut ids = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut descriptions = CoTaskMemArrayOut::new(0, FreePwstrElements);
+        let mut types = CoTaskMemArrayOut::new(0, NoCleanup);
         let call = unsafe {
             self.inner.QueryEventAttributes(
                 event_category,
                 &mut count,
                 ids.as_mut_ptr(),
-                descriptions.as_mut_ptr(),
+                descriptions.as_mut_ptr().cast::<*mut PWSTR>(),
                 types.as_mut_ptr(),
             )
         };
         let len = count as usize;
-        let ids = unsafe { ids.into_array(len, NoCleanup) }?;
-        let descriptions = unsafe { descriptions.into_array(len, FreePwstrElements) }?;
-        let types = unsafe { types.into_array(len, NoCleanup) }?;
-        call?;
+        unsafe {
+            ids.set_len(len);
+            descriptions.set_len(len);
+            types.set_len(len);
+        }
+        let ids = unsafe { ids.into_array() };
+        let descriptions = unsafe { descriptions.into_array() };
+        let types = unsafe { types.into_array() };
+        call.map_err(from_abi_error)?;
+        let ids = ids?;
+        let descriptions = descriptions?;
+        let types = types?;
         Ok((0..len)
             .map(|index| EventAttribute {
                 id: ids.as_slice()[index],
-                description: pwstr_string(descriptions.as_slice()[index]),
+                description: pwstr_string(PWSTR(descriptions.as_slice()[index])),
                 data_type: types.as_slice()[index],
             })
             .collect())
@@ -459,39 +522,47 @@ impl<'apartment> AeClient<'apartment> {
                 &mut revised_buffer_time,
                 &mut revised_max_size,
             )
-        }?;
-        let object = object.ok_or_else(|| Error::from_hresult(E_UNEXPECTED))?;
+        }
+        .map_err(from_abi_error)?;
+        let object =
+            object.ok_or_else(|| Error::unexpected("AE server returned a null subscription"))?;
+        let identity = object_from_interface(&object);
         Ok(EventSubscription {
-            inner: object.cast()?,
+            inner: interface_from_object(&identity)?,
             revised_buffer_time,
             revised_max_size,
         })
     }
 
     pub fn area_browser(&self) -> Result<EventAreaBrowser> {
-        let object = unsafe { self.inner.CreateAreaBrowser(&IOPCEventAreaBrowser::IID) }?;
-        Ok(EventAreaBrowser {
-            inner: object.cast()?,
-        })
-    }
-
-    pub fn as_raw(&self) -> &IOPCEventServer {
-        &self.inner
+        let mut raw = core::ptr::null_mut();
+        let call = unsafe {
+            (Interface::vtable(&self.inner).CreateAreaBrowser)(
+                Interface::as_raw(&self.inner),
+                &IOPCEventAreaBrowser::IID,
+                &mut raw,
+            )
+        };
+        let browser = unsafe { interface_from_raw_owned(raw) };
+        call.ok().map_err(from_abi_error)?;
+        Ok(EventAreaBrowser { inner: browser? })
     }
 
     fn query_string_array(
         &self,
-        call: impl FnOnce(*mut u32, *mut *mut windows_core::PWSTR) -> Result<()>,
+        call: impl FnOnce(*mut u32, *mut *mut PWSTR) -> AbiResult<()>,
     ) -> Result<Vec<String>> {
         let mut count = 0u32;
-        let mut names = CoTaskMemOut::<windows_core::PWSTR>::new();
-        let result = call(&mut count, names.as_mut_ptr());
-        let names = unsafe { names.into_array(count as usize, FreePwstrElements) }?;
-        result?;
+        let mut names = CoTaskMemArrayOut::new(0, FreePwstrElements);
+        let result = call(&mut count, names.as_mut_ptr().cast::<*mut PWSTR>());
+        unsafe { names.set_len(count as usize) };
+        let names = unsafe { names.into_array() };
+        result.map_err(from_abi_error)?;
+        let names = names?;
         Ok(names
             .as_slice()
             .iter()
-            .map(|name| pwstr_string(*name))
+            .map(|name| pwstr_string(PWSTR(*name)))
             .collect())
     }
 
@@ -500,29 +571,33 @@ impl<'apartment> AeClient<'apartment> {
             .iter()
             .map(|name| wide(name))
             .collect::<Result<Vec<_>>>()?;
-        let pointers: Vec<PCWSTR> = wide_names.iter().map(WideCString::as_pcwstr).collect();
+        let pointers: Vec<PCWSTR> = wide_names
+            .iter()
+            .map(|value| PCWSTR(value.as_ptr()))
+            .collect();
         if area {
             if enabled {
-                unsafe { self.inner.EnableConditionByArea(&pointers) }
+                unsafe { self.inner.EnableConditionByArea(&pointers) }.map_err(from_abi_error)
             } else {
-                unsafe { self.inner.DisableConditionByArea(&pointers) }
+                unsafe { self.inner.DisableConditionByArea(&pointers) }.map_err(from_abi_error)
             }
         } else if enabled {
-            unsafe { self.inner.EnableConditionBySource(&pointers) }
+            unsafe { self.inner.EnableConditionBySource(&pointers) }.map_err(from_abi_error)
         } else {
-            unsafe { self.inner.DisableConditionBySource(&pointers) }
+            unsafe { self.inner.DisableConditionBySource(&pointers) }.map_err(from_abi_error)
         }
     }
 }
 
 fn wide(value: &str) -> Result<WideCString> {
-    WideCString::try_from(value).map_err(|_| Error::from_hresult(E_INVALIDARG))
+    WideCString::try_from(value)
+        .map_err(|_| Error::invalid_argument("string contains an interior NUL"))
 }
 
-fn pwstr_string(value: windows_core::PWSTR) -> String {
+fn pwstr_string(value: PWSTR) -> String {
     if value.is_null() {
         String::new()
     } else {
-        unsafe { value.to_string() }.unwrap_or_default()
+        String::from_utf16_lossy(unsafe { value.as_wide() })
     }
 }

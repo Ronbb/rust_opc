@@ -11,5 +11,5 @@ mod wide;
 pub use array::{
     Cleanup, CoTaskMemArray, CoTaskMemArrayBuilder, DropElements, FreePwstrElements, NoCleanup,
 };
-pub use out::CoTaskMemOut;
+pub use out::{CoTaskMemArrayOut, CoTaskMemOut};
 pub use wide::{OwnedPwstr, WideCString, WideStringError};

@@ -2,19 +2,22 @@
 
 use std::sync::Arc;
 
+use opc_classic_types::{ComObject, Error, ErrorCode, Result, Timestamp};
 use opc_classic_utils::server::{borrow_input, catch_ffi, initialize_output};
 use opc_classic_utils::{
     Cleanup, CoTaskMemArrayBuilder, DropElements, FreePwstrElements, NoCleanup, OwnedPwstr,
 };
-use windows::Win32::Foundation::{
-    E_INVALIDARG, E_NOTIMPL, E_POINTER, E_UNEXPECTED, FILETIME, S_FALSE,
-};
+use windows::Win32::Foundation::{E_NOTIMPL, FILETIME};
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Variant::VARIANT;
-use windows_core::{Error, HRESULT, OutRef, PCWSTR, PWSTR, Result};
+use windows_core::{Error as AbiError, HRESULT, OutRef, PCWSTR, PWSTR, Result as AbiResult};
 
 use crate::client::{
-    HdaAggregate, HdaAttribute, HdaHistorianStatus, HdaServerHandle, HdaTime, HistoricalItemValues,
+    HdaAggregate, HdaAttribute, HdaHistorianStatus, HdaServerHandle, HdaServerState, HdaTime,
+    HistoricalItemValues,
+};
+use crate::convert::{
+    object_from_interface, timestamp_from_abi, timestamp_to_abi, to_abi_error, value_to_abi,
 };
 use crate::{
     IOPCHDA_Browser, IOPCHDA_Server, IOPCHDA_Server_Impl, IOPCHDA_SyncRead, IOPCHDA_SyncRead_Impl,
@@ -24,7 +27,7 @@ use crate::{
 
 #[derive(Clone, Debug)]
 pub struct HdaServerItemResult<T> {
-    pub result: std::result::Result<T, HRESULT>,
+    pub result: std::result::Result<T, ErrorCode>,
 }
 
 impl<T> HdaServerItemResult<T> {
@@ -32,15 +35,15 @@ impl<T> HdaServerItemResult<T> {
         Self { result: Ok(value) }
     }
 
-    pub fn failure(code: HRESULT) -> Self {
+    pub fn failure(code: ErrorCode) -> Self {
         Self { result: Err(code) }
     }
 }
 
 #[derive(Clone, Debug)]
 pub struct HdaRawRead {
-    pub resolved_start: FILETIME,
-    pub resolved_end: FILETIME,
+    pub resolved_start: Timestamp,
+    pub resolved_end: Timestamp,
     pub items: Vec<HdaServerItemResult<HistoricalItemValues>>,
 }
 
@@ -66,10 +69,6 @@ pub trait HdaService: Send + Sync + 'static {
         include_bounds: bool,
         handles: &[HdaServerHandle],
     ) -> Result<HdaRawRead>;
-    fn write_values(
-        &self,
-        _values: &[(HdaServerHandle, FILETIME, VARIANT, u32)],
-    ) -> Result<Vec<HdaServerItemResult<()>>>;
 }
 
 #[derive(Clone)]
@@ -82,13 +81,32 @@ impl HdaServiceHandle {
 }
 
 #[windows_core::implement(IOPCHDA_Server, IOPCHDA_SyncRead)]
-pub struct HdaServerAdapter {
+struct HdaServerAdapter {
     service: Arc<dyn HdaService>,
 }
 
 impl HdaServerAdapter {
-    pub fn new(service: Arc<dyn HdaService>) -> Self {
+    fn new(service: Arc<dyn HdaService>) -> Self {
         Self { service }
+    }
+}
+
+/// A safe HDA server object. Its COM identity is exposed through the
+/// project-owned `ComObject` rather than a Windows interface type.
+pub struct HdaServer {
+    object: ComObject,
+}
+
+impl HdaServer {
+    pub fn new(service: Arc<dyn HdaService>) -> Self {
+        let interface: IOPCHDA_Server = HdaServerAdapter::new(service).into();
+        Self {
+            object: object_from_interface(interface),
+        }
+    }
+
+    pub fn object(&self) -> ComObject {
+        self.object.clone()
     }
 }
 
@@ -101,8 +119,8 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         names: *mut *mut PWSTR,
         descriptions: *mut *mut PWSTR,
         data_types: *mut *mut u16,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        abi_call(|| {
             unsafe {
                 initialize_output(count)?;
                 initialize_output(ids)?;
@@ -121,14 +139,22 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
                 push(&mut id_values, value.id)?;
                 push_pwstr(&mut name_values, value.name)?;
                 push_pwstr(&mut description_values, value.description)?;
-                push(&mut type_values, value.data_type)?;
+                push(&mut type_values, value.data_type.raw())?;
             }
+            let id_values = id_values.finish()?;
+            let name_values = name_values.finish()?;
+            let description_values = description_values.finish()?;
+            let type_values = type_values.finish()?;
+            let (id_ptr, _) = id_values.into_raw_parts();
+            let (name_ptr, _) = name_values.into_raw_parts();
+            let (description_ptr, _) = description_values.into_raw_parts();
+            let (type_ptr, _) = type_values.into_raw_parts();
             unsafe {
                 count.write(count_value);
-                ids.write(id_values.finish()?.into_raw_parts().0);
-                names.write(name_values.finish()?.into_raw_parts().0);
-                descriptions.write(description_values.finish()?.into_raw_parts().0);
-                data_types.write(type_values.finish()?.into_raw_parts().0);
+                ids.write(id_ptr);
+                names.write(name_ptr.cast());
+                descriptions.write(description_ptr.cast());
+                data_types.write(type_ptr);
             }
             Ok(())
         })
@@ -140,8 +166,8 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         ids: *mut *mut u32,
         names: *mut *mut PWSTR,
         descriptions: *mut *mut PWSTR,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        abi_call(|| {
             unsafe {
                 initialize_output(count)?;
                 initialize_output(ids)?;
@@ -159,11 +185,17 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
                 push_pwstr(&mut name_values, value.name)?;
                 push_pwstr(&mut description_values, value.description)?;
             }
+            let id_values = id_values.finish()?;
+            let name_values = name_values.finish()?;
+            let description_values = description_values.finish()?;
+            let (id_ptr, _) = id_values.into_raw_parts();
+            let (name_ptr, _) = name_values.into_raw_parts();
+            let (description_ptr, _) = description_values.into_raw_parts();
             unsafe {
                 count.write(count_value);
-                ids.write(id_values.finish()?.into_raw_parts().0);
-                names.write(name_values.finish()?.into_raw_parts().0);
-                descriptions.write(description_values.finish()?.into_raw_parts().0);
+                ids.write(id_ptr);
+                names.write(name_ptr.cast());
+                descriptions.write(description_ptr.cast());
             }
             Ok(())
         })
@@ -180,8 +212,8 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         max_return_values: *mut u32,
         status_text: *mut PWSTR,
         vendor_info: *mut PWSTR,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        abi_call(|| {
             unsafe {
                 initialize_output(state)?;
                 initialize_output(current_time)?;
@@ -195,21 +227,25 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
             }
             let status = self.service.status()?;
             let mut current = CoTaskMemArrayBuilder::new(1, NoCleanup)?;
-            push(&mut current, status.current_time)?;
+            push(&mut current, timestamp_to_abi(status.current_time))?;
             let mut start = CoTaskMemArrayBuilder::new(1, NoCleanup)?;
-            push(&mut start, status.start_time)?;
+            push(&mut start, timestamp_to_abi(status.start_time))?;
             let status_string = OwnedPwstr::new(status.status)?;
             let vendor_string = OwnedPwstr::new(status.vendor_info)?;
+            let current = current.finish()?;
+            let start = start.finish()?;
+            let (current_ptr, _) = current.into_raw_parts();
+            let (start_ptr, _) = start.into_raw_parts();
             unsafe {
-                state.write(status.state);
-                current_time.write(current.finish()?.into_raw_parts().0);
-                start_time.write(start.finish()?.into_raw_parts().0);
+                state.write(state_to_abi(status.state));
+                current_time.write(current_ptr);
+                start_time.write(start_ptr);
                 major.write(status.version.0);
                 minor.write(status.version.1);
                 build.write(status.version.2);
                 max_return_values.write(status.max_return_values);
-                status_text.write(status_string.into_raw());
-                vendor_info.write(vendor_string.into_raw());
+                status_text.write(PWSTR(status_string.into_raw()));
+                vendor_info.write(PWSTR(vendor_string.into_raw()));
             }
             Ok(())
         })
@@ -222,8 +258,8 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         client_handles: *const u32,
         server_handles: *mut *mut u32,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        abi_call(|| {
             unsafe {
                 initialize_output(server_handles)?;
                 initialize_output(errors)?;
@@ -244,13 +280,17 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
                     Err(error) => {
                         has_error = true;
                         push(&mut handles, 0)?;
-                        push(&mut item_errors, error)?;
+                        push(&mut item_errors, HRESULT(error.raw()))?;
                     }
                 }
             }
+            let handles = handles.finish()?;
+            let item_errors = item_errors.finish()?;
+            let (handle_ptr, _) = handles.into_raw_parts();
+            let (error_ptr, _) = item_errors.into_raw_parts();
             unsafe {
-                server_handles.write(handles.finish()?.into_raw_parts().0);
-                errors.write(item_errors.finish()?.into_raw_parts().0);
+                server_handles.write(handle_ptr);
+                errors.write(error_ptr);
             }
             batch_status(has_error)
         })
@@ -261,8 +301,9 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         count: u32,
         server_handles: *const u32,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        abi_call(|| {
+            unsafe { initialize_output(errors)? };
             let handles = unsafe { borrow_input(server_handles, count)? }
                 .iter()
                 .copied()
@@ -277,8 +318,9 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         count: u32,
         item_ids: *const PCWSTR,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        abi_call(|| {
+            unsafe { initialize_output(errors)? };
             let item_ids = decode_strings(count, item_ids)?;
             write_unit_results(self.service.validate_item_ids(&item_ids)?, count, errors)
         })
@@ -292,8 +334,8 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         _filters: *const VARIANT,
         _browser: OutRef<IOPCHDA_Browser>,
         _errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    ) -> AbiResult<()> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 }
 
@@ -309,8 +351,8 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         server_handles: *const u32,
         item_values: *mut *mut tagOPCHDA_ITEM,
         errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        catch_ffi(|| {
+    ) -> AbiResult<()> {
+        abi_call(|| {
             unsafe {
                 initialize_output(item_values)?;
                 initialize_output(errors)?;
@@ -342,7 +384,7 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
                     Err(error) => {
                         has_error = true;
                         push_hda_item(&mut values, tagOPCHDA_ITEM::default())?;
-                        push(&mut item_errors, error)?;
+                        push(&mut item_errors, HRESULT(error.raw()))?;
                     }
                 }
             }
@@ -350,11 +392,9 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
             let item_errors = item_errors.finish()?;
             unsafe {
                 (*start).bString = false.into();
-                (*start).szTime = PWSTR::null();
-                (*start).ftTime = result.resolved_start;
+                (*start).ftTime = timestamp_to_abi(result.resolved_start);
                 (*end).bString = false.into();
-                (*end).szTime = PWSTR::null();
-                (*end).ftTime = result.resolved_end;
+                (*end).ftTime = timestamp_to_abi(result.resolved_end);
                 item_values.write(values.into_raw_parts().0);
                 errors.write(item_errors.into_raw_parts().0);
             }
@@ -372,8 +412,8 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _aggregates: *const u32,
         _item_values: *mut *mut tagOPCHDA_ITEM,
         _errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    ) -> AbiResult<()> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 
     fn ReadAtTime(
@@ -384,8 +424,8 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _server_handles: *const u32,
         _item_values: *mut *mut tagOPCHDA_ITEM,
         _errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    ) -> AbiResult<()> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 
     fn ReadModified(
@@ -397,8 +437,8 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _server_handles: *const u32,
         _item_values: *mut *mut tagOPCHDA_MODIFIEDITEM,
         _errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    ) -> AbiResult<()> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 
     fn ReadAttribute(
@@ -410,8 +450,8 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _attribute_ids: *const u32,
         _attribute_values: *mut *mut tagOPCHDA_ATTRIBUTE,
         _errors: *mut *mut HRESULT,
-    ) -> Result<()> {
-        Err(Error::from_hresult(E_NOTIMPL))
+    ) -> AbiResult<()> {
+        Err(AbiError::from_hresult(E_NOTIMPL))
     }
 }
 
@@ -445,9 +485,9 @@ fn build_hda_item(item: HistoricalItemValues) -> Result<tagOPCHDA_ITEM> {
     let mut qualities = CoTaskMemArrayBuilder::new(item.samples.len(), NoCleanup)?;
     let mut values = CoTaskMemArrayBuilder::new(item.samples.len(), DropElements)?;
     for sample in item.samples {
-        push(&mut timestamps, sample.timestamp)?;
+        push(&mut timestamps, timestamp_to_abi(sample.timestamp))?;
         push(&mut qualities, sample.quality)?;
-        push(&mut values, sample.value)?;
+        push(&mut values, value_to_abi(&sample.value)?)?;
     }
     let timestamps = timestamps.finish()?;
     let qualities = qualities.finish()?;
@@ -469,7 +509,7 @@ fn push_hda_item(
     if let Err(returned) = output.push(item) {
         item = returned;
         unsafe { HdaItemCleanup.cleanup(&mut item, 1) };
-        return Err(Error::from_hresult(E_UNEXPECTED));
+        return Err(Error::unexpected("failed to append an HDA item"));
     }
     Ok(())
 }
@@ -488,7 +528,7 @@ fn write_unit_results(
             Ok(()) => HRESULT(0),
             Err(error) => {
                 has_error = true;
-                error
+                HRESULT(error.raw())
             }
         };
         push(&mut item_errors, error)?;
@@ -500,36 +540,46 @@ fn write_unit_results(
 fn decode_strings(count: u32, values: *const PCWSTR) -> Result<Vec<String>> {
     unsafe { borrow_input(values, count)? }
         .iter()
-        .map(|value| unsafe { value.to_string() }.map_err(|_| Error::from_hresult(E_INVALIDARG)))
+        .map(|value| {
+            if value.is_null() {
+                return Err(Error::null_pointer("null HDA string input"));
+            }
+            unsafe { value.to_string() }
+                .map_err(|_| Error::invalid_argument("item ID is invalid UTF-16"))
+        })
         .collect()
 }
 
 fn decode_time(value: *const tagOPCHDA_TIME) -> Result<HdaTime> {
-    let value = unsafe { value.as_ref() }.ok_or_else(|| Error::from_hresult(E_POINTER))?;
+    let value =
+        unsafe { value.as_ref() }.ok_or_else(|| Error::null_pointer("HDA time pointer is null"))?;
     if value.bString.as_bool() {
-        let expression =
-            unsafe { value.szTime.to_string() }.map_err(|_| Error::from_hresult(E_INVALIDARG))?;
+        if value.szTime.is_null() {
+            return Err(Error::null_pointer("null HDA time expression"));
+        }
+        let expression = unsafe { value.szTime.to_string() }
+            .map_err(|_| Error::invalid_argument("HDA time expression is invalid UTF-16"))?;
         Ok(HdaTime::Expression(expression))
     } else {
-        Ok(HdaTime::Absolute(value.ftTime))
+        Ok(HdaTime::Absolute(timestamp_from_abi(value.ftTime)))
     }
 }
 
 fn push<T, C: Cleanup<T>>(output: &mut CoTaskMemArrayBuilder<T, C>, value: T) -> Result<()> {
     output
         .push(value)
-        .map_err(|_| Error::from_hresult(E_UNEXPECTED))
+        .map_err(|_| Error::unexpected("failed to append a task-memory value"))
 }
 
 fn push_pwstr(
-    output: &mut CoTaskMemArrayBuilder<PWSTR, FreePwstrElements>,
+    output: &mut CoTaskMemArrayBuilder<*mut u16, FreePwstrElements>,
     value: String,
 ) -> Result<()> {
     let value = OwnedPwstr::new(value)?;
     let raw = value.into_raw();
     if let Err(raw) = output.push(raw) {
-        drop(unsafe { OwnedPwstr::from_raw(raw.0) });
-        return Err(Error::from_hresult(E_UNEXPECTED));
+        drop(unsafe { OwnedPwstr::from_raw(raw) });
+        return Err(Error::unexpected("failed to append a task-memory string"));
     }
     Ok(())
 }
@@ -538,27 +588,42 @@ fn ensure_batch_len(actual: usize, expected: usize) -> Result<()> {
     if actual == expected {
         Ok(())
     } else {
-        Err(Error::from_hresult(E_UNEXPECTED))
+        Err(Error::unexpected(
+            "service returned an unexpected item count",
+        ))
     }
 }
 
 fn checked_count(len: usize) -> Result<u32> {
-    u32::try_from(len).map_err(|_| Error::from_hresult(E_INVALIDARG))
+    u32::try_from(len).map_err(|_| Error::invalid_argument("item count exceeds u32"))
 }
 
 fn batch_status(has_error: bool) -> Result<()> {
     if has_error {
-        Err(Error::from_hresult(S_FALSE))
+        Err(Error::from_code(ErrorCode::PARTIAL_SUCCESS))
     } else {
         Ok(())
     }
 }
 
+fn state_to_abi(value: HdaServerState) -> crate::tagOPCHDA_SERVERSTATUS {
+    match value {
+        HdaServerState::Up => crate::OPCHDA_UP,
+        HdaServerState::Down => crate::OPCHDA_DOWN,
+        HdaServerState::Indeterminate => crate::OPCHDA_INDETERMINATE,
+        HdaServerState::Unknown(value) => crate::tagOPCHDA_SERVERSTATUS(value),
+    }
+}
+
+fn abi_call<T>(call: impl FnOnce() -> Result<T>) -> AbiResult<T> {
+    catch_ffi(call).map_err(to_abi_error)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::OPCHDA_UP;
     use crate::client::{HdaClient, HdaClientHandle, HistoricalSample};
+    use opc_classic_types::{Value, ValueType};
 
     struct TestService;
 
@@ -568,7 +633,7 @@ mod tests {
                 id: 1,
                 name: "Data type".into(),
                 description: "Canonical data type".into(),
-                data_type: 2,
+                data_type: ValueType::I16,
             }])
         }
 
@@ -582,9 +647,9 @@ mod tests {
 
         fn status(&self) -> Result<HdaHistorianStatus> {
             Ok(HdaHistorianStatus {
-                state: OPCHDA_UP,
-                current_time: FILETIME::default(),
-                start_time: FILETIME::default(),
+                state: HdaServerState::Up,
+                current_time: Timestamp::default(),
+                start_time: Timestamp::default(),
                 version: (1, 2, 3),
                 max_return_values: 100,
                 status: "running".into(),
@@ -630,10 +695,10 @@ mod tests {
             handles: &[HdaServerHandle],
         ) -> Result<HdaRawRead> {
             let HdaTime::Absolute(resolved_start) = start else {
-                return Err(Error::from_hresult(E_INVALIDARG));
+                return Err(Error::invalid_argument("start time must be absolute"));
             };
             let HdaTime::Absolute(resolved_end) = end else {
-                return Err(Error::from_hresult(E_INVALIDARG));
+                return Err(Error::invalid_argument("end time must be absolute"));
             };
             Ok(HdaRawRead {
                 resolved_start,
@@ -645,32 +710,22 @@ mod tests {
                             client_handle: HdaClientHandle(7),
                             aggregate: 0,
                             samples: vec![HistoricalSample {
-                                timestamp: FILETIME::default(),
+                                timestamp: Timestamp::default(),
                                 quality: 192,
-                                value: VARIANT::from(42i32),
+                                value: Value::I32(42),
                             }],
                         })
                     })
                     .collect(),
             })
         }
-
-        fn write_values(
-            &self,
-            values: &[(HdaServerHandle, FILETIME, VARIANT, u32)],
-        ) -> Result<Vec<HdaServerItemResult<()>>> {
-            Ok(values
-                .iter()
-                .map(|_| HdaServerItemResult::success(()))
-                .collect())
-        }
     }
 
     #[test]
     fn client_and_server_adapters_round_trip_nested_task_memory() {
         let apartment = opc_classic_utils::ComApartment::mta().unwrap();
-        let raw: IOPCHDA_Server = HdaServerAdapter::new(Arc::new(TestService)).into();
-        let client = HdaClient::from_interface(&apartment, raw);
+        let server = HdaServer::new(Arc::new(TestService));
+        let client = HdaClient::from_object(&apartment, &server.object()).unwrap();
 
         assert_eq!(client.attributes().unwrap()[0].name, "Data type");
         assert_eq!(client.aggregates().unwrap()[0].name, "Average");
@@ -685,8 +740,8 @@ mod tests {
         let handle = handles[0].as_ref().unwrap().server_handle;
         let read = client
             .read_raw(
-                HdaTime::Absolute(FILETIME::default()),
-                HdaTime::Absolute(FILETIME::default()),
+                HdaTime::Absolute(Timestamp::default()),
+                HdaTime::Absolute(Timestamp::default()),
                 10,
                 false,
                 &[handle],
