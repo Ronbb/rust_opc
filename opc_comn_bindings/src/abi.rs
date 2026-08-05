@@ -9,7 +9,13 @@ pub(crate) fn from_abi_error(error: AbiError) -> Error {
 }
 
 pub(crate) fn to_abi_error(error: Error) -> AbiError {
-    AbiError::from_hresult(windows_core::HRESULT(error.code().raw()))
+    let status = error.boundary_status();
+    let status = windows_core::HRESULT(status.raw());
+    if status.0 == ErrorCode::PARTIAL_SUCCESS.raw() {
+        AbiError::from_hresult(status)
+    } else {
+        AbiError::new(status, error.message())
+    }
 }
 
 pub(crate) const fn from_abi_guid(value: GUID) -> Guid {

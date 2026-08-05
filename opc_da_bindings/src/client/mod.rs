@@ -7,7 +7,7 @@ mod types;
 use std::marker::PhantomData;
 
 use opc_classic_types::{ClassContext, ComObject, Error, ErrorCode, Guid, Result};
-use opc_classic_utils::{Cleanup, CoTaskMemArrayOut, CoTaskMemOut, ComApartment};
+use opc_classic_utils::{Cleanup, CoTaskMemObjectOut, CoTaskMemOut, ComApartment};
 use opc_comn_bindings::client::CommonClient;
 use windows::Win32::System::Com::{CLSIDFromProgID, CoCreateInstance, CoTaskMemFree};
 use windows_core::{IUnknown, Interface, PCWSTR};
@@ -116,8 +116,21 @@ impl<'apartment> DaClient<'apartment> {
             )
         }
         .map_err(from_abi_error)?;
-        let object =
-            object.ok_or_else(|| Error::unexpected("AddGroup returned no group object"))?;
+        let object = match object {
+            Some(object) => object,
+            None => {
+                if server_handle != 0
+                    && let Err(cleanup_error) =
+                        unsafe { self.inner.RemoveGroup(server_handle, true) }
+                {
+                    let cleanup_error = from_abi_error(cleanup_error);
+                    return Err(Error::unexpected(format!(
+                        "AddGroup returned no group object and cleanup of server group {server_handle} failed: {cleanup_error}"
+                    )));
+                }
+                return Err(Error::unexpected("AddGroup returned no group object"));
+            }
+        };
         Ok(DaGroup::new(
             self.inner.clone(),
             object,
@@ -128,17 +141,17 @@ impl<'apartment> DaClient<'apartment> {
     }
 
     pub fn status(&self) -> Result<ServerStatus> {
-        let mut status = CoTaskMemArrayOut::new(1, ServerStatusCleanup);
+        let mut status = CoTaskMemObjectOut::new(ServerStatusCleanup);
         let call = unsafe {
             (Interface::vtable(&self.inner).GetStatus)(
                 Interface::as_raw(&self.inner),
                 status.as_mut_ptr(),
             )
         };
-        let status = unsafe { status.into_array() };
+        let status = unsafe { status.into_object() };
         call.ok().map_err(from_abi_error)?;
         let status = status?;
-        let raw = &status.as_slice()[0];
+        let raw = status.as_ref();
         let vendor_info = if raw.szVendorInfo.is_null() {
             String::new()
         } else {
@@ -174,5 +187,96 @@ impl<'apartment> DaClient<'apartment> {
 
     pub fn object(&self) -> ComObject {
         object_from_interface(&self.inner)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Mutex};
+
+    use crate::{IOPCServer_Impl, tagOPCENUMSCOPE};
+    use windows::Win32::Foundation::E_NOTIMPL;
+    use windows_core::{Error as AbiError, GUID, HRESULT, OutRef, PWSTR, Result as AbiResult};
+
+    #[windows_core::implement(IOPCServer)]
+    struct MissingGroupObjectServer {
+        removed: Arc<Mutex<Vec<(u32, bool)>>>,
+    }
+
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    impl IOPCServer_Impl for MissingGroupObjectServer_Impl {
+        fn AddGroup(
+            &self,
+            _name: &PCWSTR,
+            _active: windows_core::BOOL,
+            requested_update_rate: u32,
+            _client_handle: u32,
+            _time_bias: *const i32,
+            _percent_deadband: *const f32,
+            _locale: u32,
+            server_handle: *mut u32,
+            revised_update_rate: *mut u32,
+            _iid: *const GUID,
+            output: OutRef<IUnknown>,
+        ) -> AbiResult<()> {
+            unsafe {
+                server_handle.write(73);
+                revised_update_rate.write(requested_update_rate);
+            }
+            output.write(None)
+        }
+
+        fn GetErrorString(&self, _error: HRESULT, _locale: u32) -> AbiResult<PWSTR> {
+            Err(AbiError::from_hresult(E_NOTIMPL))
+        }
+
+        fn GetGroupByName(&self, _name: &PCWSTR, _iid: *const GUID) -> AbiResult<IUnknown> {
+            Err(AbiError::from_hresult(E_NOTIMPL))
+        }
+
+        fn GetStatus(&self) -> AbiResult<*mut tagOPCSERVERSTATUS> {
+            Err(AbiError::from_hresult(E_NOTIMPL))
+        }
+
+        fn RemoveGroup(&self, server_handle: u32, force: windows_core::BOOL) -> AbiResult<()> {
+            self.removed
+                .lock()
+                .expect("test removal log should not be poisoned")
+                .push((server_handle, force.as_bool()));
+            Ok(())
+        }
+
+        fn CreateGroupEnumerator(
+            &self,
+            _scope: tagOPCENUMSCOPE,
+            _iid: *const GUID,
+        ) -> AbiResult<IUnknown> {
+            Err(AbiError::from_hresult(E_NOTIMPL))
+        }
+    }
+
+    #[test]
+    fn add_group_removes_server_group_when_object_is_missing() {
+        let apartment = ComApartment::mta().unwrap();
+        let removed = Arc::new(Mutex::new(Vec::new()));
+        let server: IOPCServer = MissingGroupObjectServer {
+            removed: removed.clone(),
+        }
+        .into();
+        let client = DaClient::from_interface(&apartment, server);
+
+        let error = client
+            .add_group(GroupOptions::new("missing object"))
+            .err()
+            .expect("missing group object should be rejected");
+
+        assert_eq!(error.code(), ErrorCode::UNEXPECTED);
+        assert_eq!(
+            *removed
+                .lock()
+                .expect("test removal log should not be poisoned"),
+            [(73, true)]
+        );
     }
 }

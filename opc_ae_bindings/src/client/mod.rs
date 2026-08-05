@@ -4,7 +4,8 @@ use std::marker::PhantomData;
 
 use opc_classic_types::{ClassContext, ComObject, Error, Guid, Result, Timestamp};
 use opc_classic_utils::{
-    CoTaskMemArrayOut, CoTaskMemOut, ComApartment, FreePwstrElements, NoCleanup, WideCString,
+    CoTaskMemArrayOut, CoTaskMemObjectOut, CoTaskMemOut, ComApartment, FreePwstrElements,
+    NoCleanup, WideCString,
 };
 use opc_comn_bindings::client::CommonClient;
 use windows_core::{BOOL, Interface, PCWSTR, PWSTR, Result as AbiResult};
@@ -110,13 +111,13 @@ impl EventSubscription {
     pub fn filter(&self) -> Result<EventFilter> {
         let mut event_type = 0;
         let mut category_count = 0;
-        let mut categories = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut categories = CoTaskMemArrayOut::new_reported(NoCleanup);
         let mut low_severity = 0;
         let mut high_severity = 0;
         let mut area_count = 0;
-        let mut areas = CoTaskMemArrayOut::new(0, FreePwstrElements);
+        let mut areas = CoTaskMemArrayOut::new_reported(FreePwstrElements);
         let mut source_count = 0;
-        let mut sources = CoTaskMemArrayOut::new(0, FreePwstrElements);
+        let mut sources = CoTaskMemArrayOut::new_reported(FreePwstrElements);
         let call = unsafe {
             self.inner.GetFilter(
                 &mut event_type,
@@ -130,18 +131,10 @@ impl EventSubscription {
                 sources.as_mut_ptr().cast::<*mut PWSTR>(),
             )
         };
-        unsafe {
-            categories.set_len(category_count as usize);
-            areas.set_len(area_count as usize);
-            sources.set_len(source_count as usize);
-        }
-        let categories = unsafe { categories.into_array() };
-        let areas = unsafe { areas.into_array() };
-        let sources = unsafe { sources.into_array() };
         call.map_err(from_abi_error)?;
-        let categories = categories?;
-        let areas = areas?;
-        let sources = sources?;
+        let categories = unsafe { categories.into_array_with_len(category_count as usize) }?;
+        let areas = unsafe { areas.into_array_with_len(area_count as usize) }?;
+        let sources = unsafe { sources.into_array_with_len(source_count as usize) }?;
         Ok(EventFilter {
             event_type,
             categories: categories.as_slice().to_vec(),
@@ -166,15 +159,13 @@ impl EventSubscription {
 
     pub fn returned_attributes(&self, category: u32) -> Result<Vec<u32>> {
         let mut count = 0;
-        let mut values = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut values = CoTaskMemArrayOut::new_reported(NoCleanup);
         let call = unsafe {
             self.inner
                 .GetReturnedAttributes(category, &mut count, values.as_mut_ptr())
         };
-        unsafe { values.set_len(count as usize) };
-        let values = unsafe { values.into_array() };
         call.map_err(from_abi_error)?;
-        let values = values?;
+        let values = unsafe { values.into_array_with_len(count as usize) }?;
         Ok(values.as_slice().to_vec())
     }
 
@@ -371,17 +362,17 @@ impl<'apartment> AeClient<'apartment> {
     }
 
     pub fn status(&self) -> Result<AeServerStatus> {
-        let mut status = CoTaskMemArrayOut::new(1, StatusCleanup);
+        let mut status = CoTaskMemObjectOut::new(StatusCleanup);
         let call = unsafe {
             (Interface::vtable(&self.inner).GetStatus)(
                 Interface::as_raw(&self.inner),
                 status.as_mut_ptr(),
             )
         };
-        let status = unsafe { status.into_array() };
+        let status = unsafe { status.into_object() };
         call.ok().map_err(from_abi_error)?;
         let status = status?;
-        let value = &status.as_slice()[0];
+        let value = status.as_ref();
         Ok(AeServerStatus {
             start_time: from_abi_timestamp(value.ftStartTime),
             current_time: from_abi_timestamp(value.ftCurrentTime),
@@ -398,8 +389,8 @@ impl<'apartment> AeClient<'apartment> {
 
     pub fn event_categories(&self, event_type: u32) -> Result<Vec<EventCategory>> {
         let mut count = 0u32;
-        let mut ids = CoTaskMemArrayOut::new(0, NoCleanup);
-        let mut descriptions = CoTaskMemArrayOut::new(0, FreePwstrElements);
+        let mut ids = CoTaskMemArrayOut::new_reported(NoCleanup);
+        let mut descriptions = CoTaskMemArrayOut::new_reported(FreePwstrElements);
         let call = unsafe {
             self.inner.QueryEventCategories(
                 event_type,
@@ -408,16 +399,10 @@ impl<'apartment> AeClient<'apartment> {
                 descriptions.as_mut_ptr().cast::<*mut PWSTR>(),
             )
         };
-        let len = count as usize;
-        unsafe {
-            ids.set_len(len);
-            descriptions.set_len(len);
-        }
-        let ids = unsafe { ids.into_array() };
-        let descriptions = unsafe { descriptions.into_array() };
         call.map_err(from_abi_error)?;
-        let ids = ids?;
-        let descriptions = descriptions?;
+        let len = count as usize;
+        let ids = unsafe { ids.into_array_with_len(len) }?;
+        let descriptions = unsafe { descriptions.into_array_with_len(len) }?;
         Ok(ids
             .as_slice()
             .iter()
@@ -454,9 +439,9 @@ impl<'apartment> AeClient<'apartment> {
 
     pub fn event_attributes(&self, event_category: u32) -> Result<Vec<EventAttribute>> {
         let mut count = 0u32;
-        let mut ids = CoTaskMemArrayOut::new(0, NoCleanup);
-        let mut descriptions = CoTaskMemArrayOut::new(0, FreePwstrElements);
-        let mut types = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut ids = CoTaskMemArrayOut::new_reported(NoCleanup);
+        let mut descriptions = CoTaskMemArrayOut::new_reported(FreePwstrElements);
+        let mut types = CoTaskMemArrayOut::new_reported(NoCleanup);
         let call = unsafe {
             self.inner.QueryEventAttributes(
                 event_category,
@@ -466,19 +451,11 @@ impl<'apartment> AeClient<'apartment> {
                 types.as_mut_ptr(),
             )
         };
-        let len = count as usize;
-        unsafe {
-            ids.set_len(len);
-            descriptions.set_len(len);
-            types.set_len(len);
-        }
-        let ids = unsafe { ids.into_array() };
-        let descriptions = unsafe { descriptions.into_array() };
-        let types = unsafe { types.into_array() };
         call.map_err(from_abi_error)?;
-        let ids = ids?;
-        let descriptions = descriptions?;
-        let types = types?;
+        let len = count as usize;
+        let ids = unsafe { ids.into_array_with_len(len) }?;
+        let descriptions = unsafe { descriptions.into_array_with_len(len) }?;
+        let types = unsafe { types.into_array_with_len(len) }?;
         Ok((0..len)
             .map(|index| EventAttribute {
                 id: ids.as_slice()[index],
@@ -526,9 +503,11 @@ impl<'apartment> AeClient<'apartment> {
         .map_err(from_abi_error)?;
         let object =
             object.ok_or_else(|| Error::unexpected("AE server returned a null subscription"))?;
-        let identity = object_from_interface(&object);
+        // SAFETY: the call explicitly requested IOPCEventSubscriptionMgt::IID,
+        // so the successful returned pointer already has that vtable.
+        let inner = unsafe { IOPCEventSubscriptionMgt::from_raw(object.into_raw()) };
         Ok(EventSubscription {
-            inner: interface_from_object(&identity)?,
+            inner,
             revised_buffer_time,
             revised_max_size,
         })
@@ -553,12 +532,10 @@ impl<'apartment> AeClient<'apartment> {
         call: impl FnOnce(*mut u32, *mut *mut PWSTR) -> AbiResult<()>,
     ) -> Result<Vec<String>> {
         let mut count = 0u32;
-        let mut names = CoTaskMemArrayOut::new(0, FreePwstrElements);
+        let mut names = CoTaskMemArrayOut::new_reported(FreePwstrElements);
         let result = call(&mut count, names.as_mut_ptr().cast::<*mut PWSTR>());
-        unsafe { names.set_len(count as usize) };
-        let names = unsafe { names.into_array() };
         result.map_err(from_abi_error)?;
-        let names = names?;
+        let names = unsafe { names.into_array_with_len(count as usize) }?;
         Ok(names
             .as_slice()
             .iter()

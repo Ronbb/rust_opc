@@ -7,6 +7,8 @@ Windows. The workspace targets Rust 1.97, edition 2024.
 
 - `opc_classic_types`: dependency-free public `Guid`, `Timestamp`, `Value`,
   `ComObject`, and OPC error types.
+- `opc_classic_abi`: unpublished shared ABI definitions used only to compose
+  multiple OPC interfaces on one private COM identity.
 - `opc_classic_utils`: COM apartment, task-memory ownership, transactional
   output builders, panic-safe ABI helpers, class factory and local-server class
   registration.
@@ -24,6 +26,12 @@ Application code uses its `client` or `server` module. Their public signatures
 contain only `opc_classic_types`, `core`, and `std` types; Windows ABI values are
 converted inside private boundary modules.
 
+This private visibility is a 0.4.0 breaking change: applications that imported
+generated `IOPC*`, `tagOPC*`, or `OPC*` symbols must use the safe facades or
+maintain a separate ABI layer. DA, AE, and HDA server adapters expose their
+domain interfaces and `IOPCCommon` from the same COM identity; the
+`new_with_common` constructors attach application-defined common behavior.
+
 ## Ownership model
 
 Input strings and arrays are Rust-owned borrowed values. COM output memory is
@@ -32,8 +40,11 @@ adopted by an explicit owner:
 - `OwnedPwstr` owns one task-allocated string.
 - `CoTaskMemArray<T, C>` owns a task-allocated array and a cleanup policy for
   nested values.
-- `CoTaskMemArrayOut<T, C>` attaches array cleanup before the foreign call, so
-  early failures still release nested values.
+- `CoTaskMemArrayOut<T, C>` distinguishes fixed, trusted lengths from lengths
+  reported by a foreign call. Reported lengths are committed only after a
+  successful HRESULT; failure cleanup never walks an untrusted count.
+- `CoTaskMemObjectOut<T, C>` owns one task-allocated object returned through
+  `T**`, including its nested cleanup policy.
 - `CoTaskMemOut<T>` null-initializes a single-allocation out pointer.
 - `CoTaskMemArrayBuilder<T, C>` constructs server outputs transactionally and
   rolls back the initialized prefix after an error or panic.

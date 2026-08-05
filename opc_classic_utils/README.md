@@ -36,8 +36,15 @@ when a method-specific decoder owns nested cleanup.
 
 `CoTaskMemArrayOut<T, C>` attaches that policy before invoking the foreign
 method, so failure paths and partially processed multi-output calls still run
-deep element cleanup. `CoTaskMemOut<T>` is reserved for one task allocation,
-such as a returned string.
+deep element cleanup when the initialized length is known. For a method that
+reports its array length in a separate output parameter, construct the guard
+with `CoTaskMemArrayOut::new_reported`, check that the call succeeded, and then
+use `into_array_with_len`. Until that explicit commit, drop releases the outer
+allocation without trusting the server-provided count.
+
+`CoTaskMemObjectOut<T, C>` models a `T**` output containing exactly one object
+and preserves deep cleanup on failure. `CoTaskMemOut<T>` is reserved for one
+opaque task allocation without nested cleanup, such as a returned string.
 
 Owning guards are deliberately not `Clone`, and adopting a raw pointer is an
 `unsafe` operation. This prevents accidental aliases and allocator mismatches.

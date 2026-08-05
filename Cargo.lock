@@ -18,11 +18,19 @@ checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 name = "opc_ae_bindings"
 version = "0.4.0"
 dependencies = [
+ "opc_classic_abi",
  "opc_classic_types",
  "opc_classic_utils",
  "opc_comn_bindings",
  "windows",
  "windows-bindgen",
+ "windows-core",
+]
+
+[[package]]
+name = "opc_classic_abi"
+version = "0.1.0"
+dependencies = [
  "windows-core",
 ]
 
@@ -54,6 +62,7 @@ dependencies = [
 name = "opc_da_bindings"
 version = "0.4.0"
 dependencies = [
+ "opc_classic_abi",
  "opc_classic_types",
  "opc_classic_utils",
  "opc_comn_bindings",
@@ -66,6 +75,7 @@ dependencies = [
 name = "opc_hda_bindings"
 version = "0.4.0"
 dependencies = [
+ "opc_classic_abi",
  "opc_classic_types",
  "opc_classic_utils",
  "opc_comn_bindings",

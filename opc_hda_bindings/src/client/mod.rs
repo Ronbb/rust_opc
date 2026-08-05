@@ -1,12 +1,14 @@
 //! Safe OPC Historical Data Access client facade.
 
+use std::cell::OnceCell;
 use std::marker::PhantomData;
 
 use opc_classic_types::{
     ClassContext, ComObject, Error, ErrorCode, Guid, Result, Timestamp, Value, ValueType,
 };
 use opc_classic_utils::{
-    Cleanup, CoTaskMemArrayOut, ComApartment, FreePwstrElements, NoCleanup, OwnedPwstr, WideCString,
+    Cleanup, CoTaskMemArrayOut, CoTaskMemObjectOut, ComApartment, FreePwstrElements, NoCleanup,
+    OwnedPwstr, WideCString,
 };
 use opc_comn_bindings::client::CommonClient;
 use windows::Win32::Foundation::FILETIME;
@@ -14,8 +16,8 @@ use windows::Win32::System::Com::{CLSCTX, CLSIDFromProgID, CoCreateInstance, CoT
 use windows_core::{HRESULT, IUnknown, PCWSTR};
 
 use crate::convert::{
-    from_abi_error, guid_to_abi, interface_from_object, object_from_interface, timestamp_from_abi,
-    value_from_abi,
+    checked_count, from_abi_error, guid_to_abi, interface_from_object, object_from_interface,
+    timestamp_from_abi, value_from_abi,
 };
 use crate::{
     IOPCHDA_Server, IOPCHDA_SyncRead, tagOPCHDA_ITEM, tagOPCHDA_SERVERSTATUS, tagOPCHDA_TIME,
@@ -99,6 +101,9 @@ pub enum HdaServerState {
 
 pub struct HdaClient<'apartment> {
     inner: IOPCHDA_Server,
+    // QI once per apartment-bound client.  `OnceCell` avoids repeated identity
+    // queries while retaining the !Send/!Sync lifetime marker below.
+    reader: OnceCell<IOPCHDA_SyncRead>,
     _apartment: PhantomData<&'apartment ComApartment>,
 }
 
@@ -125,16 +130,14 @@ impl<'apartment> HdaClient<'apartment> {
         let inner =
             unsafe { CoCreateInstance(&class_id, None::<&IUnknown>, CLSCTX(context.bits())) }
                 .map_err(from_abi_error)?;
-        Ok(Self {
-            inner,
-            _apartment: PhantomData,
-        })
+        Ok(Self::from_interface(_apartment, inner))
     }
 
     fn from_interface(apartment: &'apartment ComApartment, inner: IOPCHDA_Server) -> Self {
         let _ = apartment;
         Self {
             inner,
+            reader: OnceCell::new(),
             _apartment: PhantomData,
         }
     }
@@ -156,10 +159,10 @@ impl<'apartment> HdaClient<'apartment> {
 
     pub fn attributes(&self) -> Result<Vec<HdaAttribute>> {
         let mut count = 0u32;
-        let mut ids = CoTaskMemArrayOut::new(0, NoCleanup);
-        let mut names = CoTaskMemArrayOut::new(0, FreePwstrElements);
-        let mut descriptions = CoTaskMemArrayOut::new(0, FreePwstrElements);
-        let mut data_types = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut ids = CoTaskMemArrayOut::new_reported(NoCleanup);
+        let mut names = CoTaskMemArrayOut::new_reported(FreePwstrElements);
+        let mut descriptions = CoTaskMemArrayOut::new_reported(FreePwstrElements);
+        let mut data_types = CoTaskMemArrayOut::new_reported(NoCleanup);
         let call = unsafe {
             self.inner.GetItemAttributes(
                 &mut count,
@@ -169,37 +172,29 @@ impl<'apartment> HdaClient<'apartment> {
                 data_types.as_mut_ptr(),
             )
         };
-        let len = count as usize;
-        unsafe {
-            ids.set_len(len);
-            names.set_len(len);
-            descriptions.set_len(len);
-            data_types.set_len(len);
-        }
-        let ids = unsafe { ids.into_array() };
-        let names = unsafe { names.into_array() };
-        let descriptions = unsafe { descriptions.into_array() };
-        let data_types = unsafe { data_types.into_array() };
         call.map_err(from_abi_error)?;
-        let ids = ids?;
-        let names = names?;
-        let descriptions = descriptions?;
-        let data_types = data_types?;
-        Ok((0..len)
-            .map(|index| HdaAttribute {
-                id: ids.as_slice()[index],
-                name: pwstr_string(names.as_slice()[index]),
-                description: pwstr_string(descriptions.as_slice()[index]),
-                data_type: ValueType::from_raw(data_types.as_slice()[index]),
+        let len = count as usize;
+        let ids = unsafe { ids.into_array_with_len(len) }?;
+        let names = unsafe { names.into_array_with_len(len) }?;
+        let descriptions = unsafe { descriptions.into_array_with_len(len) }?;
+        let data_types = unsafe { data_types.into_array_with_len(len) }?;
+        (0..len)
+            .map(|index| {
+                Ok(HdaAttribute {
+                    id: ids.as_slice()[index],
+                    name: pwstr_string(names.as_slice()[index]),
+                    description: pwstr_string(descriptions.as_slice()[index]),
+                    data_type: ValueType::from_raw(data_types.as_slice()[index]),
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub fn aggregates(&self) -> Result<Vec<HdaAggregate>> {
         let mut count = 0u32;
-        let mut ids = CoTaskMemArrayOut::new(0, NoCleanup);
-        let mut names = CoTaskMemArrayOut::new(0, FreePwstrElements);
-        let mut descriptions = CoTaskMemArrayOut::new(0, FreePwstrElements);
+        let mut ids = CoTaskMemArrayOut::new_reported(NoCleanup);
+        let mut names = CoTaskMemArrayOut::new_reported(FreePwstrElements);
+        let mut descriptions = CoTaskMemArrayOut::new_reported(FreePwstrElements);
         let call = unsafe {
             self.inner.GetAggregates(
                 &mut count,
@@ -208,32 +203,26 @@ impl<'apartment> HdaClient<'apartment> {
                 descriptions.as_mut_ptr().cast(),
             )
         };
-        let len = count as usize;
-        unsafe {
-            ids.set_len(len);
-            names.set_len(len);
-            descriptions.set_len(len);
-        }
-        let ids = unsafe { ids.into_array() };
-        let names = unsafe { names.into_array() };
-        let descriptions = unsafe { descriptions.into_array() };
         call.map_err(from_abi_error)?;
-        let ids = ids?;
-        let names = names?;
-        let descriptions = descriptions?;
-        Ok((0..len)
-            .map(|index| HdaAggregate {
-                id: ids.as_slice()[index],
-                name: pwstr_string(names.as_slice()[index]),
-                description: pwstr_string(descriptions.as_slice()[index]),
+        let len = count as usize;
+        let ids = unsafe { ids.into_array_with_len(len) }?;
+        let names = unsafe { names.into_array_with_len(len) }?;
+        let descriptions = unsafe { descriptions.into_array_with_len(len) }?;
+        (0..len)
+            .map(|index| {
+                Ok(HdaAggregate {
+                    id: ids.as_slice()[index],
+                    name: pwstr_string(names.as_slice()[index]),
+                    description: pwstr_string(descriptions.as_slice()[index]),
+                })
             })
-            .collect())
+            .collect()
     }
 
     pub fn historian_status(&self) -> Result<HdaHistorianStatus> {
         let mut state = tagOPCHDA_SERVERSTATUS::default();
-        let mut current = CoTaskMemArrayOut::new(1, NoCleanup);
-        let mut start = CoTaskMemArrayOut::new(1, NoCleanup);
+        let mut current = CoTaskMemObjectOut::new(NoCleanup);
+        let mut start = CoTaskMemObjectOut::new(NoCleanup);
         let mut major = 0;
         let mut minor = 0;
         let mut build = 0;
@@ -255,20 +244,15 @@ impl<'apartment> HdaClient<'apartment> {
         };
         let status = unsafe { OwnedPwstr::from_raw(status.0) };
         let vendor = unsafe { OwnedPwstr::from_raw(vendor.0) };
-        let current = unsafe { current.into_array() };
-        let start = unsafe { start.into_array() };
+        let current = unsafe { current.into_object() };
+        let start = unsafe { start.into_object() };
         call.map_err(from_abi_error)?;
         let current = current?;
         let start = start?;
-        if current.is_empty() || start.is_empty() {
-            return Err(Error::null_pointer(
-                "historian status omitted required timestamps",
-            ));
-        }
         Ok(HdaHistorianStatus {
             state: state_from_abi(state),
-            current_time: timestamp_from_abi(current.as_slice()[0]),
-            start_time: timestamp_from_abi(start.as_slice()[0]),
+            current_time: timestamp_from_abi(*current),
+            start_time: timestamp_from_abi(*start),
             version: (major, minor, build),
             max_return_values,
             status: status.to_string_lossy(),
@@ -296,7 +280,7 @@ impl<'apartment> HdaClient<'apartment> {
         let mut errors = CoTaskMemArrayOut::new(ids.len(), NoCleanup);
         let call = unsafe {
             self.inner.GetItemHandles(
-                count(ids.len())?,
+                checked_count(ids.len())?,
                 pointers.as_ptr(),
                 clients.as_ptr(),
                 servers.as_mut_ptr(),
@@ -328,7 +312,7 @@ impl<'apartment> HdaClient<'apartment> {
         handles: &[HdaServerHandle],
     ) -> Result<Vec<std::result::Result<(), HdaItemError>>> {
         let raw: Vec<u32> = handles.iter().map(|handle| handle.0).collect();
-        let count = count(handles.len())?;
+        let count = checked_count(handles.len())?;
         self.item_errors(handles.len(), |errors| unsafe {
             self.inner.ReleaseItemHandles(count, raw.as_ptr(), errors)
         })
@@ -343,7 +327,7 @@ impl<'apartment> HdaClient<'apartment> {
             .map(|id| wide(id))
             .collect::<Result<Vec<_>>>()?;
         let pointers: Vec<PCWSTR> = ids.iter().map(|id| PCWSTR(id.as_ptr())).collect();
-        let count = count(ids.len())?;
+        let count = checked_count(ids.len())?;
         self.item_errors(ids.len(), |errors| unsafe {
             self.inner.ValidateItemIDs(count, pointers.as_ptr(), errors)
         })
@@ -357,7 +341,19 @@ impl<'apartment> HdaClient<'apartment> {
         include_bounds: bool,
         handles: &[HdaServerHandle],
     ) -> Result<HdaReadResult> {
-        let reader: IOPCHDA_SyncRead = interface_from_object(&self.object())?;
+        let reader = if let Some(reader) = self.reader.get() {
+            reader.clone()
+        } else {
+            let reader = interface_from_object(&self.object())?;
+            // The client is apartment-bound (`!Send`/`!Sync`), so there is no
+            // competing initializer. If a future caller does initialize it
+            // first, use the already-cached interface and drop this duplicate.
+            let _ = self.reader.set(reader);
+            self.reader
+                .get()
+                .expect("reader was initialized immediately above")
+                .clone()
+        };
         let mut start = AbiTime::new(start)?;
         let mut end = AbiTime::new(end)?;
         let raw_handles: Vec<u32> = handles.iter().map(|handle| handle.0).collect();
@@ -369,7 +365,7 @@ impl<'apartment> HdaClient<'apartment> {
                 &mut end.raw,
                 maximum_values,
                 include_bounds,
-                count(handles.len())?,
+                checked_count(handles.len())?,
                 raw_handles.as_ptr(),
                 values.as_mut_ptr(),
                 errors.as_mut_ptr(),
@@ -524,12 +520,11 @@ fn pwstr_string(value: *mut u16) -> String {
     if value.is_null() {
         String::new()
     } else {
-        unsafe { windows_core::PWSTR(value).to_string() }.unwrap_or_default()
+        // A vendor may return ill-formed UTF-16. Preserve the text with the
+        // standard replacement character instead of silently turning it into
+        // an empty string and losing diagnostic metadata.
+        unsafe { String::from_utf16_lossy(windows_core::PWSTR(value).as_wide()) }
     }
-}
-
-fn count(len: usize) -> Result<u32> {
-    u32::try_from(len).map_err(|_| Error::invalid_argument("item count exceeds u32"))
 }
 
 fn state_from_abi(value: tagOPCHDA_SERVERSTATUS) -> HdaServerState {
@@ -538,5 +533,16 @@ fn state_from_abi(value: tagOPCHDA_SERVERSTATUS) -> HdaServerState {
         crate::OPCHDA_DOWN => HdaServerState::Down,
         crate::OPCHDA_INDETERMINATE => HdaServerState::Indeterminate,
         other => HdaServerState::Unknown(other.0),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pwstr_string;
+
+    #[test]
+    fn invalid_utf16_is_preserved_with_replacement_character() {
+        let mut value = [0xd800_u16, 0];
+        assert_eq!(pwstr_string(value.as_mut_ptr()), "\u{fffd}");
     }
 }

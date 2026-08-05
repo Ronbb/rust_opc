@@ -15,6 +15,7 @@ default-target = "x86_64-pc-windows-msvc"
 targets = []
 
 [dependencies]
+opc_classic_abi = { workspace = true }
 opc_classic_types = { workspace = true }
 opc_classic_utils = { workspace = true }
 opc_comn_bindings = { workspace = true }

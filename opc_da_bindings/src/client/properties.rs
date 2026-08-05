@@ -32,9 +32,9 @@ impl ItemPropertiesClient {
     pub fn available(&self, item_id: &str) -> Result<Vec<PropertyDescription>> {
         let item_id = wide(item_id)?;
         let mut count_value = 0u32;
-        let mut ids = CoTaskMemArrayOut::new(0, NoCleanup);
-        let mut descriptions = CoTaskMemArrayOut::new(0, FreePwstrElements);
-        let mut data_types = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut ids = CoTaskMemArrayOut::new_reported(NoCleanup);
+        let mut descriptions = CoTaskMemArrayOut::new_reported(FreePwstrElements);
+        let mut data_types = CoTaskMemArrayOut::new_reported(NoCleanup);
         let call = unsafe {
             self.inner.QueryAvailableProperties(
                 PCWSTR(item_id.as_ptr()),
@@ -44,19 +44,11 @@ impl ItemPropertiesClient {
                 data_types.as_mut_ptr(),
             )
         };
-        let len = count_value as usize;
-        unsafe {
-            ids.set_len(len);
-            descriptions.set_len(len);
-            data_types.set_len(len);
-        }
-        let ids = unsafe { ids.into_array() };
-        let descriptions = unsafe { descriptions.into_array() };
-        let data_types = unsafe { data_types.into_array() };
         call.map_err(from_abi_error)?;
-        let ids = ids?;
-        let descriptions = descriptions?;
-        let data_types = data_types?;
+        let len = count_value as usize;
+        let ids = unsafe { ids.into_array_with_len(len) }?;
+        let descriptions = unsafe { descriptions.into_array_with_len(len) }?;
+        let data_types = unsafe { data_types.into_array_with_len(len) }?;
         (0..len)
             .map(|index| {
                 Ok(PropertyDescription {

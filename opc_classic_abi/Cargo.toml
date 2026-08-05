@@ -1,0 +1,12 @@
+[package]
+name = "opc_classic_abi"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+description = "Private shared Windows ABI definitions for OPC Classic adapters"
+repository = "https://github.com/Ronbb/rust_opc"
+license = "MIT"
+
+[dependencies]
+windows-core = { workspace = true }

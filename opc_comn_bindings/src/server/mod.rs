@@ -26,6 +26,48 @@ pub trait CommonService: Send + Sync + 'static {
     fn set_client_name(&self, name: String) -> Result<()>;
 }
 
+/// A deliberately inert OPC Common implementation for domain adapters that
+/// were constructed without an application-provided common service.
+///
+/// Keeping the interface discoverable is useful for COM clients that probe
+/// `IOPCCommon` unconditionally. Applications that need locale or diagnostic
+/// behavior should pass their own [`CommonService`] to the domain server's
+/// `new_with_common` constructor.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct UnsupportedCommonService;
+
+impl CommonService for UnsupportedCommonService {
+    fn set_locale(&self, _locale: u32) -> Result<()> {
+        Err(Error::not_implemented(
+            "OPC Common locale is not configured",
+        ))
+    }
+
+    fn locale(&self) -> Result<u32> {
+        Err(Error::not_implemented(
+            "OPC Common locale is not configured",
+        ))
+    }
+
+    fn available_locales(&self) -> Result<Vec<u32>> {
+        Err(Error::not_implemented(
+            "OPC Common locales are not configured",
+        ))
+    }
+
+    fn error_string(&self, _error: ErrorCode) -> Result<String> {
+        Err(Error::not_implemented(
+            "OPC Common error strings are not configured",
+        ))
+    }
+
+    fn set_client_name(&self, _name: String) -> Result<()> {
+        Err(Error::not_implemented(
+            "OPC Common client name is not configured",
+        ))
+    }
+}
+
 #[windows_core::implement(IOPCCommon)]
 struct CommonAdapter {
     service: Arc<dyn CommonService>,
@@ -130,7 +172,15 @@ impl GuidEnumeratorAdapter {
 impl IOPCEnumGUID_Impl for GuidEnumeratorAdapter_Impl {
     fn Next(&self, count: u32, values: *mut GUID, fetched: *mut u32) -> AbiResult<()> {
         abi_boundary(|| {
-            unsafe { initialize_output(fetched).map_err(to_abi_error)? };
+            if fetched.is_null() {
+                if count != 1 {
+                    return Err(to_abi_error(Error::null_pointer(
+                        "null GUID enumeration count output",
+                    )));
+                }
+            } else {
+                unsafe { initialize_output(fetched).map_err(to_abi_error)? };
+            }
             if count != 0 && values.is_null() {
                 return Err(to_abi_error(Error::null_pointer(
                     "null GUID enumeration output",
@@ -152,7 +202,9 @@ impl IOPCEnumGUID_Impl for GuidEnumeratorAdapter_Impl {
                 }
             }
             *position += returned;
-            unsafe { fetched.write(returned as u32) };
+            if !fetched.is_null() {
+                unsafe { fetched.write(returned as u32) };
+            }
             if returned < count as usize {
                 Err(AbiError::from_hresult(S_FALSE))
             } else {
@@ -413,17 +465,35 @@ mod tests {
         );
     }
 
-    struct TestServerList;
+    #[derive(Default)]
+    struct ServerListCalls {
+        implemented: Vec<Guid>,
+        required: Vec<Guid>,
+        details: Vec<Guid>,
+        prog_ids: Vec<String>,
+    }
+
+    struct TestServerList {
+        calls: Arc<Mutex<ServerListCalls>>,
+    }
 
     impl ServerListService for TestServerList {
         fn enum_classes(&self, implemented: &[Guid], required: &[Guid]) -> Result<Vec<Guid>> {
-            assert_eq!(implemented, [CLASS_ID]);
-            assert!(required.is_empty());
+            let mut calls = self
+                .calls
+                .lock()
+                .map_err(|_| Error::unexpected("test call log is poisoned"))?;
+            calls.implemented = implemented.to_vec();
+            calls.required = required.to_vec();
             Ok(vec![CLASS_ID])
         }
 
         fn class_details(&self, class_id: &Guid) -> Result<ClassDetails> {
-            assert_eq!(*class_id, CLASS_ID);
+            self.calls
+                .lock()
+                .map_err(|_| Error::unexpected("test call log is poisoned"))?
+                .details
+                .push(*class_id);
             Ok(ClassDetails {
                 prog_id: "Example.OPC.1".into(),
                 user_type: "Example OPC Server".into(),
@@ -432,14 +502,21 @@ mod tests {
         }
 
         fn class_id_from_prog_id(&self, prog_id: &str) -> Result<Guid> {
-            assert_eq!(prog_id, "Example.OPC.1");
+            self.calls
+                .lock()
+                .map_err(|_| Error::unexpected("test call log is poisoned"))?
+                .prog_ids
+                .push(prog_id.to_owned());
             Ok(CLASS_ID)
         }
     }
 
     #[test]
     fn server_list_adapter_converts_owned_guids_and_strings() {
-        let server = ServerListServer::new(Arc::new(TestServerList));
+        let calls = Arc::new(Mutex::new(ServerListCalls::default()));
+        let server = ServerListServer::new(Arc::new(TestServerList {
+            calls: calls.clone(),
+        }));
         let client = ServerListClient::from_object(&server.object()).unwrap();
 
         let enumerator = client.enum_classes(&[CLASS_ID], &[]).unwrap();
@@ -454,6 +531,34 @@ mod tests {
             client.class_id_from_prog_id("Example.OPC.1").unwrap(),
             CLASS_ID
         );
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.implemented, [CLASS_ID]);
+        assert!(calls.required.is_empty());
+        assert_eq!(calls.details, [CLASS_ID]);
+        assert_eq!(calls.prog_ids, ["Example.OPC.1"]);
+    }
+
+    #[test]
+    fn guid_enumerator_allows_null_fetched_for_one_element() {
+        let enumerator: IOPCEnumGUID =
+            GuidEnumeratorAdapter::new(vec![to_abi_guid(CLASS_ID)]).into();
+        let mut output = [GUID::zeroed()];
+
+        unsafe { enumerator.Next(&mut output, std::ptr::null_mut()) }.unwrap();
+
+        assert_eq!(from_abi_guid(output[0]), CLASS_ID);
+    }
+
+    #[test]
+    fn guid_enumerator_requires_fetched_for_multiple_elements() {
+        let enumerator: IOPCEnumGUID =
+            GuidEnumeratorAdapter::new(vec![to_abi_guid(CLASS_ID)]).into();
+        let mut output = [GUID::zeroed(); 2];
+
+        let error = unsafe { enumerator.Next(&mut output, std::ptr::null_mut()) }.unwrap_err();
+
+        assert_eq!(error.code(), windows::Win32::Foundation::E_POINTER);
     }
 
     struct TestShutdown {

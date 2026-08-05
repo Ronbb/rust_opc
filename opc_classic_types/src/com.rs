@@ -200,3 +200,26 @@ impl Drop for ComObject {
         unsafe { (self.vtable().release)(self.ptr.as_ptr()) };
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn guid_debug_uses_canonical_field_layout() {
+        let value = Guid::new(
+            0x1234_5678,
+            0x9abc,
+            0xdef0,
+            [0x12, 0x34, 0x56, 0x78, 0x9a, 0xbc, 0xde, 0xf0],
+        );
+        assert_eq!(format!("{value:?}"), "12345678-9abc-def0-1234-56789abcdef0");
+    }
+
+    #[test]
+    fn timestamp_round_trips_system_time_at_filetime_precision() {
+        let value = std::time::UNIX_EPOCH + std::time::Duration::new(1_234_567, 890_123_400);
+        let timestamp = Timestamp::from_system_time(value).unwrap();
+        assert_eq!(timestamp.to_system_time().unwrap(), value);
+    }
+}

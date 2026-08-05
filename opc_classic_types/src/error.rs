@@ -133,6 +133,22 @@ impl Error {
         &self.message
     }
 
+    /// Returns the status that is safe to emit when this value crosses a COM
+    /// ABI boundary.
+    ///
+    /// `Error` normally carries a failing status. OPC batch methods also use
+    /// `S_FALSE` (`PARTIAL_SUCCESS`) as a completion signal, so that one
+    /// non-failing value is preserved. Any other success code stored in an
+    /// `Error` is a contract violation and is normalized to `UNEXPECTED` to
+    /// prevent a Rust `Err` from becoming an apparent COM success.
+    pub fn boundary_status(&self) -> ErrorCode {
+        match self.code {
+            ErrorCode::PARTIAL_SUCCESS => ErrorCode::PARTIAL_SUCCESS,
+            code if code.is_failure() => code,
+            _ => ErrorCode::UNEXPECTED,
+        }
+    }
+
     pub fn with_message(mut self, message: impl Into<Cow<'static, str>>) -> Self {
         self.message = message.into();
         self
@@ -157,5 +173,42 @@ mod tests {
     fn failure_uses_signed_status_bit() {
         assert!(ErrorCode::INVALID_ARGUMENT.is_failure());
         assert!(ErrorCode::OK.is_success());
+    }
+
+    #[test]
+    fn boundary_status_rejects_success_codes_stored_as_errors() {
+        assert_eq!(
+            Error::from_code(ErrorCode::OK).boundary_status(),
+            ErrorCode::UNEXPECTED
+        );
+        assert_eq!(
+            Error::from_code(ErrorCode::from_raw(7)).boundary_status(),
+            ErrorCode::UNEXPECTED
+        );
+        assert_eq!(
+            Error::from_code(ErrorCode::INVALID_ARGUMENT).boundary_status(),
+            ErrorCode::INVALID_ARGUMENT
+        );
+        assert_eq!(
+            Error::from_code(ErrorCode::PARTIAL_SUCCESS).boundary_status(),
+            ErrorCode::PARTIAL_SUCCESS
+        );
+    }
+
+    #[test]
+    fn constructors_and_known_codes_preserve_error_semantics() {
+        assert_eq!(
+            Error::from_code(ErrorCode::NULL_POINTER).kind(),
+            ErrorKind::NullPointer
+        );
+        assert_eq!(
+            Error::from_code(ErrorCode::TYPE_MISMATCH).kind(),
+            ErrorKind::Other
+        );
+
+        let error = Error::out_of_memory("allocation failed");
+        assert_eq!(error.code(), ErrorCode::OUT_OF_MEMORY);
+        assert_eq!(error.kind(), ErrorKind::OutOfMemory);
+        assert_eq!(error.message(), "allocation failed");
     }
 }

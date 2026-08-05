@@ -59,21 +59,35 @@ pub enum Value {
     Array(Vec<Value>),
 }
 
-impl From<i32> for Value {
-    fn from(value: i32) -> Self {
-        Self::I32(value)
-    }
+macro_rules! impl_from_scalar {
+    ($($type:ty => $variant:ident),+ $(,)?) => {
+        $(
+            impl From<$type> for Value {
+                fn from(value: $type) -> Self {
+                    Self::$variant(value)
+                }
+            }
+        )+
+    };
 }
 
-impl From<f64> for Value {
-    fn from(value: f64) -> Self {
-        Self::F64(value)
-    }
+impl_from_scalar! {
+    bool => Bool,
+    i8 => I8,
+    u8 => U8,
+    i16 => I16,
+    u16 => U16,
+    i32 => I32,
+    u32 => U32,
+    i64 => I64,
+    u64 => U64,
+    f32 => F32,
+    f64 => F64,
 }
 
-impl From<bool> for Value {
-    fn from(value: bool) -> Self {
-        Self::Bool(value)
+impl From<Vec<u8>> for Value {
+    fn from(value: Vec<u8>) -> Self {
+        Self::Bytes(value)
     }
 }
 
@@ -86,5 +100,18 @@ impl From<String> for Value {
 impl From<&str> for Value {
     fn from(value: &str) -> Self {
         Self::String(value.to_owned())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn scalar_and_byte_conversions_cover_the_owned_value_variants() {
+        assert_eq!(Value::from(7_i16), Value::I16(7));
+        assert_eq!(Value::from(7_u32), Value::U32(7));
+        assert_eq!(Value::from(1.5_f32), Value::F32(1.5));
+        assert_eq!(Value::from(vec![1_u8, 2]), Value::Bytes(vec![1, 2]));
     }
 }

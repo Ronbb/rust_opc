@@ -5,9 +5,11 @@ use std::ptr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 
+use opc_classic_abi::{IOPCCommon as AbiCommon, IOPCCommon_Impl as AbiCommon_Impl};
 use opc_classic_types::{ComObject, Error, ErrorCode, Result, Timestamp, Value, ValueType};
 use opc_classic_utils::server::{borrow_input, catch_ffi, initialize_output};
 use opc_classic_utils::{Cleanup, CoTaskMemArrayBuilder, DropElements, NoCleanup, OwnedPwstr};
+use opc_comn_bindings::server::{CommonService, UnsupportedCommonService};
 use windows::Win32::Foundation::{E_INVALIDARG, E_NOTIMPL, E_OUTOFMEMORY, E_POINTER, E_UNEXPECTED};
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 use windows::Win32::System::Variant::VARIANT;
@@ -120,7 +122,13 @@ pub struct DaServer {
 
 impl DaServer {
     pub fn new(service: Arc<dyn DaService>) -> Self {
-        let inner: IOPCServer = DaServerAdapter::new(service.clone()).into();
+        Self::new_with_common(service, Arc::new(UnsupportedCommonService))
+    }
+
+    /// Creates a DA server whose COM identity delegates `IOPCCommon` to the
+    /// supplied common service.
+    pub fn new_with_common(service: Arc<dyn DaService>, common: Arc<dyn CommonService>) -> Self {
+        let inner: IOPCServer = DaServerAdapter::new(service.clone(), common).into();
         Self { inner, service }
     }
 
@@ -133,20 +141,75 @@ impl DaServer {
     }
 }
 
-#[windows_core::implement(IOPCServer)]
+#[windows_core::implement(IOPCServer, AbiCommon)]
 struct DaServerAdapter {
     service: Arc<dyn DaService>,
+    common: Arc<dyn CommonService>,
     groups: Mutex<HashMap<u32, GroupEntry>>,
     next_group_handle: AtomicU32,
 }
 
 impl DaServerAdapter {
-    fn new(service: Arc<dyn DaService>) -> Self {
+    fn new(service: Arc<dyn DaService>, common: Arc<dyn CommonService>) -> Self {
         Self {
             service,
+            common,
             groups: Mutex::new(HashMap::new()),
             next_group_handle: AtomicU32::new(1),
         }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AbiCommon_Impl for DaServerAdapter_Impl {
+    fn SetLocaleID(&self, locale: u32) -> AbiResult<()> {
+        serve(|| self.common.set_locale(locale))
+    }
+
+    fn GetLocaleID(&self) -> AbiResult<u32> {
+        serve(|| self.common.locale())
+    }
+
+    fn QueryAvailableLocaleIDs(&self, count: *mut u32, values: *mut *mut u32) -> AbiResult<()> {
+        serve(|| {
+            unsafe {
+                initialize_output(count)?;
+                initialize_output(values)?;
+            }
+            let locales = self.common.available_locales()?;
+            let count_value = u32::try_from(locales.len())
+                .map_err(|_| Error::out_of_memory("locale array exceeds the OPC ABI"))?;
+            let mut output = CoTaskMemArrayBuilder::new(locales.len(), NoCleanup)?;
+            for locale in locales {
+                output
+                    .push(locale)
+                    .map_err(|_| Error::unexpected("locale output exceeds its capacity"))?;
+            }
+            let (output, _) = output.finish()?.into_raw_parts();
+            unsafe {
+                count.write(count_value);
+                values.write(output);
+            }
+            Ok(())
+        })
+    }
+
+    fn GetErrorString(&self, error: HRESULT) -> AbiResult<PWSTR> {
+        serve(|| {
+            let value = self.common.error_string(error_code_from_abi(error))?;
+            Ok(PWSTR(OwnedPwstr::new(value)?.into_raw()))
+        })
+    }
+
+    fn SetClientName(&self, name: &PCWSTR) -> AbiResult<()> {
+        serve(|| {
+            if name.is_null() {
+                return Err(Error::null_pointer("null OPC Common client name"));
+            }
+            let name = unsafe { name.to_string() }
+                .map_err(|_| Error::invalid_argument("client name is invalid UTF-16"))?;
+            self.common.set_client_name(name)
+        })
     }
 }
 
@@ -174,9 +237,12 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
             if output.is_null() {
                 return Err(code_error(E_POINTER));
             }
-            // SAFETY: `OutRef<IUnknown>` is a transparent wrapper over the ABI
-            // output pointer. Initialize it without consuming `output`, which
-            // is needed again for the successful interface transfer.
+            // SAFETY: windows-core defines `OutRef<IUnknown>` as
+            // `#[repr(transparent)]` over this ABI pointer. Its safe `write`
+            // method consumes the one-shot wrapper, so it cannot both perform
+            // the required null initialization and later transfer the
+            // successful interface. Keep the wrapper for that final transfer
+            // and use its documented transparent layout only for initialization.
             let output_ptr: *mut *mut core::ffi::c_void =
                 unsafe { std::mem::transmute_copy(&output) };
             unsafe { initialize_output(output_ptr)? };
@@ -211,16 +277,10 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
             };
             let group: IUnknown = DaGroupAdapter::new(service, state).into();
             let requested = query_interface(&group, unsafe { &*iid })?;
-            self.groups
-                .lock()
-                .map_err(|_| code_error(E_UNEXPECTED))?
-                .insert(
-                    handle,
-                    GroupEntry {
-                        name,
-                        object: group,
-                    },
-                );
+            let mut groups = self.groups.lock().map_err(|_| code_error(E_UNEXPECTED))?;
+            groups
+                .try_reserve(1)
+                .map_err(|_| code_error(E_OUTOFMEMORY))?;
             output
                 .write(Some(requested))
                 .map_err(crate::abi::from_abi_error)?;
@@ -228,6 +288,14 @@ impl IOPCServer_Impl for DaServerAdapter_Impl {
                 server_handle.write(handle);
                 revised_update_rate.write(requested_update_rate);
             }
+            let previous = groups.insert(
+                handle,
+                GroupEntry {
+                    name,
+                    object: group,
+                },
+            );
+            debug_assert!(previous.is_none(), "group handles never collide");
             Ok(())
         })
     }
@@ -532,13 +600,33 @@ impl IOPCSyncIO_Impl for DaGroupAdapter_Impl {
             unsafe { initialize_output(errors)? };
             let handles = unsafe { borrow_input(handles, count)? };
             let values = unsafe { borrow_input(values, count)? };
-            let owned: Vec<_> = handles
-                .iter()
-                .zip(values)
-                .map(|(handle, value)| Ok((ServerItemHandle(*handle), value_from_abi(value)?)))
-                .collect::<Result<_>>()?;
-            let returned = self.service.write(&owned)?;
-            write_unit_results(returned, count as usize, errors)
+            let mut owned = Vec::with_capacity(count as usize);
+            let mut conversion_errors = Vec::with_capacity(count as usize);
+            for (handle, value) in handles.iter().zip(values) {
+                match value_from_abi(value) {
+                    Ok(value) => {
+                        owned.push((ServerItemHandle(*handle), value));
+                        conversion_errors.push(None);
+                    }
+                    Err(error) => conversion_errors.push(Some(error.code())),
+                }
+            }
+
+            let returned = if owned.is_empty() {
+                Vec::new()
+            } else {
+                self.service.write(&owned)?
+            };
+            ensure_batch_len(returned.len(), owned.len())?;
+            let mut returned = returned.into_iter();
+            let mut merged = Vec::with_capacity(count as usize);
+            for conversion_error in conversion_errors {
+                match conversion_error {
+                    Some(code) => merged.push(ServerItemResult::failure(code)),
+                    None => merged.push(returned.next().ok_or_else(|| code_error(E_UNEXPECTED))?),
+                }
+            }
+            write_unit_results(merged, count as usize, errors)
         })
     }
 }
@@ -818,12 +906,15 @@ fn batch_status(has_error: bool) -> Result<()> {
 }
 
 fn next_nonzero(counter: &AtomicU32) -> Result<u32> {
-    let value = counter.fetch_add(1, Ordering::Relaxed);
-    if value == 0 || value == u32::MAX {
-        Err(code_error(E_OUTOFMEMORY))
-    } else {
-        Ok(value)
-    }
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |value| {
+            if value == 0 {
+                None
+            } else {
+                value.checked_add(1)
+            }
+        })
+        .map_err(|_| code_error(E_OUTOFMEMORY))
 }
 
 fn query_interface(object: &IUnknown, iid: &GUID) -> Result<IUnknown> {
@@ -850,9 +941,33 @@ fn code_error(code: HRESULT) -> Error {
 mod tests {
     use super::*;
     use crate::client::{DaClient, GroupOptions, ServerState};
+    use windows::Win32::System::Variant::VT_DISPATCH;
 
     struct TestService;
     struct TestGroup;
+    struct TestCommon;
+
+    impl CommonService for TestCommon {
+        fn set_locale(&self, _locale: u32) -> Result<()> {
+            Ok(())
+        }
+
+        fn locale(&self) -> Result<u32> {
+            Ok(1_033)
+        }
+
+        fn available_locales(&self) -> Result<Vec<u32>> {
+            Ok(vec![1_033])
+        }
+
+        fn error_string(&self, _error: ErrorCode) -> Result<String> {
+            Ok("DA common error".into())
+        }
+
+        fn set_client_name(&self, _name: String) -> Result<()> {
+            Ok(())
+        }
+    }
 
     impl DaService for TestService {
         fn status(&self) -> Result<ServerStatus> {
@@ -954,6 +1069,10 @@ mod tests {
         }
 
         fn write(&self, values: &[(ServerItemHandle, Value)]) -> Result<Vec<ServerItemResult<()>>> {
+            assert!(
+                !values.is_empty(),
+                "service should not be called when every VARIANT is invalid"
+            );
             Ok(values
                 .iter()
                 .map(|_| ServerItemResult::success(()))
@@ -964,9 +1083,10 @@ mod tests {
     #[test]
     fn client_and_server_adapters_round_trip_owned_values() {
         let apartment = opc_classic_utils::ComApartment::mta().unwrap();
-        let server = DaServer::new(Arc::new(TestService));
+        let server = DaServer::new_with_common(Arc::new(TestService), Arc::new(TestCommon));
         let client = DaClient::from_object(&apartment, &server.object()).unwrap();
 
+        assert_eq!(client.common().unwrap().locale().unwrap(), 1_033);
         let status = client.status().unwrap();
         assert_eq!(status.vendor_info, "rust-opc test");
 
@@ -982,5 +1102,96 @@ mod tests {
         assert_eq!(values[0].as_ref().unwrap().quality, 192);
         assert_eq!(values[0].as_ref().unwrap().value, Value::I32(42));
         group.close(false).unwrap();
+    }
+
+    fn test_group_io() -> IOPCSyncIO {
+        let state = GroupState {
+            update_rate: 1_000,
+            active: true,
+            name: "write-test".into(),
+            time_bias: 0,
+            percent_deadband: 0.0,
+            locale: 0,
+            client_handle: 0,
+            server_handle: 1,
+        };
+        DaGroupAdapter::new(Arc::new(TestGroup), state).into()
+    }
+
+    fn unsupported_variant() -> VARIANT {
+        let mut value = VARIANT::default();
+        unsafe { (*value.Anonymous.Anonymous).vt = VT_DISPATCH };
+        value
+    }
+
+    #[test]
+    fn write_preserves_item_indices_when_one_variant_is_unsupported() {
+        let io = test_group_io();
+        let handles = [10, 11, 12];
+        let values = [
+            VARIANT::from(1_i32),
+            unsupported_variant(),
+            VARIANT::from(3_i32),
+        ];
+        let mut errors = opc_classic_utils::CoTaskMemArrayOut::new(3, NoCleanup);
+
+        unsafe {
+            io.Write(
+                handles.len() as u32,
+                handles.as_ptr(),
+                values.as_ptr(),
+                errors.as_mut_ptr(),
+            )
+        }
+        .unwrap();
+
+        let errors = unsafe { errors.into_array() }.unwrap();
+        assert_eq!(
+            errors.as_slice(),
+            [
+                HRESULT(0),
+                HRESULT(ErrorCode::TYPE_MISMATCH.raw()),
+                HRESULT(0)
+            ]
+        );
+    }
+
+    #[test]
+    fn write_does_not_call_service_when_all_variants_are_unsupported() {
+        let io = test_group_io();
+        let handles = [10, 11];
+        let values = [unsupported_variant(), unsupported_variant()];
+        let mut errors = opc_classic_utils::CoTaskMemArrayOut::new(2, NoCleanup);
+
+        unsafe {
+            io.Write(
+                handles.len() as u32,
+                handles.as_ptr(),
+                values.as_ptr(),
+                errors.as_mut_ptr(),
+            )
+        }
+        .unwrap();
+
+        let errors = unsafe { errors.into_array() }.unwrap();
+        assert_eq!(
+            errors.as_slice(),
+            [
+                HRESULT(ErrorCode::TYPE_MISMATCH.raw()),
+                HRESULT(ErrorCode::TYPE_MISMATCH.raw())
+            ]
+        );
+    }
+
+    #[test]
+    fn group_handle_allocator_stops_before_wraparound() {
+        let counter = AtomicU32::new(u32::MAX - 1);
+
+        assert_eq!(next_nonzero(&counter).unwrap(), u32::MAX - 1);
+        for _ in 0..2 {
+            let error = next_nonzero(&counter).unwrap_err();
+            assert_eq!(error.code(), ErrorCode::OUT_OF_MEMORY);
+            assert_eq!(counter.load(Ordering::Relaxed), u32::MAX);
+        }
     }
 }

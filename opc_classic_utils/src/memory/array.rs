@@ -318,4 +318,57 @@ mod tests {
         assert!(array.is_empty());
         assert!(array.as_ptr().is_null());
     }
+
+    #[test]
+    fn raw_transfer_does_not_clean_initialized_elements() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut builder = CoTaskMemArrayBuilder::new(2, DropElements).unwrap();
+        builder
+            .push(CountDrop {
+                drops: drops.clone(),
+            })
+            .ok()
+            .unwrap();
+        builder
+            .push(CountDrop {
+                drops: drops.clone(),
+            })
+            .ok()
+            .unwrap();
+
+        let (ptr, len) = builder.finish().unwrap().into_raw_parts();
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+
+        // SAFETY: ownership was transferred by `into_raw_parts` immediately
+        // above and is re-adopted exactly once with the same cleanup policy.
+        let array = unsafe { CoTaskMemArray::from_raw_parts(ptr, len, DropElements) }.unwrap();
+        drop(array);
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn push_past_capacity_returns_the_original_value() {
+        let stored_drops = Arc::new(AtomicUsize::new(0));
+        let returned_drops = Arc::new(AtomicUsize::new(0));
+        let mut builder = CoTaskMemArrayBuilder::new(1, DropElements).unwrap();
+        builder
+            .push(CountDrop {
+                drops: stored_drops.clone(),
+            })
+            .ok()
+            .unwrap();
+
+        let returned = builder
+            .push(CountDrop {
+                drops: returned_drops.clone(),
+            })
+            .expect_err("a full builder returns the unconsumed value");
+        assert_eq!(stored_drops.load(Ordering::Relaxed), 0);
+        assert_eq!(returned_drops.load(Ordering::Relaxed), 0);
+
+        drop(returned);
+        assert_eq!(returned_drops.load(Ordering::Relaxed), 1);
+        drop(builder);
+        assert_eq!(stored_drops.load(Ordering::Relaxed), 1);
+    }
 }

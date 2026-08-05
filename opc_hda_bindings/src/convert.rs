@@ -13,7 +13,13 @@ pub(crate) fn from_abi_error(error: windows_core::Error) -> Error {
 }
 
 pub(crate) fn to_abi_error(error: Error) -> windows_core::Error {
-    windows_core::Error::from_hresult(windows_core::HRESULT(error.code().raw()))
+    let status = error.boundary_status();
+    let status = windows_core::HRESULT(status.raw());
+    if status.0 == ErrorCode::PARTIAL_SUCCESS.raw() {
+        windows_core::Error::from_hresult(status)
+    } else {
+        windows_core::Error::new(status, error.message())
+    }
 }
 
 pub(crate) fn guid_to_abi(value: &Guid) -> windows_core::GUID {
@@ -40,6 +46,10 @@ pub(crate) fn interface_from_object<T: Interface>(value: &ComObject) -> Result<T
     let iid = Guid::new(iid.data1, iid.data2, iid.data3, iid.data4);
     let requested = value.query_interface(&iid)?;
     Ok(unsafe { T::from_raw(requested.into_raw()) })
+}
+
+pub(crate) fn checked_count(len: usize) -> Result<u32> {
+    u32::try_from(len).map_err(|_| Error::invalid_argument("item count exceeds u32"))
 }
 
 pub(crate) fn value_to_abi(value: &Value) -> Result<VARIANT> {

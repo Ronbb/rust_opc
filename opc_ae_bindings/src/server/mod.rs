@@ -3,9 +3,11 @@
 
 use std::sync::Arc;
 
+use opc_classic_abi::{IOPCCommon as AbiCommon, IOPCCommon_Impl as AbiCommon_Impl};
 use opc_classic_types::{ComObject, Error, ErrorCode, Result, Timestamp};
 use opc_classic_utils::server::{borrow_input, catch_ffi, initialize_output};
 use opc_classic_utils::{Cleanup, CoTaskMemArrayBuilder, FreePwstrElements, NoCleanup, OwnedPwstr};
+use opc_comn_bindings::server::{CommonService, UnsupportedCommonService};
 use windows::Win32::Foundation::FILETIME;
 use windows_core::{GUID, HRESULT, IUnknown, OutRef, PCWSTR, PWSTR, Result as AbiResult};
 
@@ -59,7 +61,13 @@ pub struct AeServer {
 
 impl AeServer {
     pub fn new(service: Arc<dyn AeService>) -> Self {
-        let interface: IOPCEventServer = AeServerAdapter { service }.into();
+        Self::new_with_common(service, Arc::new(UnsupportedCommonService))
+    }
+
+    /// Creates an AE server whose COM identity delegates `IOPCCommon` to the
+    /// supplied common service.
+    pub fn new_with_common(service: Arc<dyn AeService>, common: Arc<dyn CommonService>) -> Self {
+        let interface: IOPCEventServer = AeServerAdapter { service, common }.into();
         Self {
             object: object_from_interface(&interface),
         }
@@ -70,9 +78,62 @@ impl AeServer {
     }
 }
 
-#[windows_core::implement(IOPCEventServer)]
+#[windows_core::implement(IOPCEventServer, AbiCommon)]
 struct AeServerAdapter {
     service: Arc<dyn AeService>,
+    common: Arc<dyn CommonService>,
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AbiCommon_Impl for AeServerAdapter_Impl {
+    fn SetLocaleID(&self, locale: u32) -> AbiResult<()> {
+        service_call(|| self.common.set_locale(locale))
+    }
+
+    fn GetLocaleID(&self) -> AbiResult<u32> {
+        service_call(|| self.common.locale())
+    }
+
+    fn QueryAvailableLocaleIDs(&self, count: *mut u32, values: *mut *mut u32) -> AbiResult<()> {
+        service_call(|| {
+            unsafe {
+                initialize_output(count)?;
+                initialize_output(values)?;
+            }
+            let locales = self.common.available_locales()?;
+            let count_value = checked_count(locales.len())?;
+            let mut output = CoTaskMemArrayBuilder::new(locales.len(), NoCleanup)?;
+            for locale in locales {
+                output
+                    .push(locale)
+                    .map_err(|_| Error::unexpected("locale output exceeds its capacity"))?;
+            }
+            let (output, _) = output.finish()?.into_raw_parts();
+            unsafe {
+                count.write(count_value);
+                values.write(output);
+            }
+            Ok(())
+        })
+    }
+
+    fn GetErrorString(&self, error: HRESULT) -> AbiResult<PWSTR> {
+        service_call(|| {
+            let value = self.common.error_string(ErrorCode::from_raw(error.0))?;
+            Ok(PWSTR(OwnedPwstr::new(value)?.into_raw()))
+        })
+    }
+
+    fn SetClientName(&self, name: &PCWSTR) -> AbiResult<()> {
+        service_call(|| {
+            if name.is_null() {
+                return Err(Error::null_pointer("null OPC Common client name"));
+            }
+            let name = unsafe { name.to_string() }
+                .map_err(|_| Error::invalid_argument("client name is invalid UTF-16"))?;
+            self.common.set_client_name(name)
+        })
+    }
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
@@ -108,10 +169,15 @@ impl IOPCEventServer_Impl for AeServerAdapter_Impl {
         _max_size: u32,
         _client_subscription: u32,
         _iid: *const GUID,
-        _output: OutRef<IUnknown>,
-        _revised_buffer_time: *mut u32,
-        _revised_max_size: *mut u32,
+        output: OutRef<IUnknown>,
+        revised_buffer_time: *mut u32,
+        revised_max_size: *mut u32,
     ) -> AbiResult<()> {
+        unsafe {
+            initialize_output(revised_buffer_time).map_err(to_abi_error)?;
+            initialize_output(revised_max_size).map_err(to_abi_error)?;
+        }
+        output.write(None)?;
         not_implemented("AE event subscriptions are not implemented")
     }
 
@@ -265,10 +331,15 @@ impl IOPCEventServer_Impl for AeServerAdapter_Impl {
         _subcondition_name: &PCWSTR,
         _count: u32,
         _attribute_ids: *const u32,
-        _item_ids: *mut *mut PWSTR,
-        _node_names: *mut *mut PWSTR,
-        _class_ids: *mut *mut GUID,
+        item_ids: *mut *mut PWSTR,
+        node_names: *mut *mut PWSTR,
+        class_ids: *mut *mut GUID,
     ) -> AbiResult<()> {
+        unsafe {
+            initialize_output(item_ids).map_err(to_abi_error)?;
+            initialize_output(node_names).map_err(to_abi_error)?;
+            initialize_output(class_ids).map_err(to_abi_error)?;
+        }
         not_implemented("AE item translation is not implemented")
     }
 
@@ -319,8 +390,9 @@ impl IOPCEventServer_Impl for AeServerAdapter_Impl {
         _condition_names: *const PCWSTR,
         _active_times: *const FILETIME,
         _cookies: *const u32,
-        _errors: *mut *mut HRESULT,
+        errors: *mut *mut HRESULT,
     ) -> AbiResult<()> {
+        unsafe { initialize_output(errors).map_err(to_abi_error)? };
         not_implemented("AE condition acknowledgement is not implemented")
     }
 
@@ -389,12 +461,42 @@ fn checked_count(len: usize) -> Result<u32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::client::AeClient;
+    use crate::client::{AeClient, EventSubscriptionOptions};
+    use windows_core::Interface;
 
-    struct TestService;
+    struct TestService {
+        fail_status: bool,
+    }
+
+    struct TestCommon;
+
+    impl CommonService for TestCommon {
+        fn set_locale(&self, _locale: u32) -> Result<()> {
+            Ok(())
+        }
+
+        fn locale(&self) -> Result<u32> {
+            Ok(1_033)
+        }
+
+        fn available_locales(&self) -> Result<Vec<u32>> {
+            Ok(vec![1_033])
+        }
+
+        fn error_string(&self, _error: ErrorCode) -> Result<String> {
+            Ok("AE common error".into())
+        }
+
+        fn set_client_name(&self, _name: String) -> Result<()> {
+            Ok(())
+        }
+    }
 
     impl AeService for TestService {
         fn status(&self) -> Result<AeStatus> {
+            if self.fail_status {
+                return Err(Error::invalid_argument("test status failure"));
+            }
             Ok(AeStatus {
                 start_time: Timestamp::default(),
                 current_time: Timestamp::default(),
@@ -441,9 +543,13 @@ mod tests {
     #[test]
     fn client_and_server_round_trip_without_public_windows_types() {
         let apartment = opc_classic_utils::ComApartment::mta().unwrap();
-        let server = AeServer::new(Arc::new(TestService));
+        let server = AeServer::new_with_common(
+            Arc::new(TestService { fail_status: false }),
+            Arc::new(TestCommon),
+        );
         let client = AeClient::from_object(&apartment, &server.object()).unwrap();
 
+        assert_eq!(client.common().unwrap().locale().unwrap(), 1_033);
         let status = client.status().unwrap();
         assert_eq!(status.vendor_info, "rust-opc test");
         assert_eq!(status.state, AeServerState::Running);
@@ -454,7 +560,105 @@ mod tests {
         );
         assert_eq!(client.condition_names(10).unwrap(), ["high"]);
         assert_eq!(client.subcondition_names("high").unwrap(), ["high-high"]);
+        assert_eq!(client.source_conditions("plant").unwrap(), ["high"]);
         assert_eq!(client.event_attributes(10).unwrap()[0].description, "limit");
         client.enable_areas(&["plant"]).unwrap();
+        client.disable_areas(&["plant"]).unwrap();
+        client.enable_sources(&["reactor"]).unwrap();
+        client.disable_sources(&["reactor"]).unwrap();
+
+        let error = client
+            .create_subscription(EventSubscriptionOptions {
+                active: true,
+                buffer_time: 100,
+                max_size: 10,
+                client_handle: 1,
+            })
+            .err()
+            .expect("subscriptions are not implemented");
+        assert_eq!(error.code(), ErrorCode::NOT_IMPLEMENTED);
+        let error = client
+            .area_browser()
+            .err()
+            .expect("area browsing is not implemented");
+        assert_eq!(error.code(), ErrorCode::NOT_IMPLEMENTED);
+    }
+
+    #[test]
+    fn service_error_survives_the_abi_boundary() {
+        let apartment = opc_classic_utils::ComApartment::mta().unwrap();
+        let server = AeServer::new(Arc::new(TestService { fail_status: true }));
+        let client = AeClient::from_object(&apartment, &server.object()).unwrap();
+
+        let error = client.status().unwrap_err();
+        assert_eq!(error.code(), ErrorCode::INVALID_ARGUMENT);
+        assert!(error.message().contains("test status failure"));
+    }
+
+    #[test]
+    fn unimplemented_methods_null_initialize_outputs() {
+        let server = AeServer::new(Arc::new(TestService { fail_status: false }));
+        let object = server.object();
+        let event_server: IOPCEventServer = crate::abi::interface_from_object(&object).unwrap();
+
+        let mut subscription = Some(event_server.cast::<IUnknown>().unwrap());
+        let mut revised_buffer_time = u32::MAX;
+        let mut revised_max_size = u32::MAX;
+        let error = unsafe {
+            event_server.CreateEventSubscription(
+                true,
+                100,
+                10,
+                1,
+                std::ptr::null(),
+                &mut subscription,
+                &mut revised_buffer_time,
+                &mut revised_max_size,
+            )
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), HRESULT(0x8000_4001_u32 as i32));
+        assert!(subscription.is_none());
+        assert_eq!(revised_buffer_time, 0);
+        assert_eq!(revised_max_size, 0);
+
+        let mut item_ids = std::ptr::NonNull::<PWSTR>::dangling().as_ptr();
+        let mut node_names = std::ptr::NonNull::<PWSTR>::dangling().as_ptr();
+        let mut class_ids = std::ptr::NonNull::<GUID>::dangling().as_ptr();
+        let error = unsafe {
+            event_server.TranslateToItemIDs(
+                PCWSTR::null(),
+                0,
+                PCWSTR::null(),
+                PCWSTR::null(),
+                0,
+                std::ptr::null(),
+                &mut item_ids,
+                &mut node_names,
+                &mut class_ids,
+            )
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), HRESULT(0x8000_4001_u32 as i32));
+        assert!(item_ids.is_null());
+        assert!(node_names.is_null());
+        assert!(class_ids.is_null());
+
+        let mut errors = std::ptr::NonNull::<HRESULT>::dangling().as_ptr();
+        let error = unsafe {
+            event_server.AckCondition(
+                0,
+                PCWSTR::null(),
+                PCWSTR::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                &mut errors,
+            )
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), HRESULT(0x8000_4001_u32 as i32));
+        assert!(errors.is_null());
     }
 }

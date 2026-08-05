@@ -40,18 +40,14 @@ impl CommonClient {
 
     pub fn available_locales(&self) -> Result<Vec<u32>> {
         let mut count = 0u32;
-        let mut output = CoTaskMemArrayOut::new(0, NoCleanup);
+        let mut output = CoTaskMemArrayOut::new_reported(NoCleanup);
         let call = unsafe {
             self.inner
                 .QueryAvailableLocaleIDs(&mut count, output.as_mut_ptr())
         };
-        // SAFETY: The IDL declares a task-allocated array with `count` elements.
-        // Adopt it before propagating the call result so an allocation returned
-        // alongside a failure cannot leak.
-        unsafe { output.set_len(count as usize) };
-        let output = unsafe { output.into_array() };
         call.map_err(from_abi_error)?;
-        let output = output?;
+        // The element count is trusted only after the COM call reports success.
+        let output = unsafe { output.into_array_with_len(count as usize) }?;
         Ok(output.as_slice().to_vec())
     }
 

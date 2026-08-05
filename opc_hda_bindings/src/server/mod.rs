@@ -2,11 +2,13 @@
 
 use std::sync::Arc;
 
+use opc_classic_abi::{IOPCCommon as AbiCommon, IOPCCommon_Impl as AbiCommon_Impl};
 use opc_classic_types::{ComObject, Error, ErrorCode, Result, Timestamp};
 use opc_classic_utils::server::{borrow_input, catch_ffi, initialize_output};
 use opc_classic_utils::{
     Cleanup, CoTaskMemArrayBuilder, DropElements, FreePwstrElements, NoCleanup, OwnedPwstr,
 };
+use opc_comn_bindings::server::{CommonService, UnsupportedCommonService};
 use windows::Win32::Foundation::{E_NOTIMPL, FILETIME};
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::System::Variant::VARIANT;
@@ -17,7 +19,8 @@ use crate::client::{
     HistoricalItemValues,
 };
 use crate::convert::{
-    object_from_interface, timestamp_from_abi, timestamp_to_abi, to_abi_error, value_to_abi,
+    checked_count, object_from_interface, timestamp_from_abi, timestamp_to_abi, to_abi_error,
+    value_to_abi,
 };
 use crate::{
     IOPCHDA_Browser, IOPCHDA_Server, IOPCHDA_Server_Impl, IOPCHDA_SyncRead, IOPCHDA_SyncRead_Impl,
@@ -80,14 +83,15 @@ impl HdaServiceHandle {
     }
 }
 
-#[windows_core::implement(IOPCHDA_Server, IOPCHDA_SyncRead)]
+#[windows_core::implement(IOPCHDA_Server, IOPCHDA_SyncRead, AbiCommon)]
 struct HdaServerAdapter {
     service: Arc<dyn HdaService>,
+    common: Arc<dyn CommonService>,
 }
 
 impl HdaServerAdapter {
-    fn new(service: Arc<dyn HdaService>) -> Self {
-        Self { service }
+    fn new(service: Arc<dyn HdaService>, common: Arc<dyn CommonService>) -> Self {
+        Self { service, common }
     }
 }
 
@@ -99,7 +103,19 @@ pub struct HdaServer {
 
 impl HdaServer {
     pub fn new(service: Arc<dyn HdaService>) -> Self {
-        let interface: IOPCHDA_Server = HdaServerAdapter::new(service).into();
+        let interface: IOPCHDA_Server =
+            HdaServerAdapter::new(service, Arc::new(UnsupportedCommonService)).into();
+        Self {
+            object: object_from_interface(interface),
+        }
+    }
+
+    /// Creates an HDA server whose COM identity also delegates OPC Common
+    /// operations to `common`. The domain service and common service remain
+    /// separate so existing `HdaService` implementations stay source
+    /// compatible while clients can query `IOPCCommon` from the same object.
+    pub fn new_with_common(service: Arc<dyn HdaService>, common: Arc<dyn CommonService>) -> Self {
+        let interface: IOPCHDA_Server = HdaServerAdapter::new(service, common).into();
         Self {
             object: object_from_interface(interface),
         }
@@ -107,6 +123,56 @@ impl HdaServer {
 
     pub fn object(&self) -> ComObject {
         self.object.clone()
+    }
+}
+
+impl AbiCommon_Impl for HdaServerAdapter_Impl {
+    fn SetLocaleID(&self, locale: u32) -> AbiResult<()> {
+        abi_call(|| self.common.set_locale(locale))
+    }
+
+    fn GetLocaleID(&self) -> AbiResult<u32> {
+        abi_call(|| self.common.locale())
+    }
+
+    fn QueryAvailableLocaleIDs(&self, count: *mut u32, values: *mut *mut u32) -> AbiResult<()> {
+        abi_call(|| {
+            unsafe {
+                initialize_output(count)?;
+                initialize_output(values)?;
+            }
+            let locales = self.common.available_locales()?;
+            let count_value = checked_count(locales.len())?;
+            let mut output = CoTaskMemArrayBuilder::new(locales.len(), NoCleanup)?;
+            for locale in locales {
+                push(&mut output, locale)?;
+            }
+            let output = output.finish()?;
+            let (ptr, _) = output.into_raw_parts();
+            unsafe {
+                count.write(count_value);
+                values.write(ptr);
+            }
+            Ok(())
+        })
+    }
+
+    fn GetErrorString(&self, error: HRESULT) -> AbiResult<PWSTR> {
+        abi_call(|| {
+            let value = self.common.error_string(ErrorCode::from_raw(error.0))?;
+            Ok(PWSTR(OwnedPwstr::new(value)?.into_raw()))
+        })
+    }
+
+    fn SetClientName(&self, name: &PCWSTR) -> AbiResult<()> {
+        abi_call(|| {
+            if name.is_null() {
+                return Err(Error::null_pointer("null OPC Common client name"));
+            }
+            let name = unsafe { name.to_string() }
+                .map_err(|_| Error::invalid_argument("client name is invalid UTF-16"))?;
+            self.common.set_client_name(name)
+        })
     }
 }
 
@@ -332,9 +398,13 @@ impl IOPCHDA_Server_Impl for HdaServerAdapter_Impl {
         _attribute_ids: *const u32,
         _operators: *const tagOPCHDA_OPERATORCODES,
         _filters: *const VARIANT,
-        _browser: OutRef<IOPCHDA_Browser>,
-        _errors: *mut *mut HRESULT,
+        browser: OutRef<IOPCHDA_Browser>,
+        errors: *mut *mut HRESULT,
     ) -> AbiResult<()> {
+        // Even an unimplemented method must leave every output in a defined
+        // state. This matters for callers that release outputs on failure.
+        unsafe { initialize_output(errors).map_err(to_abi_error)? };
+        browser.write(None)?;
         Err(AbiError::from_hresult(E_NOTIMPL))
     }
 }
@@ -378,8 +448,20 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
             for item in result.items {
                 match item.result {
                     Ok(item) => {
-                        push_hda_item(&mut values, build_hda_item(item)?)?;
-                        push(&mut item_errors, HRESULT(0))?;
+                        match build_hda_item(item) {
+                            Ok(item) => {
+                                push_hda_item(&mut values, item)?;
+                                push(&mut item_errors, HRESULT(0))?;
+                            }
+                            Err(error) => {
+                                // A malformed/unsupported value affects only
+                                // this item. Keep the output arrays aligned and
+                                // report the conversion error in ppErrors.
+                                has_error = true;
+                                push_hda_item(&mut values, tagOPCHDA_ITEM::default())?;
+                                push(&mut item_errors, HRESULT(error.code().raw()))?;
+                            }
+                        }
                     }
                     Err(error) => {
                         has_error = true;
@@ -410,9 +492,13 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _count: u32,
         _server_handles: *const u32,
         _aggregates: *const u32,
-        _item_values: *mut *mut tagOPCHDA_ITEM,
-        _errors: *mut *mut HRESULT,
+        item_values: *mut *mut tagOPCHDA_ITEM,
+        errors: *mut *mut HRESULT,
     ) -> AbiResult<()> {
+        unsafe {
+            initialize_output(item_values).map_err(to_abi_error)?;
+            initialize_output(errors).map_err(to_abi_error)?;
+        }
         Err(AbiError::from_hresult(E_NOTIMPL))
     }
 
@@ -422,9 +508,13 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _timestamps: *const FILETIME,
         _item_count: u32,
         _server_handles: *const u32,
-        _item_values: *mut *mut tagOPCHDA_ITEM,
-        _errors: *mut *mut HRESULT,
+        item_values: *mut *mut tagOPCHDA_ITEM,
+        errors: *mut *mut HRESULT,
     ) -> AbiResult<()> {
+        unsafe {
+            initialize_output(item_values).map_err(to_abi_error)?;
+            initialize_output(errors).map_err(to_abi_error)?;
+        }
         Err(AbiError::from_hresult(E_NOTIMPL))
     }
 
@@ -435,9 +525,13 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _maximum_values: u32,
         _count: u32,
         _server_handles: *const u32,
-        _item_values: *mut *mut tagOPCHDA_MODIFIEDITEM,
-        _errors: *mut *mut HRESULT,
+        item_values: *mut *mut tagOPCHDA_MODIFIEDITEM,
+        errors: *mut *mut HRESULT,
     ) -> AbiResult<()> {
+        unsafe {
+            initialize_output(item_values).map_err(to_abi_error)?;
+            initialize_output(errors).map_err(to_abi_error)?;
+        }
         Err(AbiError::from_hresult(E_NOTIMPL))
     }
 
@@ -448,9 +542,13 @@ impl IOPCHDA_SyncRead_Impl for HdaServerAdapter_Impl {
         _server_handle: u32,
         _attribute_count: u32,
         _attribute_ids: *const u32,
-        _attribute_values: *mut *mut tagOPCHDA_ATTRIBUTE,
-        _errors: *mut *mut HRESULT,
+        attribute_values: *mut *mut tagOPCHDA_ATTRIBUTE,
+        errors: *mut *mut HRESULT,
     ) -> AbiResult<()> {
+        unsafe {
+            initialize_output(attribute_values).map_err(to_abi_error)?;
+            initialize_output(errors).map_err(to_abi_error)?;
+        }
         Err(AbiError::from_hresult(E_NOTIMPL))
     }
 }
@@ -594,10 +692,6 @@ fn ensure_batch_len(actual: usize, expected: usize) -> Result<()> {
     }
 }
 
-fn checked_count(len: usize) -> Result<u32> {
-    u32::try_from(len).map_err(|_| Error::invalid_argument("item count exceeds u32"))
-}
-
 fn batch_status(has_error: bool) -> Result<()> {
     if has_error {
         Err(Error::from_code(ErrorCode::PARTIAL_SUCCESS))
@@ -624,6 +718,8 @@ mod tests {
     use super::*;
     use crate::client::{HdaClient, HdaClientHandle, HistoricalSample};
     use opc_classic_types::{Value, ValueType};
+    use opc_comn_bindings::client::CommonClient;
+    use opc_comn_bindings::server::CommonService;
 
     struct TestService;
 
@@ -682,7 +778,13 @@ mod tests {
         fn validate_item_ids(&self, item_ids: &[String]) -> Result<Vec<HdaServerItemResult<()>>> {
             Ok(item_ids
                 .iter()
-                .map(|_| HdaServerItemResult::success(()))
+                .map(|item_id| {
+                    if item_id == "bad" {
+                        HdaServerItemResult::failure(ErrorCode::INVALID_ARGUMENT)
+                    } else {
+                        HdaServerItemResult::success(())
+                    }
+                })
                 .collect())
         }
 
@@ -705,14 +807,21 @@ mod tests {
                 resolved_end,
                 items: handles
                     .iter()
-                    .map(|_| {
+                    .map(|handle| {
+                        if handle.0 == 98 {
+                            return HdaServerItemResult::failure(ErrorCode::INVALID_ARGUMENT);
+                        }
                         HdaServerItemResult::success(HistoricalItemValues {
                             client_handle: HdaClientHandle(7),
                             aggregate: 0,
                             samples: vec![HistoricalSample {
                                 timestamp: Timestamp::default(),
                                 quality: 192,
-                                value: Value::I32(42),
+                                value: if handle.0 == 99 {
+                                    Value::Array(vec![Value::I32(42)])
+                                } else {
+                                    Value::I32(42)
+                                },
                             }],
                         })
                     })
@@ -726,6 +835,12 @@ mod tests {
         let apartment = opc_classic_utils::ComApartment::mta().unwrap();
         let server = HdaServer::new(Arc::new(TestService));
         let client = HdaClient::from_object(&apartment, &server.object()).unwrap();
+
+        let common = client.common().unwrap();
+        assert_eq!(
+            common.locale().unwrap_err().code(),
+            ErrorCode::NOT_IMPLEMENTED
+        );
 
         assert_eq!(client.attributes().unwrap()[0].name, "Data type");
         assert_eq!(client.aggregates().unwrap()[0].name, "Average");
@@ -750,6 +865,182 @@ mod tests {
         let item = read.items[0].as_ref().unwrap();
         assert_eq!(item.samples.len(), 1);
         assert_eq!(item.samples[0].quality, 192);
+        let validation = client.validate_item_ids(&["item", "bad"]).unwrap();
+        assert!(validation[0].is_ok());
+        assert_eq!(
+            validation[1].as_ref().unwrap_err().0,
+            ErrorCode::INVALID_ARGUMENT
+        );
         client.release_item_handles(&[handle]).unwrap();
+    }
+
+    struct TestCommon;
+
+    impl CommonService for TestCommon {
+        fn set_locale(&self, _locale: u32) -> Result<()> {
+            Ok(())
+        }
+
+        fn locale(&self) -> Result<u32> {
+            Ok(1_033)
+        }
+
+        fn available_locales(&self) -> Result<Vec<u32>> {
+            Ok(vec![1_033])
+        }
+
+        fn error_string(&self, _error: ErrorCode) -> Result<String> {
+            Ok("HDA test error".into())
+        }
+
+        fn set_client_name(&self, _name: String) -> Result<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn hda_server_exposes_common_on_the_same_identity() {
+        let apartment = opc_classic_utils::ComApartment::mta().unwrap();
+        let server = HdaServer::new_with_common(Arc::new(TestService), Arc::new(TestCommon));
+        let client = HdaClient::from_object(&apartment, &server.object()).unwrap();
+        let common: CommonClient = client.common().unwrap();
+        assert_eq!(common.locale().unwrap(), 1_033);
+        assert_eq!(
+            common.error_string(ErrorCode::INVALID_ARGUMENT).unwrap(),
+            "HDA test error"
+        );
+    }
+
+    #[test]
+    fn read_raw_reports_value_conversion_per_item() {
+        let apartment = opc_classic_utils::ComApartment::mta().unwrap();
+        let server = HdaServer::new(Arc::new(TestService));
+        let client = HdaClient::from_object(&apartment, &server.object()).unwrap();
+        let read = client
+            .read_raw(
+                HdaTime::Absolute(Timestamp::default()),
+                HdaTime::Absolute(Timestamp::default()),
+                10,
+                false,
+                &[
+                    HdaServerHandle(99),
+                    HdaServerHandle(98),
+                    HdaServerHandle(10),
+                ],
+            )
+            .unwrap();
+        assert_eq!(read.items.len(), 3);
+        assert_eq!(
+            read.items[0].as_ref().unwrap_err().0,
+            ErrorCode::NOT_IMPLEMENTED
+        );
+        assert_eq!(
+            read.items[1].as_ref().unwrap_err().0,
+            ErrorCode::INVALID_ARGUMENT
+        );
+        assert_eq!(
+            read.items[2].as_ref().unwrap().samples[0].value,
+            Value::I32(42)
+        );
+
+        let error = client
+            .read_raw(
+                HdaTime::Expression("NOW-1H".into()),
+                HdaTime::Absolute(Timestamp::default()),
+                10,
+                false,
+                &[HdaServerHandle(10)],
+            )
+            .unwrap_err();
+        assert_eq!(error.code(), ErrorCode::INVALID_ARGUMENT);
+    }
+
+    #[test]
+    fn unimplemented_methods_null_initialize_outputs() {
+        let server = HdaServer::new(Arc::new(TestService));
+        let object = server.object();
+        let metadata: IOPCHDA_Server = crate::convert::interface_from_object(&object).unwrap();
+        let reader: IOPCHDA_SyncRead = crate::convert::interface_from_object(&object).unwrap();
+
+        let mut browser = None;
+        let mut errors = std::ptr::NonNull::<HRESULT>::dangling().as_ptr();
+        let error = unsafe {
+            metadata.CreateBrowse(
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+                std::ptr::null(),
+                &mut browser,
+                &mut errors,
+            )
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), E_NOTIMPL);
+        assert!(browser.is_none());
+        assert!(errors.is_null());
+
+        let mut values = std::ptr::NonNull::<tagOPCHDA_ITEM>::dangling().as_ptr();
+        errors = std::ptr::NonNull::<HRESULT>::dangling().as_ptr();
+        let error = unsafe {
+            reader.ReadProcessed(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                FILETIME::default(),
+                0,
+                std::ptr::null(),
+                std::ptr::null(),
+                &mut values,
+                &mut errors,
+            )
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), E_NOTIMPL);
+        assert!(values.is_null());
+        assert!(errors.is_null());
+
+        values = std::ptr::NonNull::<tagOPCHDA_ITEM>::dangling().as_ptr();
+        errors = std::ptr::NonNull::<HRESULT>::dangling().as_ptr();
+        let error =
+            unsafe { reader.ReadAtTime(&[], 0, std::ptr::null(), &mut values, &mut errors) }
+                .unwrap_err();
+        assert_eq!(error.code(), E_NOTIMPL);
+        assert!(values.is_null());
+        assert!(errors.is_null());
+
+        let mut modified = std::ptr::NonNull::<tagOPCHDA_MODIFIEDITEM>::dangling().as_ptr();
+        errors = std::ptr::NonNull::<HRESULT>::dangling().as_ptr();
+        let error = unsafe {
+            reader.ReadModified(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+                0,
+                std::ptr::null(),
+                &mut modified,
+                &mut errors,
+            )
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), E_NOTIMPL);
+        assert!(modified.is_null());
+        assert!(errors.is_null());
+
+        let mut attributes = std::ptr::NonNull::<tagOPCHDA_ATTRIBUTE>::dangling().as_ptr();
+        errors = std::ptr::NonNull::<HRESULT>::dangling().as_ptr();
+        let error = unsafe {
+            reader.ReadAttribute(
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                0,
+                0,
+                std::ptr::null(),
+                &mut attributes,
+                &mut errors,
+            )
+        }
+        .unwrap_err();
+        assert_eq!(error.code(), E_NOTIMPL);
+        assert!(attributes.is_null());
+        assert!(errors.is_null());
     }
 }

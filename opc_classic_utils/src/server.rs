@@ -160,6 +160,11 @@ impl<'apartment> LocalClassRegistration<'apartment> {
         Self::register_in_context(apartment, class_id, factory, ClassContext::LOCAL_SERVER)
     }
 
+    /// Registers the class factory with `REGCLS_MULTIPLEUSE` in the requested
+    /// activation context.
+    ///
+    /// Other registration policies are intentionally not exposed until they
+    /// can be represented by a project-owned type rather than a Windows enum.
     pub fn register_in_context(
         apartment: &'apartment ComApartment,
         class_id: &Guid,
@@ -206,7 +211,13 @@ impl Drop for LocalClassRegistration<'_> {
 }
 
 fn to_abi_error(error: Error) -> AbiError {
-    AbiError::from_hresult(windows_core::HRESULT(error.code().raw()))
+    let status = error.boundary_status();
+    let status = windows_core::HRESULT(status.raw());
+    if status.0 == ErrorCode::PARTIAL_SUCCESS.raw() {
+        AbiError::from_hresult(status)
+    } else {
+        AbiError::new(status, error.message())
+    }
 }
 
 fn from_abi_error(error: AbiError) -> Error {
