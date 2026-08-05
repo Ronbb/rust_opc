@@ -1,18 +1,4 @@
-# OPC Common Bindings
+# OPC Common bindings
 
-Please see docs on [docs.rs](https://docs.rs/opc_comn_bindings/).
-
-## Example
-
-```rust
-// TODO
-```
-
-## Rebuild metadata
-
-Open **Developer Powershell for VS2022**.
-
-```batch
-cd .metadata
-dotnet build
-```
+`src/bindings.rs` is generated unsafe ABI code. Use `client` for ownership-aware
+wrappers and `server` for Rust service contracts and COM adapters.

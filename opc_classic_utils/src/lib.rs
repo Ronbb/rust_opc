@@ -1,8 +1,8 @@
-//! OPC Classic utilities and common functionality
-//!
-//! This crate provides shared utilities for OPC Classic implementations,
-//! including automatic memory management and common traits.
+//! Shared safe primitives for OPC Classic COM clients and servers.
 
+pub mod com;
 pub mod memory;
+pub mod server;
 
+pub use com::{ApartmentModel, ComApartment};
 pub use memory::*;

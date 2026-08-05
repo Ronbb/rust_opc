@@ -1,22 +1,15 @@
-//! Memory management utilities for OPC Classic
+//! Ownership-aware helpers for memory crossing an OPC Classic COM boundary.
 //!
-//! This module provides automatic memory management for COM objects
-//! using `CoTaskMemFree` for cleanup.
-//!
-//! COM memory management follows two patterns:
-//! 1. Caller allocates, callee frees (e.g., input parameters)
-//! 2. Callee allocates, caller frees (e.g., output parameters)
+//! Input arguments are normally borrowed for the duration of a COM call. Output
+//! allocations are owned by the receiver and use the deallocator required by
+//! their ABI type. The types in this module model that ownership directly.
 
-pub mod array;
-pub mod ptr;
-pub mod ptr_array;
-pub mod wstring;
+mod array;
+mod out;
+mod wide;
 
-// Re-export all public types for convenience
-pub use array::{CalleeAllocatedArray, CallerAllocatedArray};
-pub use ptr::{CalleeAllocatedPtr, CallerAllocatedPtr};
-pub use ptr_array::{CalleeAllocatedPtrArray, CallerAllocatedPtrArray};
-pub use wstring::{CalleeAllocatedWString, CallerAllocatedWString};
-
-#[cfg(test)]
-mod tests;
+pub use array::{
+    Cleanup, CoTaskMemArray, CoTaskMemArrayBuilder, DropElements, FreePwstrElements, NoCleanup,
+};
+pub use out::CoTaskMemOut;
+pub use wide::{OwnedPwstr, WideCString, WideStringError};

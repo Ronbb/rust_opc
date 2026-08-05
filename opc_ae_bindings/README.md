@@ -1,18 +1,6 @@
-# OPC Alarms & Event Bindings
+# OPC Alarms & Events bindings
 
-Please see docs on [docs.rs](https://docs.rs/opc_ae_bindings/).
-
-## Example
-
-```rust
-// TODO
-```
-
-## Rebuild metadata
-
-Open **Developer Powershell for VS2022**.
-
-```batch
-cd .metadata
-dotnet build
-```
+`src/bindings.rs` is generated unsafe ABI code. Use `client::AeClient` for
+status, categories, conditions and subscriptions. `server::AeServerAdapter`
+implements the query and enable/disable portion of `IOPCEventServer` from the
+safe `AeService` contract.

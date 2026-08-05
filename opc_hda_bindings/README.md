@@ -1,18 +1,6 @@
-# OPC Historical Data Access (HDA) Bindings
+# OPC Historical Data Access bindings
 
-Please see docs on [docs.rs](https://docs.rs/opc_hda_bindings/).
-
-## Example
-
-```rust
-// TODO
-```
-
-## Rebuild metadata
-
-Open **Developer Powershell for VS2022**.
-
-```batch
-cd .metadata
-dotnet build
-```
+`src/bindings.rs` is generated unsafe ABI code. Use `client::HdaClient` for
+ownership-aware metadata, handles and historical reads.
+`server::HdaServerAdapter` implements metadata, handle management and raw reads
+with transactional cleanup for every nested HDA item allocation.
