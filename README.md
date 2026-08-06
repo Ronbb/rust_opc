@@ -67,6 +67,20 @@ fn example() -> opc_classic_utils::Result<()> {
 }
 ```
 
+## OPC Classic integration test
+
+The real COM integration test is isolated from the normal test suite because it
+requires a registered local OPC DA server. On Windows, set the server ProgID
+and run the ignored test explicitly:
+
+```powershell
+$env:OPC_TEST_PROG_ID = "OPCLabs.KitServer.2"
+cargo test -p opc_da_bindings --test opc_kit -- --ignored --nocapture
+```
+
+The GitHub Actions integration job downloads and verifies the OPC Labs Kit
+Server, registers it for the job, and always unregisters it during cleanup.
+
 ## Minimal local-server activation
 
 ```rust,no_run

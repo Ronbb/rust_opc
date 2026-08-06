@@ -1,21 +1,213 @@
 name: Rust
+
 on:
   push:
     branches: ["master"]
   pull_request:
     branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
+  RUST_TOOLCHAIN: "1.97.1"
+  RUST_TARGET: x86_64-pc-windows-msvc
+  OPC_CORE_VERSION: "106.0.201.2"
+  OPC_KIT_VERSION: "5.60.0.1"
+  OPC_KIT_URL: https://www.opclabs.com/files/downloads/OPCKitServer/OPCKitServer.zip
+  OPC_KIT_SHA256: 650577C292B277FEAE61DD281D53E9A34A1763447FEE02D9F85857560396B0C3
+  OPC_TEST_PROG_ID: OPCLabs.KitServer.2
+
 jobs:
-  build:
+  unit:
+    name: unit, format, and lint
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
       - name: Install Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
-      - name: Build
-        run: cargo build --verbose --workspace
-    # - name: Run tests
-    #   run: cargo test --verbose --workspace
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ env.RUST_TARGET }}
+          components: clippy, rustfmt
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Run unit tests
+        run: cargo test --workspace --all-targets --target $env:RUST_TARGET
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --all-features --target $env:RUST_TARGET -- -D warnings
+
+      - name: Regenerate bindings
+        run: cargo build --workspace --target $env:RUST_TARGET
+
+      - name: Check generated bindings are current
+        run: git diff --exit-code -- ':(glob)**/src/**'
+
+  opc-integration:
+    name: OPC Kit Server integration
+    if: github.event_name != 'pull_request'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          targets: ${{ env.RUST_TARGET }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Download and verify OPC Kit Server
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "OPCKitServer-$env:OPC_KIT_VERSION.zip"
+          $serverDir = Join-Path $env:RUNNER_TEMP "OPCKitServer-$env:OPC_KIT_VERSION"
+          $logDir = Join-Path $env:RUNNER_TEMP "opc-integration-logs"
+          New-Item -ItemType Directory -Path $serverDir, $logDir -Force | Out-Null
+
+          Invoke-WebRequest -UseBasicParsing $env:OPC_KIT_URL -OutFile $archive
+          $actualHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash
+          if ($actualHash -ne $env:OPC_KIT_SHA256) {
+            throw "OPC Kit Server SHA-256 mismatch: expected $env:OPC_KIT_SHA256, got $actualHash"
+          }
+
+          Expand-Archive -LiteralPath $archive -DestinationPath $serverDir
+          $server = Get-ChildItem -LiteralPath $serverDir -Filter opcrtkit.exe -Recurse |
+            Select-Object -First 1
+          if (-not $server) {
+            throw "opcrtkit.exe was not present in the verified archive"
+          }
+          if ($server.VersionInfo.FileVersion -ne $env:OPC_KIT_VERSION) {
+            throw "Expected OPC Kit Server $env:OPC_KIT_VERSION, got $($server.VersionInfo.FileVersion)"
+          }
+
+          "OPC_KIT_EXE=$($server.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OPC_KIT_DIR=$serverDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "OPC_LOG_DIR=$logDir" | Out-File -FilePath $env:GITHUB_ENV -Append
+          $server.DirectoryName | Out-File -FilePath $env:GITHUB_PATH -Append
+
+      - name: Install OPC Classic Core Components
+        shell: pwsh
+        run: |
+          choco install opc-components --version=$env:OPC_CORE_VERSION --yes --no-progress 2>&1 |
+            Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "core-components-install.log")
+          if ($LASTEXITCODE -ne 0) {
+            throw "OPC Core Components installation failed with exit code $LASTEXITCODE"
+          }
+          "OPC_CORE_INSTALLED_BY_CI=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Register OPC Kit Server
+        shell: pwsh
+        run: |
+          & $env:OPC_KIT_EXE /RegServer 2>&1 |
+            Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "register.log")
+          $reg32 = @(reg query "HKCR\$env:OPC_TEST_PROG_ID" /s /reg:32 2>&1)
+          $reg32Exit = $LASTEXITCODE
+          $reg64 = @(reg query "HKCR\$env:OPC_TEST_PROG_ID" /s /reg:64 2>&1)
+          $reg64Exit = $LASTEXITCODE
+          @("[32-bit registry view]", $reg32, "[64-bit registry view]", $reg64) |
+            Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "registry-after-register.log")
+          if ($reg32Exit -ne 0 -or $reg64Exit -ne 0) {
+            throw "ProgID $env:OPC_TEST_PROG_ID was not registered in both registry views"
+          }
+
+      - name: Run OPC DA integration test
+        shell: pwsh
+        run: |
+          cargo test --workspace --test opc_kit --target $env:RUST_TARGET -- --ignored --nocapture 2>&1 |
+            Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "cargo-test.log")
+          exit $LASTEXITCODE
+
+      - name: Collect OPC diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          if ($env:OPC_LOG_DIR) {
+            Get-CimInstance Win32_Process -Filter "Name = 'opcrtkit.exe'" |
+              Format-List * |
+              Out-File (Join-Path $env:OPC_LOG_DIR "process.log")
+            reg query "HKCR\$env:OPC_TEST_PROG_ID" /s /reg:32 2>&1 |
+              Out-File (Join-Path $env:OPC_LOG_DIR "registry-on-failure-32.log")
+            reg query "HKCR\$env:OPC_TEST_PROG_ID" /s /reg:64 2>&1 |
+              Out-File (Join-Path $env:OPC_LOG_DIR "registry-on-failure-64.log")
+            Get-WinEvent -LogName Application -MaxEvents 200 -ErrorAction SilentlyContinue |
+              Where-Object { $_.ProviderName -match 'OPC|opcrtkit' -or $_.Message -match 'OPC|opcrtkit' } |
+              Format-List TimeCreated, ProviderName, Id, LevelDisplayName, Message |
+              Out-File (Join-Path $env:OPC_LOG_DIR "event-log.log")
+          }
+
+      - name: Unregister OPC Kit Server
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:OPC_KIT_EXE -and (Test-Path -LiteralPath $env:OPC_KIT_EXE)) {
+            Get-ChildItem -LiteralPath $env:OPC_KIT_DIR -Filter *.log -Recurse -ErrorAction SilentlyContinue |
+              Copy-Item -Destination $env:OPC_LOG_DIR -Force
+            Get-Process opcrtkit -ErrorAction SilentlyContinue | Stop-Process -Force
+            & $env:OPC_KIT_EXE /UnregServer 2>&1 |
+              Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "unregister.log")
+            Get-Process opcrtkit -ErrorAction SilentlyContinue | Stop-Process -Force
+          }
+
+      - name: Verify cleanup
+        if: always()
+        shell: pwsh
+        run: |
+          if (-not $env:OPC_KIT_EXE) {
+            return
+          }
+          $process = Get-Process opcrtkit -ErrorAction SilentlyContinue
+          if ($process) {
+            throw "opcrtkit process remains after cleanup"
+          }
+          reg query "HKCR\$env:OPC_TEST_PROG_ID" /s /reg:32 *> $null
+          $reg32Exit = $LASTEXITCODE
+          reg query "HKCR\$env:OPC_TEST_PROG_ID" /s /reg:64 *> $null
+          $reg64Exit = $LASTEXITCODE
+          if ($reg32Exit -eq 0 -or $reg64Exit -eq 0) {
+            throw "ProgID $env:OPC_TEST_PROG_ID remains registered after cleanup"
+          }
+          exit 0
+
+      - name: Uninstall OPC Classic Core Components
+        if: always() && env.OPC_CORE_INSTALLED_BY_CI == 'true'
+        shell: pwsh
+        run: |
+          choco uninstall opc-components --version=$env:OPC_CORE_VERSION --yes --no-progress 2>&1 |
+            Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "core-components-uninstall.log")
+          if ($LASTEXITCODE -ne 0) {
+            throw "OPC Core Components uninstall failed with exit code $LASTEXITCODE"
+          }
+
+      - name: Upload OPC logs
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: opc-integration-logs
+          path: ${{ runner.temp }}/opc-integration-logs
+          if-no-files-found: warn
+
+      - name: Remove OPC Kit Server files
+        if: always()
+        shell: pwsh
+        run: |
+          if ($env:OPC_KIT_DIR) {
+            $serverDir = [IO.Path]::GetFullPath($env:OPC_KIT_DIR)
+            $runnerTemp = [IO.Path]::GetFullPath($env:RUNNER_TEMP) + [IO.Path]::DirectorySeparatorChar
+            if (-not $serverDir.StartsWith($runnerTemp, [StringComparison]::OrdinalIgnoreCase)) {
+              throw "Refusing to remove OPC directory outside RUNNER_TEMP: $serverDir"
+            }
+            Remove-Item -LiteralPath $serverDir -Recurse -Force
+          }
