@@ -1,21 +1,28 @@
 [workspace]
-resolver = "2"
+resolver = "3"
 members = [
   "opc_ae_bindings",
+  "opc_classic_abi",
+  "opc_classic_types",
   "opc_classic_utils",
   "opc_comn_bindings",
-  "opc_da",
   "opc_da_bindings",
   "opc_hda_bindings",
 ]
 
+[workspace.package]
+edition = "2024"
+rust-version = "1.97"
+
 [workspace.dependencies]
-opc_classic_utils = { path = "opc_classic_utils" }
-opc_comn_bindings = { path = "opc_comn_bindings" }
-opc_da_bindings = { path = "opc_da_bindings" }
-opc_hda_bindings = { path = "opc_hda_bindings" }
-thiserror = "2.0"
-windows = { version = "0.61.3", features = [
+opc_ae_bindings = { version = "0.4.0", path = "opc_ae_bindings" }
+opc_classic_abi = { path = "opc_classic_abi" }
+opc_classic_types = { version = "0.1.0", path = "opc_classic_types" }
+opc_classic_utils = { version = "0.4.0", path = "opc_classic_utils" }
+opc_comn_bindings = { version = "0.4.0", path = "opc_comn_bindings" }
+opc_da_bindings = { version = "0.4.0", path = "opc_da_bindings" }
+opc_hda_bindings = { version = "0.4.0", path = "opc_hda_bindings" }
+windows = { version = "0.62.2", features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
   "Win32_System_Com",
@@ -24,8 +31,8 @@ windows = { version = "0.61.3", features = [
   "Win32_System_Variant",
   "Win32_System_WinRT",
 ] }
-windows-bindgen = "0.62.1"
-windows-core = "0.61.2"
+windows-bindgen = "0.66.0"
+windows-core = "0.62.2"
 
 [profile.dev.build-override]
 debug = true

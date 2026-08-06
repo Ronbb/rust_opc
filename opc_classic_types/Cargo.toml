@@ -1,0 +1,11 @@
+[package]
+name = "opc_classic_types"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Pure Rust public types for OPC Classic clients and servers"
+repository = "https://github.com/Ronbb/rust_opc"
+license = "MIT"
+keywords = ["classic", "opc", "types"]
+
+[dependencies]

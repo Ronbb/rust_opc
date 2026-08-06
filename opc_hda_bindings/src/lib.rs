@@ -1,3 +1,7 @@
 mod bindings;
+pub mod client;
+mod convert;
+pub mod server;
 
-pub use bindings::*;
+// Generated Windows ABI symbols are private implementation details.
+pub(crate) use bindings::*;

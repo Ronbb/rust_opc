@@ -1,7 +1,8 @@
 [package]
 name = "opc_classic_utils"
-version = "0.3.0"
-edition = "2024"
+version = "0.4.0"
+edition.workspace = true
+rust-version.workspace = true
 description = "OPC Classic utilities and common functionality"
 readme = "README.md"
 repository = "https://github.com/Ronbb/rust_opc"
@@ -9,5 +10,6 @@ license = "MIT"
 keywords = ["classic", "opc", "utilities", "utils"]
 
 [dependencies]
+opc_classic_types = { workspace = true }
 windows = { workspace = true }
 windows-core = { workspace = true }

@@ -1,347 +1,374 @@
-use std::ptr;
+use std::marker::PhantomData;
+use std::mem::{ManuallyDrop, MaybeUninit};
+use std::ptr::{self, NonNull};
+
+use opc_classic_types::{Error, Result};
 use windows::Win32::System::Com::{CoTaskMemAlloc, CoTaskMemFree};
 
-/// A smart pointer for COM memory arrays that the **caller allocates and callee frees**
+/// Describes how initialized elements inside a `CoTaskMem` allocation are released.
 ///
-/// This is used for input array parameters where the caller allocates memory
-/// and the callee (COM function) is responsible for freeing it.
-/// This wrapper does NOT free the memory when dropped.
-#[derive(Debug)]
-pub struct CallerAllocatedArray<T> {
-    ptr: *mut T,
-    len: usize,
-}
-
-impl<T> CallerAllocatedArray<T> {
-    /// Creates a new `CallerAllocatedArray` from a raw pointer and length
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that `ptr` is a valid pointer to an array of `len` elements
-    /// allocated by the caller and that the callee will be responsible for freeing it.
-    pub unsafe fn new(ptr: *mut T, len: usize) -> Self {
-        Self { ptr, len }
-    }
-
-    /// Creates a new `CallerAllocatedArray` from a raw pointer and length, taking ownership
-    pub fn from_raw(ptr: *mut T, len: usize) -> Self {
-        Self { ptr, len }
-    }
-
-    /// Allocates memory for an array using `CoTaskMemAlloc` and creates a `CallerAllocatedArray`
-    ///
-    /// This allocates memory that will be freed by the callee (COM function).
-    /// The caller is responsible for ensuring the callee will free this memory.
-    pub fn allocate(len: usize) -> Result<Self, windows::core::Error> {
-        if len == 0 {
-            return Ok(Self {
-                ptr: ptr::null_mut(),
-                len: 0,
-            });
-        }
-
-        let size = std::mem::size_of::<T>().checked_mul(len).ok_or_else(|| {
-            windows::core::Error::new(
-                windows::core::HRESULT::from_win32(0x80070057), // E_INVALIDARG
-                "Array size overflow",
-            )
-        })?;
-
-        let ptr = unsafe { CoTaskMemAlloc(size) };
-        if ptr.is_null() {
-            return Err(windows::core::Error::from_win32());
-        }
-        Ok(unsafe { Self::new(ptr.cast(), len) })
-    }
-
-    /// Allocates memory and initializes it with a copy of the given slice
-    ///
-    /// This creates a copy of the slice in COM-allocated memory.
-    pub fn from_slice(slice: &[T]) -> Result<Self, windows::core::Error>
-    where
-        T: Copy,
-    {
-        if slice.is_empty() {
-            return Ok(Self {
-                ptr: ptr::null_mut(),
-                len: 0,
-            });
-        }
-
-        let array = Self::allocate(slice.len())?;
-        unsafe {
-            std::ptr::copy_nonoverlapping(slice.as_ptr(), array.as_ptr(), slice.len());
-        }
-        Ok(array)
-    }
-
-    /// Returns the raw pointer without transferring ownership
-    pub fn as_ptr(&self) -> *mut T {
-        self.ptr
-    }
-
-    /// Returns the raw pointer and transfers ownership to the caller
-    ///
-    /// After calling this method, the `CallerAllocatedArray` will not manage the memory.
-    pub fn into_raw(mut self) -> (*mut T, usize) {
-        let ptr = self.ptr;
-        let len = self.len;
-        self.ptr = ptr::null_mut();
-        self.len = 0;
-        (ptr, len)
-    }
-
-    /// Returns the length of the array
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Returns true if the array is empty
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    /// Checks if the pointer is null
-    pub fn is_null(&self) -> bool {
-        self.ptr.is_null()
-    }
-
-    /// Returns a slice of the array if it's not null
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the pointer is valid and points to initialized data.
-    pub unsafe fn as_slice(&self) -> Option<&[T]> {
-        if self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(std::slice::from_raw_parts(self.ptr, self.len)) }
-        }
-    }
-
-    /// Returns a mutable slice of the array if it's not null
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the pointer is valid and points to initialized data.
-    pub unsafe fn as_mut_slice(&mut self) -> Option<&mut [T]> {
-        if self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(std::slice::from_raw_parts_mut(self.ptr, self.len)) }
-        }
-    }
-
-    /// Gets an element at the given index
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the index is within bounds and the pointer is valid.
-    pub unsafe fn get(&self, index: usize) -> Option<&T> {
-        if index >= self.len || self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(&*self.ptr.add(index)) }
-        }
-    }
-
-    /// Gets a mutable element at the given index
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the index is within bounds and the pointer is valid.
-    pub unsafe fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        if index >= self.len || self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(&mut *self.ptr.add(index)) }
-        }
-    }
-}
-
-impl<T> Drop for CallerAllocatedArray<T> {
-    fn drop(&mut self) {
-        // Do NOT free the memory - the callee is responsible for this
-        // Just clear the pointer to prevent use-after-free
-        self.ptr = ptr::null_mut();
-        self.len = 0;
-    }
-}
-
-impl<T> Default for CallerAllocatedArray<T> {
-    fn default() -> Self {
-        Self {
-            ptr: ptr::null_mut(),
-            len: 0,
-        }
-    }
-}
-
-impl<T> Clone for CallerAllocatedArray<T> {
-    /// Creates a shallow copy of the pointer.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that only one instance is passed to functions
-    /// that will free the memory, to avoid double-free errors.
-    fn clone(&self) -> Self {
-        Self {
-            ptr: self.ptr,
-            len: self.len,
-        }
-    }
-}
-
-/// A smart pointer for COM memory arrays that the **callee allocates and caller frees**
+/// # Safety
 ///
-/// This is used for output array parameters where the callee (COM function) allocates memory
-/// and the caller is responsible for freeing it using `CoTaskMemFree`.
-///
-/// # Memory Management
-/// - **Only frees the array container itself**
-/// - **Does NOT free individual array elements**
-/// - Use this when the callee returns an array of values (not pointers)
-///
-/// # Typical Use Cases
-/// - OPC server returning an array of data values
-/// - COM function returning an array of structures
-/// - Any scenario where you receive a contiguous array of data
-///
-/// # Example
-/// ```rust
-/// use opc_classic_utils::memory::CalleeAllocatedArray;
-/// use std::ptr;
-///
-/// // Server returns: [42.0, 84.0, 126.0] as *mut f64
-/// let ptr = ptr::null_mut::<f64>(); // In real code, this would be from COM
-/// let values = CalleeAllocatedArray::from_raw(ptr, 3);
-/// // When values goes out of scope, only the array is freed
-/// ```
-#[derive(Debug)]
-pub struct CalleeAllocatedArray<T> {
-    ptr: *mut T,
-    len: usize,
+/// Implementations must accept exactly `initialized` valid consecutive values at
+/// `ptr`. They must release resources owned by those values without freeing the
+/// outer allocation itself.
+pub unsafe trait Cleanup<T> {
+    /// Releases resources owned by an initialized prefix without freeing the
+    /// outer allocation.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must address at least `initialized` consecutive, initialized `T`
+    /// values, each exclusively owned by the caller.
+    unsafe fn cleanup(&mut self, ptr: *mut T, initialized: usize);
 }
 
-impl<T> CalleeAllocatedArray<T> {
-    /// Creates a new `CalleeAllocatedArray` from a raw pointer and length
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure that `ptr` is a valid pointer to an array of `len` elements
-    /// allocated by the callee and that it will be freed using `CoTaskMemFree`.
-    pub unsafe fn new(ptr: *mut T, len: usize) -> Self {
-        Self { ptr, len }
-    }
+/// Leaves elements untouched and only releases the outer `CoTaskMem` allocation.
+///
+/// This is appropriate for plain ABI values and raw structures whose nested
+/// resources are handled separately by a method-specific decoder.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct NoCleanup;
 
-    /// Creates a new `CalleeAllocatedArray` from a raw pointer and length, taking ownership
-    ///
-    /// This is safe when the pointer is null, as `CoTaskMemFree` handles null pointers.
-    pub fn from_raw(ptr: *mut T, len: usize) -> Self {
-        Self { ptr, len }
-    }
+// SAFETY: This policy intentionally performs no element operation.
+unsafe impl<T> Cleanup<T> for NoCleanup {
+    unsafe fn cleanup(&mut self, _ptr: *mut T, _initialized: usize) {}
+}
 
-    /// Returns the raw pointer without transferring ownership
-    pub fn as_ptr(&self) -> *mut T {
-        self.ptr
-    }
+/// Runs Rust drop glue for every initialized element before releasing the outer
+/// allocation. This is useful for `VARIANT` and structures whose Rust drop glue
+/// correctly matches their COM cleanup contract.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct DropElements;
 
-    /// Returns the raw pointer and transfers ownership to the caller
-    ///
-    /// After calling this method, the `CalleeAllocatedArray` will not free the memory.
-    pub fn into_raw(mut self) -> (*mut T, usize) {
-        let ptr = self.ptr;
-        let len = self.len;
-        self.ptr = ptr::null_mut();
-        self.len = 0;
-        (ptr, len)
-    }
-
-    /// Returns the length of the array
-    pub fn len(&self) -> usize {
-        self.len
-    }
-
-    /// Returns true if the array is empty
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    /// Checks if the pointer is null
-    pub fn is_null(&self) -> bool {
-        self.ptr.is_null()
-    }
-
-    /// Returns a slice of the array if it's not null
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the pointer is valid and points to initialized data.
-    pub unsafe fn as_slice(&self) -> Option<&[T]> {
-        if self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(std::slice::from_raw_parts(self.ptr, self.len)) }
-        }
-    }
-
-    /// Returns a mutable slice of the array if it's not null
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the pointer is valid and points to initialized data.
-    pub unsafe fn as_mut_slice(&mut self) -> Option<&mut [T]> {
-        if self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(std::slice::from_raw_parts_mut(self.ptr, self.len)) }
-        }
-    }
-
-    /// Gets an element at the given index
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the index is within bounds and the pointer is valid.
-    pub unsafe fn get(&self, index: usize) -> Option<&T> {
-        if index >= self.len || self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(&*self.ptr.add(index)) }
-        }
-    }
-
-    /// Gets a mutable element at the given index
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the index is within bounds and the pointer is valid.
-    pub unsafe fn get_mut(&mut self, index: usize) -> Option<&mut T> {
-        if index >= self.len || self.ptr.is_null() {
-            None
-        } else {
-            unsafe { Some(&mut *self.ptr.add(index)) }
+// SAFETY: Every element is dropped exactly once and the outer allocation is left
+// for `CoTaskMemArray` to release.
+unsafe impl<T> Cleanup<T> for DropElements {
+    unsafe fn cleanup(&mut self, ptr: *mut T, initialized: usize) {
+        for index in 0..initialized {
+            unsafe { ptr::drop_in_place(ptr.add(index)) };
         }
     }
 }
 
-impl<T> Drop for CalleeAllocatedArray<T> {
-    fn drop(&mut self) {
-        if !self.ptr.is_null() {
-            unsafe {
-                CoTaskMemFree(Some(self.ptr.cast()));
+/// Releases every `PWSTR` element with `CoTaskMemFree` before releasing the
+/// pointer array itself.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct FreePwstrElements;
+
+// SAFETY: OPC string arrays use one task allocation per non-null string and one
+// task allocation for the pointer array.
+unsafe impl Cleanup<*mut u16> for FreePwstrElements {
+    unsafe fn cleanup(&mut self, ptr: *mut *mut u16, initialized: usize) {
+        for index in 0..initialized {
+            let value = unsafe { *ptr.add(index) };
+            if !value.is_null() {
+                unsafe { CoTaskMemFree(Some(value.cast())) };
             }
-            self.ptr = ptr::null_mut();
-            self.len = 0;
         }
     }
 }
 
-impl<T> Default for CalleeAllocatedArray<T> {
-    fn default() -> Self {
-        Self {
-            ptr: ptr::null_mut(),
-            len: 0,
+/// Owns a contiguous, initialized array allocated with `CoTaskMemAlloc`.
+///
+/// `C` makes element cleanup explicit. The outer allocation is always released
+/// with `CoTaskMemFree`.
+pub struct CoTaskMemArray<T, C: Cleanup<T>> {
+    ptr: Option<NonNull<T>>,
+    len: usize,
+    cleanup: C,
+    _owns: PhantomData<T>,
+}
+
+impl<T, C: Cleanup<T>> CoTaskMemArray<T, C> {
+    /// Adopts an array returned by COM.
+    ///
+    /// # Safety
+    ///
+    /// For non-zero `len`, `ptr` must point to `len` initialized `T` values in a
+    /// single allocation obtained from `CoTaskMemAlloc`. `cleanup` must match the
+    /// ownership contract of every element.
+    pub unsafe fn from_raw_parts(ptr: *mut T, len: usize, cleanup: C) -> Result<Self> {
+        if len != 0 && ptr.is_null() {
+            return Err(Error::null_pointer("null task-memory array"));
         }
+
+        Ok(Self {
+            ptr: NonNull::new(ptr),
+            len,
+            cleanup,
+            _owns: PhantomData,
+        })
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    pub fn as_ptr(&self) -> *const T {
+        self.ptr.map_or(ptr::null(), |ptr| ptr.as_ptr())
+    }
+
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        self.ptr.map_or(ptr::null_mut(), |ptr| ptr.as_ptr())
+    }
+
+    pub fn as_slice(&self) -> &[T] {
+        if let Some(ptr) = self.ptr {
+            // SAFETY: Construction guarantees `len` initialized elements.
+            unsafe { std::slice::from_raw_parts(ptr.as_ptr(), self.len) }
+        } else {
+            &[]
+        }
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [T] {
+        if let Some(ptr) = self.ptr {
+            // SAFETY: The allocation is uniquely owned by `self`.
+            unsafe { std::slice::from_raw_parts_mut(ptr.as_ptr(), self.len) }
+        } else {
+            &mut []
+        }
+    }
+
+    /// Transfers the allocation and its element ownership to the caller.
+    pub fn into_raw_parts(self) -> (*mut T, usize) {
+        let mut this = ManuallyDrop::new(self);
+        let raw = this.ptr.map_or(ptr::null_mut(), |ptr| ptr.as_ptr());
+        let len = this.len;
+        // The cleanup policy itself is not transferred with the allocation.
+        // Drop its Rust-owned state without running element cleanup.
+        unsafe { ptr::drop_in_place(&mut this.cleanup) };
+        (raw, len)
+    }
+}
+
+impl<T, C: Cleanup<T>> Drop for CoTaskMemArray<T, C> {
+    fn drop(&mut self) {
+        let Some(ptr) = self.ptr.take() else {
+            return;
+        };
+
+        // SAFETY: The constructor establishes the initialized range and cleanup
+        // contract. The allocation is uniquely owned here.
+        unsafe {
+            self.cleanup.cleanup(ptr.as_ptr(), self.len);
+            CoTaskMemFree(Some(ptr.as_ptr().cast()));
+        }
+        self.len = 0;
+    }
+}
+
+/// Transactionally builds an initialized `CoTaskMem` array.
+///
+/// If construction fails or unwinds, only the initialized prefix is cleaned.
+pub struct CoTaskMemArrayBuilder<T, C: Cleanup<T>> {
+    ptr: Option<NonNull<MaybeUninit<T>>>,
+    capacity: usize,
+    initialized: usize,
+    cleanup: C,
+}
+
+impl<T, C: Cleanup<T>> CoTaskMemArrayBuilder<T, C> {
+    pub fn new(capacity: usize, cleanup: C) -> Result<Self> {
+        if capacity == 0 {
+            return Ok(Self {
+                ptr: None,
+                capacity: 0,
+                initialized: 0,
+                cleanup,
+            });
+        }
+
+        let bytes = std::mem::size_of::<T>()
+            .checked_mul(capacity)
+            .filter(|bytes| *bytes != 0)
+            .ok_or_else(|| Error::invalid_argument("invalid task-memory array size"))?;
+        let ptr = unsafe { CoTaskMemAlloc(bytes) }.cast::<MaybeUninit<T>>();
+        let ptr = NonNull::new(ptr)
+            .ok_or_else(|| Error::out_of_memory("task-memory allocation failed"))?;
+        if ptr.as_ptr().addr() % std::mem::align_of::<T>() != 0 {
+            unsafe { CoTaskMemFree(Some(ptr.as_ptr().cast())) };
+            return Err(Error::invalid_argument("task-memory alignment mismatch"));
+        }
+
+        Ok(Self {
+            ptr: Some(ptr),
+            capacity,
+            initialized: 0,
+            cleanup,
+        })
+    }
+
+    pub fn push(&mut self, value: T) -> core::result::Result<(), T> {
+        if self.initialized == self.capacity {
+            return Err(value);
+        }
+
+        let ptr = self.ptr.expect("non-empty builder must have an allocation");
+        // SAFETY: `initialized < capacity` and this slot has not been written.
+        unsafe {
+            ptr.as_ptr()
+                .add(self.initialized)
+                .write(MaybeUninit::new(value))
+        };
+        self.initialized += 1;
+        Ok(())
+    }
+
+    pub fn finish(self) -> Result<CoTaskMemArray<T, C>> {
+        if self.initialized != self.capacity {
+            return Err(Error::invalid_argument("task-memory array is incomplete"));
+        }
+
+        let this = ManuallyDrop::new(self);
+        // SAFETY: `cleanup` is moved out and `this` will not be dropped.
+        let cleanup = unsafe { ptr::read(&this.cleanup) };
+        Ok(CoTaskMemArray {
+            ptr: this.ptr.map(|ptr| ptr.cast()),
+            len: this.capacity,
+            cleanup,
+            _owns: PhantomData,
+        })
+    }
+}
+
+impl<T, C: Cleanup<T>> Drop for CoTaskMemArrayBuilder<T, C> {
+    fn drop(&mut self) {
+        let Some(ptr) = self.ptr.take() else {
+            return;
+        };
+
+        // SAFETY: Only the initialized prefix contains valid `T` values.
+        unsafe {
+            self.cleanup.cleanup(ptr.as_ptr().cast(), self.initialized);
+            CoTaskMemFree(Some(ptr.as_ptr().cast()));
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    struct CountDrop {
+        drops: Arc<AtomicUsize>,
+    }
+
+    impl Drop for CountDrop {
+        fn drop(&mut self) {
+            self.drops.fetch_add(1, Ordering::Relaxed);
+        }
+    }
+
+    #[test]
+    fn builder_rolls_back_initialized_prefix() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        {
+            let mut builder = CoTaskMemArrayBuilder::new(3, DropElements).unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
+        }
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn finished_array_drops_all_elements() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        {
+            let mut builder = CoTaskMemArrayBuilder::new(2, DropElements).unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
+            builder
+                .push(CountDrop {
+                    drops: drops.clone(),
+                })
+                .ok()
+                .unwrap();
+            let array = builder.finish().unwrap();
+            assert_eq!(array.len(), 2);
+        }
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn zero_length_array_is_supported() {
+        let builder = CoTaskMemArrayBuilder::<u32, _>::new(0, NoCleanup).unwrap();
+        let array = builder.finish().unwrap();
+        assert!(array.is_empty());
+        assert!(array.as_ptr().is_null());
+    }
+
+    #[test]
+    fn raw_transfer_does_not_clean_initialized_elements() {
+        let drops = Arc::new(AtomicUsize::new(0));
+        let mut builder = CoTaskMemArrayBuilder::new(2, DropElements).unwrap();
+        builder
+            .push(CountDrop {
+                drops: drops.clone(),
+            })
+            .ok()
+            .unwrap();
+        builder
+            .push(CountDrop {
+                drops: drops.clone(),
+            })
+            .ok()
+            .unwrap();
+
+        let (ptr, len) = builder.finish().unwrap().into_raw_parts();
+        assert_eq!(drops.load(Ordering::Relaxed), 0);
+
+        // SAFETY: ownership was transferred by `into_raw_parts` immediately
+        // above and is re-adopted exactly once with the same cleanup policy.
+        let array = unsafe { CoTaskMemArray::from_raw_parts(ptr, len, DropElements) }.unwrap();
+        drop(array);
+        assert_eq!(drops.load(Ordering::Relaxed), 2);
+    }
+
+    #[test]
+    fn push_past_capacity_returns_the_original_value() {
+        let stored_drops = Arc::new(AtomicUsize::new(0));
+        let returned_drops = Arc::new(AtomicUsize::new(0));
+        let mut builder = CoTaskMemArrayBuilder::new(1, DropElements).unwrap();
+        builder
+            .push(CountDrop {
+                drops: stored_drops.clone(),
+            })
+            .ok()
+            .unwrap();
+
+        let returned = builder
+            .push(CountDrop {
+                drops: returned_drops.clone(),
+            })
+            .expect_err("a full builder returns the unconsumed value");
+        assert_eq!(stored_drops.load(Ordering::Relaxed), 0);
+        assert_eq!(returned_drops.load(Ordering::Relaxed), 0);
+
+        drop(returned);
+        assert_eq!(returned_drops.load(Ordering::Relaxed), 1);
+        drop(builder);
+        assert_eq!(stored_drops.load(Ordering::Relaxed), 1);
     }
 }

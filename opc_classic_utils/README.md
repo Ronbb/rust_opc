@@ -1,100 +1,58 @@
-# OPC Classic Utils
+# OPC Classic utilities
 
-OPC Classic utilities and common functionality for the rust_opc project.
+This crate contains the ownership and COM-apartment primitives shared by the
+OPC Classic client and server facades.
 
-## Features
+## Ownership model
 
-- **Dual Memory Management Patterns**: Supports both COM memory management conventions
-  - **Caller-allocated**: Caller allocates, callee frees (for input parameters)
-  - **Callee-allocated**: Callee allocates, caller frees (for output parameters)
-- Automatic memory management with `CoTaskMemFree`
-- Common utility structures and traits
-- Shared functionality for OPC Classic implementations
+COM input parameters are borrowed for the duration of a call. Use
+`WideCString` for strings and ordinary Rust slices for arrays. Do not allocate
+an input buffer solely because an IDL parameter is a pointer.
 
-## Memory Management Patterns
-
-### Caller-allocated Memory (Input Parameters)
-
-Use these types when **you** allocate memory that will be freed by the COM function:
+COM output parameters are adopted by an owning guard:
 
 ```rust
-use opc_classic_utils::memory::{CallerAllocatedPtr, CallerAllocatedWString};
+use opc_classic_utils::{CoTaskMemArrayOut, CoTaskMemOut, NoCleanup, OwnedPwstr};
 
-// For input parameters - you allocate, COM function frees
-let input_string = CallerAllocatedWString::from_raw(your_allocated_string);
-let input_data = CallerAllocatedPtr::from_raw(your_allocated_data);
+fn example() -> opc_classic_utils::Result<()> {
+    let mut output = CoTaskMemArrayOut::new(3, NoCleanup);
+    // unsafe { raw_com_method(output.as_mut_ptr()) };
+    let values = unsafe { output.into_array() }?;
+    println!("{} values", values.len());
 
-// Pass to COM function - it will free the memory
-some_com_function(&input_string, &input_data);
-// Memory is NOT freed by our wrapper (COM function's responsibility)
+    let mut text = CoTaskMemOut::<u16>::new();
+    // unsafe { raw_string_method(text.as_mut_ptr()) };
+    let text: OwnedPwstr = unsafe { text.into_pwstr() };
+    println!("{}", text.to_string_lossy());
+    Ok(())
+}
 ```
 
-### Callee-allocated Memory (Output Parameters)
+`CoTaskMemArray<T, C>` always releases its outer allocation with
+`CoTaskMemFree`. The cleanup policy `C` decides what happens to initialized
+elements. Use `DropElements` for `VARIANT` values, `FreePwstrElements` for
+arrays of task-allocated strings, and `NoCleanup` only for plain ABI values or
+when a method-specific decoder owns nested cleanup.
 
-Use these types when the **COM function** allocates memory that you must free:
+`CoTaskMemArrayOut<T, C>` attaches that policy before invoking the foreign
+method, so failure paths and partially processed multi-output calls still run
+deep element cleanup when the initialized length is known. For a method that
+reports its array length in a separate output parameter, construct the guard
+with `CoTaskMemArrayOut::new_reported`, check that the call succeeded, and then
+use `into_array_with_len`. Until that explicit commit, drop releases the outer
+allocation without trusting the server-provided count.
 
-```rust
-use opc_classic_utils::memory::{CalleeAllocatedPtr, CalleeAllocatedWString};
+`CoTaskMemObjectOut<T, C>` models a `T**` output containing exactly one object
+and preserves deep cleanup on failure. `CoTaskMemOut<T>` is reserved for one
+opaque task allocation without nested cleanup, such as a returned string.
 
-// For output parameters - COM function allocates, you free
-let (output_string, output_data) = some_com_function();
+Owning guards are deliberately not `Clone`, and adopting a raw pointer is an
+`unsafe` operation. This prevents accidental aliases and allocator mismatches.
 
-// Use the returned data
-println!("String: {:?}", output_string.as_ptr());
-println!("Data: {:?}", output_data.as_ptr());
+## Server activation
 
-// Memory is automatically freed when variables go out of scope
-```
-
-## Usage Examples
-
-### Basic Usage
-
-```rust
-use opc_classic_utils::memory::{
-    CallerAllocatedPtr, CalleeAllocatedPtr,
-    CallerAllocatedWString, CalleeAllocatedWString,
-};
-
-// Caller-allocated (input parameters)
-let input_ptr = CallerAllocatedPtr::from_raw(some_pointer);
-// Memory will NOT be freed by our wrapper
-
-// Callee-allocated (output parameters)
-let output_ptr = CalleeAllocatedPtr::from_raw(com_returned_pointer);
-// Memory will be automatically freed when dropped
-```
-
-### OPC Client-Server Scenario
-
-```rust
-// Client side - preparing input parameters
-let client_input = CallerAllocatedWString::from_raw(client_allocated_string);
-
-// Call server method
-let server_output = server_method(&client_input);
-
-// Server output is automatically freed when it goes out of scope
-// Client input is NOT freed (server's responsibility)
-```
-
-## Type Overview
-
-| Type | Purpose | Memory Management |
-|------|---------|-------------------|
-| `CallerAllocatedPtr<T>` | Input parameters | Caller allocates, callee frees |
-| `CalleeAllocatedPtr<T>` | Output parameters | Callee allocates, caller frees |
-| `CallerAllocatedWString` | Input strings | Caller allocates, callee frees |
-| `CalleeAllocatedWString` | Output strings | Callee allocates, caller frees |
-
-## Benefits
-
-- **Prevents Memory Leaks**: Automatic cleanup for callee-allocated memory
-- **Prevents Double-free**: Clear ownership semantics prevent errors
-- **COM Convention Compliance**: Follows standard COM memory management rules
-- **Type Safety**: Compile-time guarantees about memory ownership
-- **RAII**: Resource management through Rust's ownership system
-
-## License
-
-MIT 
+`server::ClassFactory` turns a Rust closure returning the project-owned
+`ComObject` into a private COM class factory. `server::LocalClassRegistration`
+registers it with COM and revokes the registration on drop. Its borrow of
+`ComApartment` prevents the apartment from being uninitialized before the
+registration is revoked. No Windows crate type appears in this public API.
