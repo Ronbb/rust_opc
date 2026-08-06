@@ -31,16 +31,17 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: stable
+          toolchain: 1.97.1
+          targets: x86_64-pc-windows-msvc
           components: clippy
 
       - name: Install required cargo
         run: cargo install clippy-sarif sarif-fmt
 
       - name: Run rust-clippy
-        run: cargo clippy
+        run: cargo clippy --workspace --all-targets
           --all-features
           --message-format=json | ForEach-Object { $_ -replace '\\\\', '/'  -replace '"([a-zA-Z]):', '"file://${1}:' } | clippy-sarif | tee rust-clippy-results.sarif | sarif-fmt
         continue-on-error: true
