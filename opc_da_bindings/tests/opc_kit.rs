@@ -9,8 +9,10 @@ use opc_da_bindings::client::{
     DaClient, DataSource, GroupOptions, ItemSpec, ServerState, WriteValue,
 };
 
-const ITEM_ID: &str = "Simulation.Register_I4";
-const CLIENT_HANDLE: u32 = 0x4f50_4301;
+const READ_ITEM_ID: &str = "Demo.Ramp";
+const WRITE_ITEM_ID: &str = "Simulation.Register_I4";
+const READ_CLIENT_HANDLE: u32 = 0x4f50_4301;
+const WRITE_CLIENT_HANDLE: u32 = 0x4f50_4302;
 const WRITE_VALUE: i32 = 12_345;
 
 #[test]
@@ -58,50 +60,81 @@ fn run_round_trip(prog_id: &str) -> Result<()> {
         "server returned a zero group handle".to_owned(),
     )?;
 
-    let added = group.add_items(&[ItemSpec::new(ITEM_ID, CLIENT_HANDLE)])?;
-    let item = added
-        .into_iter()
+    let added = group.add_items(&[
+        ItemSpec::new(READ_ITEM_ID, READ_CLIENT_HANDLE),
+        ItemSpec::new(WRITE_ITEM_ID, WRITE_CLIENT_HANDLE),
+    ])?;
+    ensure(
+        added.len() == 2,
+        format!("server returned {} item results, expected 2", added.len()),
+    )?;
+    let mut added = added.into_iter();
+    let read_item = added
         .next()
-        .ok_or_else(|| Error::unexpected("server returned no item result"))?
+        .ok_or_else(|| Error::unexpected("server returned no read item result"))?
+        .map_err(|error| Error::from_code(error.code))?;
+    let write_item = added
+        .next()
+        .ok_or_else(|| Error::unexpected("server returned no write item result"))?
         .map_err(|error| Error::from_code(error.code))?;
     ensure(
-        item.server_handle.raw() != 0,
+        read_item.server_handle.raw() != 0 && write_item.server_handle.raw() != 0,
         "server returned a zero item handle".to_owned(),
     )?;
     ensure(
-        item.canonical_data_type == ValueType::I32,
+        read_item.server_handle != write_item.server_handle,
+        "server returned duplicate item handles".to_owned(),
+    )?;
+    ensure(
+        read_item.canonical_data_type == ValueType::F64,
         format!(
-            "{ITEM_ID} canonical type was {:?}, expected I32",
-            item.canonical_data_type
+            "{READ_ITEM_ID} canonical type was {:?}, expected F64",
+            read_item.canonical_data_type
         ),
     )?;
     ensure(
-        item.access_rights & 2 != 0,
+        write_item.canonical_data_type == ValueType::I32,
         format!(
-            "{ITEM_ID} is not writable (access rights {})",
-            item.access_rights
+            "{WRITE_ITEM_ID} canonical type was {:?}, expected I32",
+            write_item.canonical_data_type
+        ),
+    )?;
+    ensure(
+        write_item.access_rights & 2 != 0,
+        format!(
+            "{WRITE_ITEM_ID} is not writable (access rights {})",
+            write_item.access_rights
         ),
     )?;
 
-    let before = read_one(&group, item.server_handle)?;
+    let timestamped = read_one(&group, read_item.server_handle)?;
     ensure(
-        before.client_handle.0 == CLIENT_HANDLE,
+        timestamped.client_handle.0 == READ_CLIENT_HANDLE,
         format!(
-            "client item handle mismatch: expected {CLIENT_HANDLE}, got {}",
-            before.client_handle.0
+            "read client handle mismatch: expected {READ_CLIENT_HANDLE}, got {}",
+            timestamped.client_handle.0
         ),
     )?;
     ensure(
-        before.quality & 0xc0 == 0xc0,
-        format!("bad OPC quality 0x{:04x}", before.quality),
+        timestamped.quality & 0xc0 == 0xc0,
+        format!("bad OPC quality 0x{:04x}", timestamped.quality),
     )?;
     ensure(
-        before.timestamp.ticks() != 0,
+        timestamped.timestamp.ticks() != 0,
         "server returned an empty timestamp".to_owned(),
     )?;
 
+    let before = read_one(&group, write_item.server_handle)?;
+    ensure(
+        before.client_handle.0 == WRITE_CLIENT_HANDLE,
+        format!(
+            "write client handle mismatch: expected {WRITE_CLIENT_HANDLE}, got {}",
+            before.client_handle.0
+        ),
+    )?;
+
     let writes = group.write(&[WriteValue {
-        server_handle: item.server_handle,
+        server_handle: write_item.server_handle,
         value: Value::I32(WRITE_VALUE),
     }])?;
     writes
@@ -110,7 +143,7 @@ fn run_round_trip(prog_id: &str) -> Result<()> {
         .ok_or_else(|| Error::unexpected("server returned no write result"))?
         .map_err(|error| Error::from_code(error.code))?;
 
-    let after = read_one(&group, item.server_handle)?;
+    let after = read_one(&group, write_item.server_handle)?;
     ensure(
         after.value == Value::I32(WRITE_VALUE),
         format!("write/read value mismatch: {:?}", after.value),
@@ -120,8 +153,8 @@ fn run_round_trip(prog_id: &str) -> Result<()> {
         format!("bad OPC quality after write 0x{:04x}", after.quality),
     )?;
     println!(
-        "round trip item={ITEM_ID} server_handle={} value={:?} quality=0x{:04x} timestamp={}",
-        item.server_handle.raw(),
+        "round trip item={WRITE_ITEM_ID} server_handle={} value={:?} quality=0x{:04x} timestamp={}",
+        write_item.server_handle.raw(),
         after.value,
         after.quality,
         after.timestamp.ticks()

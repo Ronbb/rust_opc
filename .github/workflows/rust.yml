@@ -155,6 +155,7 @@ jobs:
           if ($env:OPC_KIT_EXE -and (Test-Path -LiteralPath $env:OPC_KIT_EXE)) {
             Get-ChildItem -LiteralPath $env:OPC_KIT_DIR -Filter *.log -Recurse -ErrorAction SilentlyContinue |
               Copy-Item -Destination $env:OPC_LOG_DIR -Force
+            Get-Process opcrtkit -ErrorAction SilentlyContinue | Stop-Process -Force
             & $env:OPC_KIT_EXE /UnregServer 2>&1 |
               Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "unregister.log")
             Get-Process opcrtkit -ErrorAction SilentlyContinue | Stop-Process -Force
@@ -178,6 +179,7 @@ jobs:
           if ($reg32Exit -eq 0 -or $reg64Exit -eq 0) {
             throw "ProgID $env:OPC_TEST_PROG_ID remains registered after cleanup"
           }
+          exit 0
 
       - name: Uninstall OPC Classic Core Components
         if: always() && env.OPC_CORE_INSTALLED_BY_CI == 'true'
