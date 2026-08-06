@@ -133,34 +133,67 @@ fn run_round_trip(prog_id: &str) -> Result<()> {
         ),
     )?;
 
-    let writes = group.write(&[WriteValue {
-        server_handle: write_item.server_handle,
-        value: Value::I32(WRITE_VALUE),
-    }])?;
-    writes
+    let original_value = before.value;
+    let round_trip = (|| {
+        write_one(&group, write_item.server_handle, Value::I32(WRITE_VALUE))?;
+
+        let after = read_one(&group, write_item.server_handle)?;
+        ensure(
+            after.value == Value::I32(WRITE_VALUE),
+            format!("write/read value mismatch: {:?}", after.value),
+        )?;
+        ensure(
+            after.quality & 0xc0 == 0xc0,
+            format!("bad OPC quality after write 0x{:04x}", after.quality),
+        )?;
+        println!(
+            "round trip item={WRITE_ITEM_ID} server_handle={} value={:?} quality=0x{:04x} timestamp={}",
+            write_item.server_handle.raw(),
+            after.value,
+            after.quality,
+            after.timestamp.ticks()
+        );
+        Ok(())
+    })();
+    let restore =
+        write_one(&group, write_item.server_handle, original_value.clone()).and_then(|()| {
+            let restored = read_one(&group, write_item.server_handle)?;
+            ensure(
+                restored.value == original_value,
+                format!("original item value was not restored: {:?}", restored.value),
+            )
+        });
+    match (round_trip, restore) {
+        (Ok(()), Ok(())) => {}
+        (Err(error), Ok(())) => return Err(error),
+        (Ok(()), Err(restore_error)) => {
+            let message = format!("failed to restore original item value: {restore_error}");
+            return Err(restore_error.with_message(message));
+        }
+        (Err(error), Err(restore_error)) => {
+            return Err(Error::unexpected(format!(
+                "round trip failed: {error}; restoring original item value also failed: {restore_error}"
+            )));
+        }
+    }
+    group.close(true)?;
+    Ok(())
+}
+
+fn write_one(
+    group: &opc_da_bindings::client::DaGroup<'_>,
+    handle: opc_da_bindings::client::ServerItemHandle,
+    value: Value,
+) -> Result<()> {
+    group
+        .write(&[WriteValue {
+            server_handle: handle,
+            value,
+        }])?
         .into_iter()
         .next()
         .ok_or_else(|| Error::unexpected("server returned no write result"))?
-        .map_err(|error| Error::from_code(error.code))?;
-
-    let after = read_one(&group, write_item.server_handle)?;
-    ensure(
-        after.value == Value::I32(WRITE_VALUE),
-        format!("write/read value mismatch: {:?}", after.value),
-    )?;
-    ensure(
-        after.quality & 0xc0 == 0xc0,
-        format!("bad OPC quality after write 0x{:04x}", after.quality),
-    )?;
-    println!(
-        "round trip item={WRITE_ITEM_ID} server_handle={} value={:?} quality=0x{:04x} timestamp={}",
-        write_item.server_handle.raw(),
-        after.value,
-        after.quality,
-        after.timestamp.ticks()
-    );
-    group.close(true)?;
-    Ok(())
+        .map_err(|error| Error::from_code(error.code))
 }
 
 fn read_one(

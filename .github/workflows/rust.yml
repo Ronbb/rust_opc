@@ -119,8 +119,8 @@ jobs:
           $reg64Exit = $LASTEXITCODE
           @("[32-bit registry view]", $reg32, "[64-bit registry view]", $reg64) |
             Tee-Object -FilePath (Join-Path $env:OPC_LOG_DIR "registry-after-register.log")
-          if ($reg32Exit -ne 0 -and $reg64Exit -ne 0) {
-            throw "ProgID $env:OPC_TEST_PROG_ID was not registered"
+          if ($reg32Exit -ne 0 -or $reg64Exit -ne 0) {
+            throw "ProgID $env:OPC_TEST_PROG_ID was not registered in both registry views"
           }
 
       - name: Run OPC DA integration test
